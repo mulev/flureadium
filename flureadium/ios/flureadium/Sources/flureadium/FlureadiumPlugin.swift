@@ -61,6 +61,8 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
+    case "getPlatformVersion":
+      result("iOS " + UIDevice.current.systemVersion)
     case "setCustomHeaders":
       guard let args = call.arguments as? [String: Any],
             let httpHeaders = args["httpHeaders"] as? [String: String] else {
