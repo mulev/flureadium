@@ -12,7 +12,7 @@ let package = Package(
         .macOS("10.15")
     ],
     products: [
-        .library(name: "flutter-readium", targets: ["flureadium"])
+        .library(name: "flureadium", targets: ["flureadium"])
     ],
     dependencies: [
       .package(url: "https://github.com/readium/swift-toolkit.git", .upToNextMinor(from: "3.5.0")),
