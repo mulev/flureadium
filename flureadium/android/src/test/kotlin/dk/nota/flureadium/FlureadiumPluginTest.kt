@@ -3,6 +3,7 @@ package dk.nota.flureadium
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlin.test.Test
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import org.mockito.Mockito
 
 /*
@@ -13,15 +14,18 @@ import org.mockito.Mockito
  * you can run them directly from IDEs that support JUnit such as Android Studio.
  */
 
+@OptIn(ExperimentalCoroutinesApi::class)
 internal class FlureadiumPluginTest {
   @Test
-  fun onMethodCall_getPlatformVersion_returnsExpectedValue() {
+  fun onMethodCall_returnsNotImplemented() {
     val plugin = FlureadiumPlugin()
 
     val call = MethodCall("getPlatformVersion", null)
     val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
     plugin.onMethodCall(call, mockResult)
 
-    Mockito.verify(mockResult).success("Android " + android.os.Build.VERSION.RELEASE)
+    // FlureadiumPlugin.onMethodCall() returns notImplemented for all method calls
+    // The actual method handling is done by PublicationMethodCallHandler
+    Mockito.verify(mockResult).notImplemented()
   }
 }
