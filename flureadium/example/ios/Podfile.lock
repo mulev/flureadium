@@ -6,8 +6,7 @@ PODS:
   - DifferenceKit/Core (1.3.0)
   - DifferenceKit/UIKitExtension (1.3.0):
     - DifferenceKit/Core
-  - Flutter (1.0.0)
-  - flutter_readium (0.0.1):
+  - flureadium (0.0.1):
     - Flutter
     - PromiseKit (~> 8.1)
     - ReadiumAdapterGCDWebServer (~> 3.5.0)
@@ -15,6 +14,7 @@ PODS:
     - ReadiumOPDS (~> 3.5.0)
     - ReadiumShared (~> 3.5.0)
     - ReadiumStreamer (~> 3.5.0)
+  - Flutter (1.0.0)
   - integration_test (0.0.1):
     - Flutter
   - Minizip (1.0.0)
@@ -69,8 +69,8 @@ PODS:
     - Flutter
 
 DEPENDENCIES:
+  - flureadium (from `.symlinks/plugins/flureadium/ios`)
   - Flutter (from `Flutter`)
-  - flutter_readium (from `.symlinks/plugins/flutter_readium/ios`)
   - integration_test (from `.symlinks/plugins/integration_test/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
@@ -96,10 +96,10 @@ SPEC REPOS:
     - SwiftSoup
 
 EXTERNAL SOURCES:
+  flureadium:
+    :path: ".symlinks/plugins/flureadium/ios"
   Flutter:
     :path: Flutter
-  flutter_readium:
-    :path: ".symlinks/plugins/flutter_readium/ios"
   integration_test:
     :path: ".symlinks/plugins/integration_test/ios"
   package_info_plus:
@@ -128,8 +128,8 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   CryptoSwift: e64e11850ede528a02a0f3e768cec8e9d92ecb90
   DifferenceKit: ab185c4d7f9cef8af3fcf593e5b387fb81e999ca
+  flureadium: a5e368316f4400c9939b8e2d07ab68d0d4b4ead0
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_readium: 0c7d3795cb575801a4066ee12a406228381f3a44
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
   Minizip: 188cb3e39a1195c283ae03bf673d182596fefd0b
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499

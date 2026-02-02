@@ -31,3 +31,12 @@ jobs:
 
       - name: Build iOS (no codesign)
         run: flutter build ios --debug --no-codesign
+
+      - name: Run iOS native tests
+        run: |
+          cd ios
+          xcodebuild test \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -only-testing:RunnerTests

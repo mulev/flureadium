@@ -93,6 +93,15 @@ void main() {
         expect(mockPlatform.wasCalled('goToLocator'), isTrue);
         expect(result, isTrue);
       });
+
+      test('sequential goLeft and goRight maintains state', () async {
+        await flureadium.goRight();
+        await flureadium.goLeft();
+        await flureadium.goRight();
+
+        expect(mockPlatform.callCount('goRight'), equals(2));
+        expect(mockPlatform.callCount('goLeft'), equals(1));
+      });
     });
 
     group('Preferences', () {

@@ -32,6 +32,18 @@ jobs:
       - name: Build APK
         run: flutter build apk --debug
 
+      - name: Run Android native tests
+        run: |
+          cd android
+          ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-results
+          path: flureadium/example/android/app/build/test-results/
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

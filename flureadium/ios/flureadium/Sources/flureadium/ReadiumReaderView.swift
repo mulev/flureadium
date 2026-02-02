@@ -142,6 +142,10 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     ///
     /// Bind it to the navigator before adding your own observers to prevent
     /// triggering your actions when turning pages.
+    ///
+    /// NOTE: When using programmatic navigation (goLeft/goRight), gesture
+    /// recognizers must be reset to maintain interaction state. See handlers
+    /// at lines 367-388.
     DirectionalNavigationAdapter(
         pointerPolicy: .init(types: [.mouse, .touch])
     ).bind(to: readiumViewController)
@@ -370,7 +374,10 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
 
       Task.detached(priority: .high) {
         let success = await readiumViewController.goLeft(options: NavigatorGoOptions(animated: animated))
+        // Reset gesture recognizer state after navigation
         await MainActor.run() {
+          readiumViewController.view.isUserInteractionEnabled = false
+          readiumViewController.view.isUserInteractionEnabled = true
           result(success)
         }
       }
@@ -381,7 +388,10 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
 
       Task.detached(priority: .high) {
         let success = await readiumViewController.goRight(options: NavigatorGoOptions(animated: animated))
+        // Reset gesture recognizer state after navigation
         await MainActor.run() {
+          readiumViewController.view.isUserInteractionEnabled = false
+          readiumViewController.view.isUserInteractionEnabled = true
           result(success)
         }
       }
