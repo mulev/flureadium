@@ -35,14 +35,24 @@ jobs:
       - name: Run Android native tests
         run: |
           cd android
-          ./gradlew testDebugUnitTest --no-daemon
+          ./gradlew testDebugUnitTest --no-daemon --info
+
+      - name: Print test results on failure
+        if: failure()
+        run: |
+          echo "=== Test Results ==="
+          find . -path "*/test-results/*" -name "*.xml" -exec cat {} \;
+          echo "=== Test Reports ==="
+          find . -path "*/reports/tests/*" -name "*.html" -exec cat {} \; 2>/dev/null || true
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: android-test-results
-          path: flureadium/example/android/app/build/test-results/
+          path: |
+            flureadium/example/build/flureadium/reports/tests/
+            flureadium/example/build/flureadium/test-results/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
