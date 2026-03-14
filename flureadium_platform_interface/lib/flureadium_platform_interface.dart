@@ -144,6 +144,15 @@ abstract class FlureadiumPlatform extends PlatformInterface {
   Future<void> ttsEnable(TTSPreferences? preferences) =>
       throw UnimplementedError('ttsEnable() has not been implemented');
 
+  /// Check whether TTS can speak the current publication's language.
+  Future<bool> ttsCanSpeak() =>
+      throw UnimplementedError('ttsCanSpeak() has not been implemented');
+
+  /// Request the system to install missing TTS voice data.
+  Future<void> ttsRequestInstallVoice() => throw UnimplementedError(
+    'ttsRequestInstallVoice() has not been implemented',
+  );
+
   /// Get the list of available TTS voices on the platform.
   Future<List<ReaderTTSVoice>> ttsGetAvailableVoices() =>
       throw UnimplementedError(

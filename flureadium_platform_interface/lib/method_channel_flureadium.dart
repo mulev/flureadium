@@ -173,6 +173,17 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
       await methodChannel.invokeMethod('ttsEnable', preferences?.toMap());
 
   @override
+  Future<bool> ttsCanSpeak() async {
+    final result = await methodChannel.invokeMethod<bool>('ttsCanSpeak');
+    return result ?? false;
+  }
+
+  @override
+  Future<void> ttsRequestInstallVoice() async {
+    await methodChannel.invokeMethod<void>('ttsRequestInstallVoice');
+  }
+
+  @override
   Future<void> play(Locator? fromLocator) async =>
       await methodChannel.invokeMethod('play', [fromLocator?.toJson()]);
 

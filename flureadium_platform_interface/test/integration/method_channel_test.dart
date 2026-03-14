@@ -199,6 +199,17 @@ void main() {
         expect(methodCalls.last.arguments['speed'], equals(2.0));
       });
 
+      test('ttsCanSpeak returns bool result from native', () async {
+        final result = await platform.ttsCanSpeak();
+        expect(methodCalls.last.method, equals('ttsCanSpeak'));
+        expect(result, isA<bool>());
+      });
+
+      test('ttsRequestInstallVoice sends correct method', () async {
+        await platform.ttsRequestInstallVoice();
+        expect(methodCalls.last.method, equals('ttsRequestInstallVoice'));
+      });
+
       test('setDecorationStyle sends decoration styles', () async {
         final utteranceStyle = ReaderDecorationStyle(
           style: DecorationStyle.highlight,
@@ -423,6 +434,10 @@ dynamic _mockResponse(MethodCall call) {
           'quality': 'high',
         }),
       ];
+    case 'ttsCanSpeak':
+      return true;
+    case 'ttsRequestInstallVoice':
+      return null;
     case 'getLinkContent':
       return '<html><body>Content</body></html>';
     default:

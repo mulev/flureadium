@@ -11,6 +11,7 @@ class ReadiumTimebasedState {
     this.currentBuffered,
     this.currentDuration,
     this.currentLocator,
+    this.ttsErrorType,
   });
 
   factory ReadiumTimebasedState.fromJsonMap(final Map<String, dynamic> map) =>
@@ -39,6 +40,11 @@ class ReadiumTimebasedState {
                       map['currentLocator'] as Map<String, dynamic>,
                     )
                   : null),
+        ttsErrorType: map['ttsErrorType'] is String
+            ? TtsErrorType.values.firstWhereOrNull(
+                (e) => e.name == map['ttsErrorType'],
+              )
+            : null,
       );
 
   @override
@@ -62,4 +68,7 @@ class ReadiumTimebasedState {
 
   /// Current Locator in the publication being played.
   Locator? currentLocator;
+
+  /// Error type when TTS fails (only populated when state == failure).
+  TtsErrorType? ttsErrorType;
 }

@@ -505,6 +505,29 @@ void main() {
     });
   });
 
+  group('ReadiumTimebasedState — ttsErrorType', () {
+    test('parses ttsErrorType from JSON', () {
+      final state = ReadiumTimebasedState.fromJsonMap({
+        'state': 'failure',
+        'ttsErrorType': 'languageMissingData',
+      });
+      expect(state.ttsErrorType, equals(TtsErrorType.languageMissingData));
+    });
+
+    test('parses unknown ttsErrorType from JSON', () {
+      final state = ReadiumTimebasedState.fromJsonMap({
+        'state': 'failure',
+        'ttsErrorType': 'unknown',
+      });
+      expect(state.ttsErrorType, equals(TtsErrorType.unknown));
+    });
+
+    test('ttsErrorType is null when key is absent', () {
+      final state = ReadiumTimebasedState.fromJsonMap({'state': 'failure'});
+      expect(state.ttsErrorType, isNull);
+    });
+  });
+
   group('PDFFit', () {
     test('has correct enum values', () {
       expect(PDFFit.values, containsAll([PDFFit.width, PDFFit.contain]));
