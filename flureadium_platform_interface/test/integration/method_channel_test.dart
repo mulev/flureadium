@@ -199,6 +199,20 @@ void main() {
         expect(methodCalls.last.arguments['speed'], equals(2.0));
       });
 
+      test(
+        'ttsSetPreferences sends preferences with null voiceIdentifier',
+        () async {
+          final prefs = TTSPreferences(speed: 1.5);
+
+          await platform.ttsSetPreferences(prefs);
+
+          expect(methodCalls.length, equals(1));
+          expect(methodCalls.last.method, equals('ttsSetPreferences'));
+          expect(methodCalls.last.arguments['speed'], equals(1.5));
+          expect(methodCalls.last.arguments['voiceIdentifier'], isNull);
+        },
+      );
+
       test('ttsCanSpeak returns bool result from native', () async {
         final result = await platform.ttsCanSpeak();
         expect(methodCalls.last.method, equals('ttsCanSpeak'));
