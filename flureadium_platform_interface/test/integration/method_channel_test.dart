@@ -168,6 +168,43 @@ void main() {
         },
       );
 
+      test('ttsGetSystemVoices returns list of voices', () async {
+        final voices = await platform.ttsGetSystemVoices();
+
+        expect(methodCalls.length, equals(1));
+        expect(methodCalls.last.method, equals('ttsGetSystemVoices'));
+        expect(voices, isA<List<ReaderTTSVoice>>());
+      });
+
+      test(
+        'ttsGetSystemVoices filters null entries from native response',
+        () async {
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(platform.methodChannel, (call) async {
+                methodCalls.add(call);
+                if (call.method == 'ttsGetSystemVoices') {
+                  return [
+                    json.encode({
+                      'identifier': 'voice-1',
+                      'name': 'Samantha',
+                      'language': 'en-US',
+                      'networkRequired': false,
+                      'gender': 'female',
+                      'quality': 'high',
+                    }),
+                    null,
+                  ];
+                }
+                return _mockResponse(call);
+              });
+
+          final voices = await platform.ttsGetSystemVoices();
+
+          expect(voices.length, equals(1));
+          expect(voices.first.identifier, equals('voice-1'));
+        },
+      );
+
       test('ttsSetVoice sends voice identifier and language', () async {
         await platform.ttsSetVoice('com.apple.voice.Samantha', 'en-US');
 
@@ -438,6 +475,17 @@ dynamic _mockResponse(MethodCall call) {
     case 'goToLocator':
       return true;
     case 'ttsGetAvailableVoices':
+      return <String>[
+        json.encode({
+          'identifier': 'voice-1',
+          'name': 'Samantha',
+          'language': 'en-US',
+          'networkRequired': false,
+          'gender': 'female',
+          'quality': 'high',
+        }),
+      ];
+    case 'ttsGetSystemVoices':
       return <String>[
         json.encode({
           'identifier': 'voice-1',

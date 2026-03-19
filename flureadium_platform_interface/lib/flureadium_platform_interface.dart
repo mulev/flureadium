@@ -159,6 +159,12 @@ abstract class FlureadiumPlatform extends PlatformInterface {
         'ttsGetAvailableVoices() has not been implemented',
       );
 
+  /// Get the list of available TTS voices from the OS without requiring
+  /// TTS to be enabled. Unlike [ttsGetAvailableVoices], this does not
+  /// need a TTS navigator.
+  Future<List<ReaderTTSVoice>> ttsGetSystemVoices() =>
+      throw UnimplementedError('ttsGetSystemVoices() has not been implemented');
+
   /// Set the TTS voice by its identifier, optionally for a specific language.
   Future<void> ttsSetVoice(String voiceIdentifier, String? forLanguage) =>
       throw UnimplementedError('ttsSetVoice() has not been implemented');

@@ -229,6 +229,23 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
   }
 
   @override
+  Future<List<ReaderTTSVoice>> ttsGetSystemVoices() async {
+    final voicesStr = await methodChannel.invokeMethod<List<dynamic>>(
+      'ttsGetSystemVoices',
+    );
+    final voices =
+        voicesStr
+            ?.whereType<String>()
+            .map<Map<String, dynamic>>(
+              (str) => json.decode(str) as Map<String, dynamic>,
+            )
+            .map<ReaderTTSVoice>((map) => ReaderTTSVoice.fromJsonMap(map))
+            .toList() ??
+        <ReaderTTSVoice>[];
+    return voices;
+  }
+
+  @override
   Future<void> ttsSetVoice(String voiceIdentifier, String? forLanguage) async {
     await methodChannel.invokeMethod('ttsSetVoice', [
       voiceIdentifier,
