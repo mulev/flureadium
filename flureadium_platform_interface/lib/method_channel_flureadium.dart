@@ -169,8 +169,11 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
   ) async => await currentReaderWidget?.applyDecorations(id, decorations);
 
   @override
-  Future<void> ttsEnable(TTSPreferences? preferences) async =>
-      await methodChannel.invokeMethod('ttsEnable', preferences?.toMap());
+  Future<void> ttsEnable(TTSPreferences? preferences, {Locator? fromLocator}) =>
+      methodChannel.invokeMethod('ttsEnable', [
+        preferences?.toMap(),
+        fromLocator?.toJson(),
+      ]);
 
   @override
   Future<bool> ttsCanSpeak() async {

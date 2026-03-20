@@ -102,7 +102,31 @@ void main() {
     });
 
     group('TTS API', () {
-      test('ttsEnable sends preferences map', () async {
+      test('ttsEnable sends preferences and locator', () async {
+        final prefs = TTSPreferences(
+          speed: 1.5,
+          pitch: 1.0,
+          voiceIdentifier: 'voice-123',
+        );
+        final locator = Locator(
+          href: 'chapter3.xhtml',
+          type: 'application/xhtml+xml',
+        );
+
+        await platform.ttsEnable(prefs, fromLocator: locator);
+
+        expect(methodCalls.length, equals(1));
+        expect(methodCalls.last.method, equals('ttsEnable'));
+        expect(methodCalls.last.arguments[0]['speed'], equals(1.5));
+        expect(methodCalls.last.arguments[0]['pitch'], equals(1.0));
+        expect(
+          methodCalls.last.arguments[0]['voiceIdentifier'],
+          equals('voice-123'),
+        );
+        expect(methodCalls.last.arguments[1]['href'], equals('chapter3.xhtml'));
+      });
+
+      test('ttsEnable sends only preferences when no locator', () async {
         final prefs = TTSPreferences(
           speed: 1.5,
           pitch: 1.0,
@@ -113,12 +137,8 @@ void main() {
 
         expect(methodCalls.length, equals(1));
         expect(methodCalls.last.method, equals('ttsEnable'));
-        expect(methodCalls.last.arguments['speed'], equals(1.5));
-        expect(methodCalls.last.arguments['pitch'], equals(1.0));
-        expect(
-          methodCalls.last.arguments['voiceIdentifier'],
-          equals('voice-123'),
-        );
+        expect(methodCalls.last.arguments[0]['speed'], equals(1.5));
+        expect(methodCalls.last.arguments[1], isNull);
       });
 
       test('ttsEnable sends null when no preferences', () async {
@@ -126,7 +146,7 @@ void main() {
 
         expect(methodCalls.length, equals(1));
         expect(methodCalls.last.method, equals('ttsEnable'));
-        expect(methodCalls.last.arguments, isNull);
+        expect(methodCalls.last.arguments, equals([null, null]));
       });
 
       test('ttsGetAvailableVoices returns list of voices', () async {

@@ -140,8 +140,10 @@ abstract class FlureadiumPlatform extends PlatformInterface {
   // COMMON PLAYBACK API - END
 
   // TTS API - BEGIN
-  /// Enabled TTS playback for the current publication with optional preferences.
-  Future<void> ttsEnable(TTSPreferences? preferences) =>
+  /// Enables TTS playback for the current publication with optional preferences.
+  ///
+  /// [fromLocator] optionally starts TTS from a saved position.
+  Future<void> ttsEnable(TTSPreferences? preferences, {Locator? fromLocator}) =>
       throw UnimplementedError('ttsEnable() has not been implemented');
 
   /// Check whether TTS can speak the current publication's language.
