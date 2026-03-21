@@ -1,3 +1,19 @@
+## 0.6.0
+
+### New Features
+
+- Add `ttsCanSpeak()` to `FlureadiumPlatform` and `MethodChannelFlureadium` — checks whether the device TTS engine can speak for the current publication's language.
+- Add `ttsRequestInstallVoice()` — opens the platform voice-data installer when the required language pack is missing.
+- Add `TtsErrorType` enum to `ReadiumTimebasedState` — surfaces structured TTS errors (`languageMissingData`, `languageNotSupported`, `synthesisError`, `networkError`).
+- Add `ttsGetSystemVoices()` — returns all system-level TTS voices, independent of publication language.
+- Add optional `fromLocator` parameter to `ttsEnable()` — allows restoring TTS playback position after re-enabling.
+
+### Testing
+
+- Add regression test for `ttsSetPreferences` with null `voiceIdentifier` in method channel integration tests.
+
+---
+
 ## 0.5.0
 
 ### Breaking Changes

@@ -1,6 +1,6 @@
 name: flureadium_platform_interface
 description: "Platform interface for Flureadium, providing shared models, exceptions, and the abstract FlureadiumPlatform class for EPUB, PDF, and audiobook reading."
-version: 0.5.0
+version: 0.6.0
 homepage: https://github.com/mulev/flureadium
 repository: https://github.com/mulev/flureadium
 issue_tracker: https://github.com/mulev/flureadium/issues
