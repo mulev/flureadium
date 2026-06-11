@@ -8,7 +8,6 @@
 // ignore_for_file: must_be_immutable
 
 import 'package:collection/collection.dart';
-import 'package:dfunc/dfunc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:fimber/fimber.dart';
 import 'package:json_annotation/json_annotation.dart';
@@ -177,19 +176,28 @@ class Publication with EquatableMixin implements JSONable {
 
     final jsonObject = Map<String, dynamic>.of(json);
 
-    String baseUrl;
+    final selfHref = packaged
+        ? null
+        : Link.fromJsonArray(
+            jsonObject.optJsonArray('links', remove: true),
+          ).firstWithRel('self')?.href;
+    final String? resolvedBaseUrl;
     if (packaged) {
-      baseUrl = '/';
+      resolvedBaseUrl = '/';
+    } else if (selfHref != null) {
+      resolvedBaseUrl =
+          Uri.tryParse(selfHref)?.removeLastComponent().toString() ?? '/';
     } else {
-      final href = Link.fromJsonArray(
-        jsonObject.optJsonArray('links', remove: true),
-      ).firstWithRel('self')?.href;
-      baseUrl =
-          href?.let(
-            (it) => Uri.tryParse(it)?.removeLastComponent().toString(),
-          ) ??
-          '/';
+      // No self link, not packaged: hrefs are bare relative paths the
+      // native Readium parser already produced. Skip baseHref normalisation
+      // to keep the format symmetric with Locator.fromJson and avoid
+      // prepending a spurious '/' that breaks native APIs (e.g.
+      // extractPageThumbnail container resource lookups).
+      resolvedBaseUrl = null;
     }
+    final hrefNormalizer = resolvedBaseUrl == null
+        ? linkHrefNormalizerIdentity
+        : normalizeHref(resolvedBaseUrl);
 
     final context = jsonObject.optStringsFromArrayOrSingle(
       '@context',
@@ -197,7 +205,7 @@ class Publication with EquatableMixin implements JSONable {
     );
     final metadata = Metadata.fromJson(
       jsonObject.optNullableMap('metadata', remove: true),
-      normalizeHref: normalizeHref(baseUrl),
+      normalizeHref: hrefNormalizer,
     );
     if (metadata == null) {
       Fimber.i('[metadata] is required $jsonObject');
@@ -207,7 +215,7 @@ class Publication with EquatableMixin implements JSONable {
     final links =
         Link.fromJsonArray(
               jsonObject.safeRemove<List<dynamic>>('links'),
-              normalizeHref: normalizeHref(baseUrl),
+              normalizeHref: hrefNormalizer,
             )
             .map(
               (it) => (!packaged || !it.rels.contains('self'))
@@ -225,23 +233,23 @@ class Publication with EquatableMixin implements JSONable {
     );
     final readingOrder = Link.fromJsonArray(
       readingOrderJSON,
-      normalizeHref: normalizeHref(baseUrl),
+      normalizeHref: hrefNormalizer,
     ).where((it) => it.type != null).toList();
 
     final resources = Link.fromJsonArray(
       jsonObject.safeRemove<List<dynamic>>('resources'),
-      normalizeHref: normalizeHref(baseUrl),
+      normalizeHref: hrefNormalizer,
     ).where((it) => it.type != null).toList();
 
     final tableOfContents = Link.fromJsonArray(
       jsonObject.safeRemove<List<dynamic>>('toc'),
-      normalizeHref: normalizeHref(baseUrl),
+      normalizeHref: hrefNormalizer,
     );
 
     // Parses subcollections from the remaining JSON properties.
     final subcollections = PublicationCollection.collectionsFromJSON(
       jsonObject,
-      normalizeHref: normalizeHref(baseUrl),
+      normalizeHref: hrefNormalizer,
     );
 
     return Publication(
