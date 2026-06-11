@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/services.dart';
 import 'package:flureadium/flureadium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -127,7 +130,34 @@ void main() {
 
       expect(bytes, isNull);
     });
+
+    // Regression test for the Dart-side href normalisation asymmetry fixed by
+    // flureadium-djg. Before the fix, Publication.fromJson injected a leading
+    // slash ('/001.jpg') while the Locator stream emitted the bare href
+    // ('001.jpg'), so this assertion would have read '/001.jpg' == '001.jpg'
+    // and failed.
+    testWidgets('readingOrder hrefs match Locator stream format', (
+      tester,
+    ) async {
+      app.main(initialAsset: 'assets/pubs/sample_comic.cbz');
+      final locator = await _waitForCbzReaderReady(tester);
+
+      final path = await _extractAsset('assets/pubs/sample_comic.cbz');
+      final pub = await Flureadium().loadPublication(path);
+
+      expect(pub.readingOrder.first.href, equals(locator.href));
+    });
   });
+}
+
+Future<String> _extractAsset(String assetPath) async {
+  final bytes = await rootBundle.load(assetPath);
+  final filename = assetPath.split('/').last;
+  final tmp = File(
+    '${Directory.systemTemp.path}/${DateTime.now().millisecondsSinceEpoch}_$filename',
+  );
+  await tmp.writeAsBytes(bytes.buffer.asUint8List());
+  return tmp.path;
 }
 
 Future<Locator> _waitForCbzReaderReady(
