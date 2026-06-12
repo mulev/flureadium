@@ -1,3 +1,15 @@
+## 0.7.1
+
+### Bug Fixes
+
+- **Relative href normalisation**: `Publication.fromJson` no longer adds a leading slash to relative hrefs when a manifest is unpackaged and has no `self` link. A bare href like `001.jpg` used to come back as `/001.jpg`, while `Locator.fromJson` left it untouched — so `pub.readingOrder.first.href` and the `Locator` stream disagreed about the same resource, and any caller passing an href between the two and a native API hit a format mismatch. Such hrefs now keep the form the native Readium parser produced. Packaged manifests, and manifests with a `self` link, behave as before.
+
+### Testing
+
+- Cover all three `Publication.fromJson` base-URL branches: no self link and not packaged (hrefs verbatim), self link present (resolved against the self URL), and packaged (leading slash kept).
+
+---
+
 ## 0.7.0
 
 ### New Features
