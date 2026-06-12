@@ -67,6 +67,11 @@ for (final link in pub.readingOrder) {
 }
 ```
 
+Hrefs are returned in the same format the `Locator` stream emits — as the
+native Readium parser produced them, with no synthetic leading slash. A bare
+resource such as `001.jpg` stays `001.jpg`, so an href round-tripped between
+`readingOrder` and a live `Locator` compares equal.
+
 ### resources
 
 **Type:** `List<Link>`

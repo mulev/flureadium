@@ -69,6 +69,65 @@ void main() {
         expect(publication.readingOrder, isEmpty);
         expect(publication.resources, isEmpty);
       });
+
+      test(
+        'parses readingOrder hrefs verbatim when no self link and not packaged',
+        () {
+          final json = {
+            'metadata': {'title': 'Comic'},
+            'links': <dynamic>[],
+            'readingOrder': [
+              {'href': '001.jpg', 'type': 'image/jpeg'},
+              {'href': '002.jpg', 'type': 'image/jpeg'},
+            ],
+          };
+
+          final publication = Publication.fromJson(json);
+
+          expect(publication, isNotNull);
+          expect(publication!.readingOrder.first.href, equals('001.jpg'));
+          expect(publication.readingOrder[1].href, equals('002.jpg'));
+        },
+      );
+
+      test('applies baseHref derived from self link when present', () {
+        final json = {
+          'metadata': {'title': 'Remote Book'},
+          'links': [
+            {
+              'href': 'http://example.com/path/manifest.json',
+              'rel': 'self',
+              'type': 'application/json',
+            },
+          ],
+          'readingOrder': [
+            {'href': 'chapter1.xhtml', 'type': 'application/xhtml+xml'},
+          ],
+        };
+
+        final publication = Publication.fromJson(json);
+
+        expect(publication, isNotNull);
+        expect(
+          publication!.readingOrder.first.href,
+          equals('http://example.com/path/chapter1.xhtml'),
+        );
+      });
+
+      test('preserves leading slash when packaged: true', () {
+        final json = {
+          'metadata': {'title': 'Packaged Book'},
+          'links': <dynamic>[],
+          'readingOrder': [
+            {'href': 'chapter1.xhtml', 'type': 'application/xhtml+xml'},
+          ],
+        };
+
+        final publication = Publication.fromJson(json, packaged: true);
+
+        expect(publication, isNotNull);
+        expect(publication!.readingOrder.first.href, equals('/chapter1.xhtml'));
+      });
     });
 
     group('toJson', () {
