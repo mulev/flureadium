@@ -105,5 +105,32 @@ void main() {
       }
       expect(find.text('Audio Pause'), findsOneWidget);
     });
+
+    testWidgets('chapter skip keeps playback going', (tester) async {
+      // Skipping a chapter is the navigator path a head unit (Android Auto)
+      // drives when the listener picks a chapter or hits next-track. This
+      // guards that the MediaLibraryService migration left it working.
+      app.main();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
+      }
+      await tester.tap(find.text('Open AudioBook'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      await tester.tap(find.text('Audio Play'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+      }
+
+      await tester.tap(find.text('Skip Next'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+      }
+      expect(find.text('Audio Pause'), findsOneWidget);
+    });
   });
 }
