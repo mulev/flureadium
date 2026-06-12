@@ -1,3 +1,17 @@
+## 0.12.1
+
+### Bug Fixes
+
+- **readingOrder href format**: `pub.readingOrder` hrefs now match what the `Locator` stream emits — bare paths as the native Readium parser produced them, with no synthetic leading slash (`001.jpg`, not `/001.jpg`). This fixes silent failures in code that compares a `Locator.href` against `readingOrder[i].href`, or round-trips an href through a native API, where the leading slash made the two never match. Comes from `flureadium_platform_interface` 0.7.1.
+
+### Testing
+
+- Add a CBZ integration regression that asserts `pub.readingOrder.first.href` equals the live `Locator.href` for the same resource.
+
+### Documentation
+
+- Note in the publication API reference that `readingOrder` hrefs share the `Locator` stream's format.
+
 ## 0.12.0
 
 ### New Features
