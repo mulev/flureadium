@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.*
 import org.readium.navigator.media.common.Media3Adapter
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.InternalReadiumApi
+import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.CoroutineQueue
 
 /**
@@ -45,6 +46,7 @@ class PluginMediaServiceFacade(
      */
     suspend fun <N> openSession(
         navigator: N,
+        publication: Publication? = null,
     ) where N : AnyMediaNavigator, N : Media3Adapter {
         coroutineQueue.await {
             PluginMediaService.start(application)
@@ -59,7 +61,7 @@ class PluginMediaServiceFacade(
             bindingJob = binder!!.session
                 .onEach { sessionMutable.value = it }
                 .launchIn(coroutineScope)
-            binder!!.openSession(navigator)
+            binder!!.openSession(navigator, publication)
         }
     }
 

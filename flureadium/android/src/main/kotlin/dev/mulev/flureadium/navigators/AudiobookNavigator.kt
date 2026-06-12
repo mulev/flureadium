@@ -120,7 +120,7 @@ open class AudiobookNavigator(
 
             try {
                 Log.d(TAG, "Opening MediaSession")
-                mediaServiceFacade?.openSession(audioNavigator!!)
+                mediaServiceFacade?.openSession(audioNavigator!!, publication)
             } catch (e: Exception) {
                 Log.e(TAG, "Error opening MediaSession: ${e.message}")
                 mediaServiceFacade?.closeSession()
