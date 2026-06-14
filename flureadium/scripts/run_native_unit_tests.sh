@@ -17,6 +17,10 @@
 # Options:
 #   --skip-android        Skip Android tests
 #   --skip-ios            Skip iOS tests
+#   --rerun               Force Android tests to re-execute even when Gradle
+#                         considers them up-to-date (passes --rerun to the test
+#                         task). Use when nothing changed but you still want a
+#                         real run rather than a cached "up-to-date" pass.
 #   --java-home <path>    Use this JDK instead of auto-detecting (Android)
 #   --ios-device <id>     iOS simulator UDID to use (auto-detected if omitted)
 #   --ios-class <Class>   Run only one XCTest class, e.g. ModelTests
@@ -28,6 +32,8 @@
 #   (example/android/gradlew), so no separate Gradle install is needed.
 #   The task is :flureadium:testDebugUnitTest. Robolectric runs on the JVM,
 #   so no device or emulator is required — only a JDK 17+.
+#   Gradle skips the test task when its inputs are unchanged (reported as
+#   UP-TO-DATE), so a no-op re-run executes nothing. Pass --rerun to force it.
 #
 # iOS notes (macOS only):
 #   The script builds the example app for the simulator first
@@ -56,6 +62,7 @@ MIN_JAVA_MAJOR=17
 VERBOSE=false
 SKIP_ANDROID=false
 SKIP_IOS=false
+RERUN=false
 JAVA_HOME_OVERRIDE=""
 IOS_DEVICE=""
 IOS_CLASS=""
@@ -63,7 +70,7 @@ BOOTED_BY_SCRIPT=""   # simulator UDID this script booted (shut down on exit)
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 usage() {
-  sed -n '3,36p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,42p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
@@ -71,6 +78,7 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --skip-android) SKIP_ANDROID=true; shift ;;
     --skip-ios)     SKIP_IOS=true;     shift ;;
+    --rerun)        RERUN=true;        shift ;;
     --java-home)    JAVA_HOME_OVERRIDE="$2"; shift 2 ;;
     --ios-device)   IOS_DEVICE="$2";   shift 2 ;;
     --ios-class)    IOS_CLASS="$2";    shift 2 ;;
@@ -309,11 +317,18 @@ if [ "$SKIP_ANDROID" = false ]; then
   else
     log "  JDK:    $RESOLVED_JAVA_HOME"
     log "  Task:   :flureadium:testDebugUnitTest"
+    # --rerun forces the test task to execute even when Gradle marks it
+    # up-to-date; without it an unchanged tree runs no tests at all.
+    GRADLE_RERUN_FLAG=()
+    if [ "$RERUN" = true ]; then
+      GRADLE_RERUN_FLAG=( --rerun )
+      log "  Rerun:  forced (ignoring Gradle up-to-date)"
+    fi
     if ! ( cd "$ANDROID_APP_DIR" && JAVA_HOME="$RESOLVED_JAVA_HOME" \
         run_test \
           "Android — :flureadium:testDebugUnitTest" \
           "$LOG_DIR/android.log" \
-          ./gradlew :flureadium:testDebugUnitTest --console=plain ); then
+          ./gradlew :flureadium:testDebugUnitTest "${GRADLE_RERUN_FLAG[@]}" --console=plain ); then
       OVERALL_EXIT=1
     fi
   fi
