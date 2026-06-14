@@ -543,6 +543,29 @@ class SleepTimer {
 }
 ```
 
+## In-Car (Android Auto / CarPlay)
+
+Flureadium exposes the open audiobook to Android Auto and CarPlay head units. When a publication is loaded, both platforms present a browsable chapter list and the same transport controls as the in-app player.
+
+### What the browse tree exposes
+
+Both platforms build the list from the publication's `readingOrder` — one entry per chapter, in order. The tree is one level deep (a root that lists chapters; no nested folders). Chapter titles come from each reading-order entry, falling back to `Chapter N` when an entry has no title.
+
+Selecting a chapter on the head unit seeks the same audiobook navigator the in-app controls use. There is no second player, so the car and the app always show the same position.
+
+### Transport behavior
+
+Play/pause, skip (next/previous chapter), and seek on the head unit drive the same navigator and the same now-playing metadata as the lockscreen. On both platforms this reuses the existing media-session / now-playing wiring, so position, duration, and title stay in sync across the app, the lockscreen, and the head unit.
+
+### Host-app setup
+
+The chapter list only appears once the host app declares in-car support. This is platform plumbing the host owns, not a Dart API call:
+
+- **Android Auto** — add the `com.google.android.gms.car.application` manifest metadata and an `automotive_app_desc.xml` descriptor. See [Android platform setup](../platform-specific/android.md#6-android-auto-optional).
+- **CarPlay** — add a CarPlay scene to the scene manifest and the `com.apple.developer.carplay-audio` entitlement. The entitlement requires an Apple per-app grant (request lead time applies). See [iOS platform setup](../platform-specific/ios.md#4-carplay-optional).
+
+No Flureadium Dart API changes are needed — the browse tree is built natively from the already-open publication.
+
 ## See Also
 
 - [AudioPreferences Reference](../api-reference/preferences.md#audiopreferences)

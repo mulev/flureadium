@@ -68,7 +68,88 @@ For audiobook background playback, add to `Info.plist`:
 </array>
 ```
 
+### 4. CarPlay (Optional)
+
+To expose audiobook chapters and transport controls on CarPlay, the host app adds a CarPlay scene and the CarPlay-audio entitlement. Flureadium ships the scene delegate and chapter-list builder; the host wires them into its scene manifest.
+
+> **External blocker — Apple grant required.** `com.apple.developer.carplay-audio` is a *restricted* entitlement. Apple grants it per app on request (developer.apple.com → CarPlay request form). Until the grant lands, the entitlement cannot be code-signed and CarPlay will not run on device. Plan for this lead time — it gates any consumer (including Fablum) shipping CarPlay.
+
+**Entitlement.** Add to `ios/Runner/Runner.entitlements`:
+
+```xml
+<key>com.apple.developer.carplay-audio</key>
+<true/>
+```
+
+Set `CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements` in the target's build settings once the grant is approved. (The flureadium example ships this file as a reference template but does **not** wire it into `CODE_SIGN_ENTITLEMENTS`, so the example builds without the grant.)
+
+**Scene manifest.** CarPlay uses the UIScene lifecycle, so the app declares both a window scene and a CarPlay scene in `Info.plist`:
+
+```xml
+<key>UIApplicationSceneManifest</key>
+<dict>
+    <key>UIApplicationSupportsMultipleScenes</key>
+    <true/>
+    <key>UISceneConfigurations</key>
+    <dict>
+        <key>UIWindowSceneSessionRoleApplication</key>
+        <array>
+            <dict>
+                <key>UISceneClassName</key>
+                <string>UIWindowScene</string>
+                <key>UISceneDelegateClassName</key>
+                <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+                <key>UISceneConfigurationName</key>
+                <string>flutter</string>
+                <key>UISceneStoryboardFile</key>
+                <string>Main</string>
+            </dict>
+        </array>
+        <key>CPTemplateApplicationSceneSessionRoleApplication</key>
+        <array>
+            <dict>
+                <key>UISceneClassName</key>
+                <string>CPTemplateApplicationScene</string>
+                <key>UISceneDelegateClassName</key>
+                <string>$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate</string>
+                <key>UISceneConfigurationName</key>
+                <string>carplay</string>
+            </dict>
+        </array>
+    </dict>
+</dict>
+```
+
+Adopting the scene lifecycle means `AppDelegate` no longer owns the window. The example app's `AppDelegate` migrates to scene-role routing and registers Flutter plugins against the implicit engine; the `SceneDelegate` owns the Flutter window scene and the `CarPlaySceneDelegate` owns the CarPlay scene. Mirror this split in your host app.
+
+**Background audio.** CarPlay playback also needs the `audio` background mode from step 3.
+
+**Testing in the simulator:**
+
+1. Run the app on an iOS simulator.
+2. From the simulator menu, choose **I/O → External Displays → CarPlay** to open the CarPlay window.
+3. Open an audiobook in the app so a publication is loaded. The app's chapter list appears in the CarPlay window; selecting a row plays that chapter, and the now-playing transport (play/pause/skip/seek) works.
+
+> The simulator does not require the Apple entitlement grant, so it is the fastest way to verify the chapter list and transport wiring before the on-device grant arrives.
+
 ## Implementation Details
+
+### CarPlay Chapter List
+
+The CarPlay scene presents the open audiobook's chapters and routes selections back to the active navigator:
+
+- `CarPlayChapterList.chapters(from:)` derives one row per `readingOrder` entry. Titles fall back to a localized `Chapter N` (English, Danish, Swedish, Norwegian, Icelandic) using the publication's language when an entry has no title.
+- `CarPlaySceneDelegate` builds a `CPListTemplate` of those chapters and, on row selection, calls `CarPlayPlaybackBridge.playChapter(at:)` to seek the same audiobook navigator the in-app controls drive.
+- Transport controls and now-playing metadata come for free from the plugin's `NowPlayingInfoUpdater`, which already drives `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` for the lockscreen. CarPlay reuses that state — no separate wiring.
+
+`CarPlayChapterList` is a pure function over a `Publication`, so it is unit-testable without a CarPlay scene (see `CarPlayChapterListTests.swift` / `CarPlayPlaybackBridgeTests.swift`).
+
+**Files:**
+- `carplay/CarPlayChapterList.swift` — derives chapter rows from the reading order
+- `carplay/CarPlayPlaybackBridge.swift` — bridges row selection to the navigator
+- `example/ios/Runner/CarPlaySceneDelegate.swift` — CarPlay scene: builds the list template
+- `example/ios/Runner/SceneDelegate.swift` — window scene owning the Flutter view
+- `example/ios/Runner/Runner.entitlements` — CarPlay-audio entitlement (reference template)
 
 ### Plugin Structure
 
