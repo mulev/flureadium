@@ -67,6 +67,11 @@ active before the reader starts emitting locator events.
 ### Android
 - Flutter SDK (stable channel)
 - Android SDK with a connected device or AVD at API level ≥ 29
+- A configured system TTS engine for the EPUB TTS tests. The runner pins Google
+  TTS (`tts_default_synth = com.google.android.tts`) before the Android leg, so
+  a cold-booted or wiped emulator doesn't report an empty voice list. If voices
+  are still empty, install the engine's voice data (Settings → System →
+  Languages & input → Text-to-speech output).
 
 ### iOS
 - Flutter SDK (stable channel)

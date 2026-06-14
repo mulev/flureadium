@@ -20,6 +20,7 @@ cd flureadium/flureadium
 |--------|--------|
 | `--skip-android` | Skip the Android tests |
 | `--skip-ios` | Skip the iOS tests |
+| `--rerun` | Force the Android tests to re-execute even when Gradle marks the task up-to-date |
 | `--java-home <path>` | Use this JDK for Android instead of auto-detecting |
 | `--ios-device <id>` | iOS simulator UDID to use (auto-detected otherwise) |
 | `--ios-class <Class>` | Run a single XCTest class, e.g. `ModelTests` |
@@ -27,6 +28,8 @@ cd flureadium/flureadium
 | `--help` | Print usage and exit |
 
 It runs both platforms in sequence, keeps going if one fails, and prints a pass/fail summary at the end. The exit code is non-zero if any run failed or could not start.
+
+Gradle skips `:flureadium:testDebugUnitTest` when its inputs haven't changed, reporting the task as `UP-TO-DATE` and running no tests — so re-running on an unchanged tree looks like a pass without actually executing anything. Pass `--rerun` to force a real run; it re-executes the test task while still skipping unnecessary recompilation.
 
 ## What it detects
 
