@@ -132,5 +132,40 @@ void main() {
       }
       expect(find.text('Audio Pause'), findsOneWidget);
     });
+
+    testWidgets('chapter skip previous keeps playback going', (tester) async {
+      // Previous-track is the other navigator path a head unit drives: on
+      // Android Auto, PluginSimpleBasePlayer remaps a head-unit "previous" to a
+      // backward seek. Skip Next is tested above; this guards the symmetric
+      // previous path through the shared navigator.
+      app.main();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
+      }
+      await tester.tap(find.text('Open AudioBook'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      await tester.tap(find.text('Audio Play'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+      }
+
+      // Advance a chapter first so there is a previous chapter to skip back to.
+      await tester.tap(find.text('Skip Next'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+      }
+
+      await tester.tap(find.text('Skip Prev'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+      }
+      expect(find.text('Audio Pause'), findsOneWidget);
+    });
   });
 }
