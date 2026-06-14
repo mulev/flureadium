@@ -356,6 +356,7 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
         await MainActor.run {
           self.timebasedNavigator?.dispose()
           self.timebasedNavigator = nil
+          CarPlayPlaybackBridge.shared.unregister()
           self.updateReaderViewTimebasedDecorations([])
         }
         await MainActor.run { result(nil) }
@@ -461,7 +462,13 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
               message: "Publication does not contain MediaOverlays or conforms to AudioBook profile. Args: \(call.arguments.debugDescription)",
               details: nil))
           }
-          self.timebasedNavigator = await FlutterAudioNavigator(publication: publication, preferences: prefs, initialLocator: locator)
+          let audioNavigator = await FlutterAudioNavigator(publication: publication, preferences: prefs, initialLocator: locator)
+          self.timebasedNavigator = audioNavigator
+          CarPlayPlaybackBridge.shared.register(publication: publication) { [weak audioNavigator] selected in
+            Task { @MainActor in
+              await audioNavigator?.play(fromLocator: selected)
+            }
+          }
         }
 
         self.timebasedNavigator?.listener = self
@@ -631,6 +638,7 @@ extension FlureadiumPlugin {
     await MainActor.run {
       self.timebasedNavigator?.dispose()
       self.timebasedNavigator = nil
+      CarPlayPlaybackBridge.shared.unregister()
       currentReaderView = nil
       currentPdfReaderView = nil
       currentImageReaderView = nil
