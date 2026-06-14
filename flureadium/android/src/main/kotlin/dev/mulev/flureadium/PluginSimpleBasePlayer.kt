@@ -13,7 +13,7 @@ import com.google.common.util.concurrent.ListenableFuture
  * briefly reports.
  */
 @UnstableApi
-class PluginSimpleBasePlayer(player: Player, val preferences: FlutterAudioPreferences) : ForwardingSimpleBasePlayer(player) {
+open class PluginSimpleBasePlayer(player: Player, val preferences: FlutterAudioPreferences) : ForwardingSimpleBasePlayer(player) {
 
     override fun handleSeek(
         mediaItemIndex: Int,
