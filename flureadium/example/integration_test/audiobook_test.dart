@@ -167,5 +167,36 @@ void main() {
       }
       expect(find.text('Audio Pause'), findsOneWidget);
     });
+
+    testWidgets('untitled chapter audiobook plays and skips without crashing', (
+      tester,
+    ) async {
+      // The untitled_chapter.audiobook fixture has a second chapter with no
+      // title. Skipping into it drives the real native now-playing / browse-tree
+      // builders down their "Chapter N" fallback path with the actual audio
+      // engine — the path that is otherwise only unit-tested with mock pubs.
+      app.main();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
+      }
+      await tester.tap(find.text('Open AudioBook NoTitle'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      await tester.tap(find.text('Audio Play'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+      }
+
+      // Skip into the untitled second chapter.
+      await tester.tap(find.text('Skip Next'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+      }
+      expect(find.text('Audio Pause'), findsOneWidget);
+    });
   });
 }

@@ -155,6 +155,28 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
+  Future<void> _openAudiobookUntitledChapter() async {
+    try {
+      final path = await _extractAsset(
+        'assets/pubs/untitled_chapter.audiobook',
+      );
+      final pub = await _flureadium.openPublication(path);
+      if (!mounted) return;
+      setState(() {
+        _publication = pub;
+        _ttsEnabled = false;
+        _lastTtsLocator = null;
+        _readerLocatorAtTtsDisable = null;
+        _audioEnabled = false;
+        _audioPaused = false;
+        _voices = [];
+        _voiceIndex = 0;
+      });
+    } catch (e) {
+      debugPrint('openAudiobookUntitledChapter error: $e');
+    }
+  }
+
   Future<void> _openPublicationAsset(String assetPath) async {
     final path = await _extractAsset(assetPath);
     final pub = await _flureadium.openPublication(path);
@@ -460,6 +482,10 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _openAudiobook,
                           child: const Text('Open AudioBook'),
+                        ),
+                        TextButton(
+                          onPressed: _openAudiobookUntitledChapter,
+                          child: const Text('Open AudioBook NoTitle'),
                         ),
                         TextButton(
                           onPressed: _openCbz,
