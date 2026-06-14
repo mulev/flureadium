@@ -30,6 +30,15 @@ final class NowPlayingInfoUpdaterTests: XCTestCase {
         ))
     }
 
+    override func setUp() {
+        super.setUp()
+        // NowPlayingInfo.shared is a process-wide singleton, and each updater's
+        // init starts an async cover Task whose sink later writes media?.artwork.
+        // Clearing on entry isolates every method from a previous method's
+        // in-flight async writes to the shared state.
+        NowPlayingInfo.shared.clear()
+    }
+
     override func tearDown() {
         NowPlayingInfo.shared.clear()
         super.tearDown()
@@ -129,11 +138,22 @@ final class NowPlayingInfoUpdaterTests: XCTestCase {
         updater.setupNowPlayingInfo()
         updater.updateChapterNo(0)
 
-        // Manually modify the title to detect whether the second call is a no-op
-        NowPlayingInfo.shared.media?.title = "modified"
+        XCTAssertEqual(updater.lastReportedChapterNo, 0)
+        XCTAssertNotNil(NowPlayingInfo.shared.media)
+
+        // Mark the now-playing item, then repeat the same chapter. The dedup
+        // guard (lastReportedChapterNo) must early-return, leaving the marker
+        // intact. Snapshotting the media struct around the synchronous call
+        // measures only what updateChapterNo did — no runloop spins between the
+        // snapshots, so the async cover/throttle writes to the shared singleton
+        // cannot land in the window.
+        NowPlayingInfo.shared.media?.title = "sentinel-unchanged"
+        let before = NowPlayingInfo.shared.media
         updater.updateChapterNo(0)
-        // Title should remain "modified" because the duplicate was skipped
-        XCTAssertEqual(NowPlayingInfo.shared.media?.title, "modified")
+        let after = NowPlayingInfo.shared.media
+
+        XCTAssertEqual(after, before)
+        XCTAssertEqual(after?.title, "sentinel-unchanged")
     }
 
     func testUpdateChapterNoUpdatesOnDifferentChapter() {
