@@ -6,6 +6,7 @@ import android.speech.tts.TextToSpeech
 import android.util.Log
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -25,6 +26,35 @@ import kotlin.time.Duration
 
 private const val TAG = "PublicationChannel"
 
+/**
+ * Runs a method-channel [block] and maps its outcome onto this result.
+ *
+ * [CancellationException] is re-thrown rather than reported: a coroutine torn
+ * down mid-call — e.g. a `play` still suspended on a [kotlinx.coroutines.Deferred]
+ * when the publication closes — must unwind normally, not surface to Dart as a
+ * spurious `PlatformException(JobCancellationException ...)`.
+ */
+@OptIn(InternalReadiumApi::class)
+internal suspend fun MethodChannel.Result.dispatchGuarded(
+    method: String,
+    block: suspend () -> Try<Any?, PublicationError>
+) {
+    try {
+        val res = block().getOrElse { error ->
+            publicationError(method, error)
+            return
+        }
+        if (res is Unit) success(null) else success(res)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: NotImplementedError) {
+        notImplemented()
+    } catch (e: Exception) {
+        Log.e(TAG, "Exception: $e")
+        error(e.javaClass.toString(), e.toString(), e.stackTraceToString())
+    }
+}
+
 internal const val publicationChannelName = "dev.mulev.flureadium/main"
 
 @ExperimentalCoroutinesApi
@@ -34,33 +64,8 @@ internal class PublicationMethodCallHandler() :
     @OptIn(InternalReadiumApi::class, ExperimentalReadiumApi::class)
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val res = handleMethodCallsQueue(
-                    call.method,
-                    call.arguments
-                ).getOrElse { error ->
-                    result.publicationError(call.method, error)
-                    return@launch
-                }
-
-                if (res is Unit) {
-                    result.success(null)
-                    return@launch
-                }
-
-                result.success(res)
-            } catch (_: NotImplementedError) {
-                result.notImplemented()
-            } catch (e: Exception) {
-                Log.e(TAG, "Exception: $e")
-                Log.e(TAG, "${e.stackTrace}")
-
-                // TODO: Handle unknown errors better.
-                result.error(
-                    e.javaClass.toString(),
-                    e.toString(),
-                    e.stackTraceToString()
-                )
+            result.dispatchGuarded(call.method) {
+                handleMethodCallsQueue(call.method, call.arguments)
             }
         }
     }
