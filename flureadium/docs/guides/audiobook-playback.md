@@ -92,6 +92,10 @@ await flureadium.audioSeekBy(Duration(seconds: 30));
 await flureadium.audioSeekBy(Duration(seconds: -10));
 ```
 
+### Transition Safety
+
+Changing chapter, seeking to a locator, and end-of-track auto-advance all run without blocking the UI thread. The navigator's delegate callbacks serve playback state from the last values Readium delivered off the AVPlayer lock, so a transition never reads back into the live player while the player is mid-seek. Earlier versions read the player's current time from inside the seek itself, which deadlocked and froze the app on every transition (see [Troubleshooting](../troubleshooting.md#ios-app-freezes-on-chapter-change-seek-or-end-of-track-audiobook)).
+
 ## Playback State Tracking
 
 ### Listening to State
