@@ -168,6 +168,43 @@ void main() {
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
+    testWidgets(
+      'go-to-chapter across a track boundary while playing does not freeze',
+      (tester) async {
+        // Pre-fix repro of the chapter-transition deadlock: go(to:) fires
+        // loadedTimeRangesDidChange synchronously while AVPlayer's lock is held; the
+        // old delegate re-read playbackInfo -> currentTime() -> __ulock_wait. This
+        // guards the cached-state fix.
+        app.main();
+        for (var i = 0; i < 30; i++) {
+          await tester.pump(const Duration(seconds: 1));
+          if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
+        }
+        await tester.tap(find.text('Open AudioBook'));
+        for (var i = 0; i < 15; i++) {
+          await tester.pump(const Duration(seconds: 1));
+        }
+        await tester.tap(find.text('Audio Play'));
+        for (var i = 0; i < 15; i++) {
+          await tester.pump(const Duration(seconds: 1));
+          if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+        }
+        // Advance to track 2 so the next go(to:) crosses a real track boundary.
+        await tester.tap(find.text('Skip Next'));
+        for (var i = 0; i < 10; i++) {
+          await tester.pump(const Duration(seconds: 1));
+          if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+        }
+        // Cross-boundary go-to while playing — the path that deadlocked pre-fix.
+        await tester.tap(find.text('Ch.1'));
+        for (var i = 0; i < 15; i++) {
+          await tester.pump(const Duration(seconds: 1));
+          if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+        }
+        expect(find.text('Audio Pause'), findsOneWidget);
+      },
+    );
+
     testWidgets('untitled chapter audiobook plays and skips without crashing', (
       tester,
     ) async {
