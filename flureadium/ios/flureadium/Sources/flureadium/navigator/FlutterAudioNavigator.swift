@@ -14,6 +14,15 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
   internal var _nowPlayingUpdater: NowPlayingInfoUpdater
   @MainActor internal var _audioNavigator: AudioNavigator?
 
+  /// Last playback info delivered off-lock by Readium's `playbackDidChange`.
+  /// Re-entrant delegate callbacks serve state from this cache instead of
+  /// reading `_audioNavigator?.playbackInfo`, which re-enters AVPlayer's lock
+  /// while `AudioNavigator.go(to:)` holds it and self-deadlocks.
+  internal var _lastPlaybackInfo: MediaPlaybackInfo?
+  /// Last locator delivered off-lock by `locationDidChange`, cached for the
+  /// same reason — keeps `loadedTimeRangesDidChange` off the live navigator.
+  internal var _lastLocation: Locator?
+
   internal var subscriptions: Set<AnyCancellable> = []
 
   @Published var cover: UIImage?
@@ -151,16 +160,26 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
 
   /// Called when the playback updates.
   public func navigator(_ navigator: AudioNavigator, playbackDidChange info: MediaPlaybackInfo) {
+    // Cache the off-lock info first so the re-entrant callbacks below can reuse
+    // it without reading back into the live navigator.
+    self._lastPlaybackInfo = info
     self._nowPlayingUpdater.updatePlaybackFromInfo(info, withSpeedSetting: _audioNavigator?.settings.speed)
     self._nowPlayingUpdater.updateCommandCenterControls()
     self.playback = info
   }
 
   public func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
+    handleLocationChange(locator)
+  }
+
+  /// Param-free seam reused by tests: serves state from cached values only,
+  /// never touching `_audioNavigator`.
+  internal func handleLocationChange(_ locator: Locator) {
+    self._lastLocation = locator
     // Submit new locator to the listener
     self.submitAudioLocatorToListener(locator)
 
-    if let info = _audioNavigator?.playbackInfo {
+    if let info = _lastPlaybackInfo {
       self.submitTimebasedPlayerStateToListener(info: info, location: locator)
     }
   }
@@ -168,12 +187,16 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
   /// Called when the ranges of buffered media data change.
   /// Warning: They may be discontinuous.
   public func navigator(_ navigator: AudioNavigator, loadedTimeRangesDidChange ranges: [Range<Double>]) {
+    handleLoadedTimeRanges(ranges)
+  }
+
+  internal func handleLoadedTimeRanges(_ ranges: [Range<Double>]) {
     // Simplified buffer range to TimeInterval, by just taking highest upper bound.
     // May be too optimistic if ranges are discontinuous.
     let highestUpperBound: TimeInterval = ranges.map(\.upperBound).max() ?? 0
 
-    if let info = _audioNavigator?.playbackInfo,
-       let location = _audioNavigator?.currentLocation {
+    if let info = _lastPlaybackInfo,
+       let location = _lastLocation {
       self.submitTimebasedPlayerStateToListener(info: info, location: location, bufferedInterval: highestUpperBound)
     }
   }
