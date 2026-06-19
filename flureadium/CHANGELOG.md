@@ -1,3 +1,9 @@
+## Unreleased
+
+### Bug Fixes
+
+- **Audiobook previous/next chapter (Android)**: `Flureadium.previous()` / `next()` now move one track along the reading order instead of performing a 30-second seek, so the chapter buttons are distinct from skip-back / skip-forward. Bounded at the first and last track. `audioSeekBy` (skip) behaviour is unchanged.
+
 ## 0.12.1
 
 ### Bug Fixes
