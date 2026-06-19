@@ -146,15 +146,28 @@ open class AudiobookNavigator(
     }
 
     override suspend fun goBack() {
+        val nav = audioNavigator ?: return
         mainScope.async {
-            audioNavigator?.skip((-preferences.seekInterval).seconds)
+            goToTrack(nav, previousTrackIndex(trackHrefs(), nav.currentHref()))
         }.await()
     }
 
     override suspend fun goForward() {
+        val nav = audioNavigator ?: return
         mainScope.async {
-            audioNavigator?.skip((preferences.seekInterval).seconds)
+            goToTrack(nav, nextTrackIndex(trackHrefs(), nav.currentHref()))
         }.await()
+    }
+
+    private fun trackHrefs(): List<String> =
+        publication.readingOrder.map { it.href.toString() }
+
+    private fun AudioNavigator<*, *>.currentHref(): String =
+        currentLocator.value.href.toString()
+
+    private suspend fun goToTrack(nav: AudioNavigator<*, *>, index: Int?) {
+        index ?: return
+        publication.locatorFromLink(publication.readingOrder[index])?.let { nav.go(it) }
     }
 
     override suspend fun goToLocator(locator: Locator) {
