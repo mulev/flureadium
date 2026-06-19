@@ -378,12 +378,12 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
       result(nil)
     case "next":
       Task { @MainActor in
-        await self.timebasedNavigator?.seekForward()
+        await self.timebasedNavigator?.skipForward()
       }
       result(nil)
     case "previous":
       Task { @MainActor in
-        await self.timebasedNavigator?.seekBackward()
+        await self.timebasedNavigator?.skipBackward()
       }
       result(nil)
     case "goToLocator":

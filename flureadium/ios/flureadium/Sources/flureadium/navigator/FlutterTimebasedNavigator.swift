@@ -33,6 +33,12 @@ public protocol FlutterTimebasedNavigator
   func seekForward() async -> Bool
   @MainActor
   func seekBackward() async -> Bool
+  // Track / chapter navigation: move to the next/previous reading-order resource
+  // (audiobook track). For TTS this maps to next/previous sentence.
+  @MainActor
+  func skipForward() async -> Bool
+  @MainActor
+  func skipBackward() async -> Bool
   @MainActor
   func seek(toLocator: Locator) async -> Bool
   @MainActor

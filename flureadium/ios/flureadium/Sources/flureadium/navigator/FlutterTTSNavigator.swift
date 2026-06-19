@@ -177,6 +177,15 @@ public class FlutterTTSNavigator: FlutterTimebasedNavigator, PublicationSpeechSy
     return true
   }
 
+  // TTS has no track concept; chapter skip maps to next/previous sentence.
+  public func skipForward() async -> Bool {
+    await seekForward()
+  }
+
+  public func skipBackward() async -> Bool {
+    await seekBackward()
+  }
+
   public func seek(toLocator: Locator) async -> Bool {
     _suppressScrollUntilNewUtterance = false
     _isInSuppressedUtterance = false

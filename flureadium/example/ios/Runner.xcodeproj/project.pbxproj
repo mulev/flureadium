@@ -23,6 +23,7 @@
 		E1F2A3B4C5D6E7F800008002 /* EpubEditingActionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */; };
 		F1A2B3C4D5E6F7A800009002 /* ImageCacheURLProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */; };
 		A2B3C4D5E6F7A8B900010002 /* FlureadiumPluginGoToLocatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */; };
+		C4D5E6F7A8B9CADB00010002 /* FlureadiumPluginChapterNavTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D5E6F7A8B9CADB00010001 /* FlureadiumPluginChapterNavTests.swift */; };
 		B3C4D5E6F7A8B9CA00010002 /* PageThumbnailExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C4D5E6F7A8B9CA00010001 /* PageThumbnailExtractorTests.swift */; };
 		CA90AC1234567890ABCDEF02 /* CarPlayChapterListTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA90AC1234567890ABCDEF01 /* CarPlayChapterListTests.swift */; };
 		CA90AC1234567890ABCDEF12 /* CarPlayPlaybackBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA90AC1234567890ABCDEF11 /* CarPlayPlaybackBridgeTests.swift */; };
@@ -82,6 +83,7 @@
 		E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubEditingActionsTests.swift; sourceTree = "<group>"; };
 		F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheURLProtocolTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginGoToLocatorTests.swift; sourceTree = "<group>"; };
+		C4D5E6F7A8B9CADB00010001 /* FlureadiumPluginChapterNavTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginChapterNavTests.swift; sourceTree = "<group>"; };
 		B3C4D5E6F7A8B9CA00010001 /* PageThumbnailExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageThumbnailExtractorTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
@@ -152,6 +154,7 @@
 				E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */,
 				F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */,
 				A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */,
+				C4D5E6F7A8B9CADB00010001 /* FlureadiumPluginChapterNavTests.swift */,
 				B3C4D5E6F7A8B9CA00010001 /* PageThumbnailExtractorTests.swift */,
 				CA90AC1234567890ABCDEF01 /* CarPlayChapterListTests.swift */,
 				CA90AC1234567890ABCDEF11 /* CarPlayPlaybackBridgeTests.swift */,
@@ -446,6 +449,7 @@
 				E1F2A3B4C5D6E7F800008002 /* EpubEditingActionsTests.swift in Sources */,
 				F1A2B3C4D5E6F7A800009002 /* ImageCacheURLProtocolTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900010002 /* FlureadiumPluginGoToLocatorTests.swift in Sources */,
+				C4D5E6F7A8B9CADB00010002 /* FlureadiumPluginChapterNavTests.swift in Sources */,
 				B3C4D5E6F7A8B9CA00010002 /* PageThumbnailExtractorTests.swift in Sources */,
 				CA90AC1234567890ABCDEF02 /* CarPlayChapterListTests.swift in Sources */,
 				CA90AC1234567890ABCDEF12 /* CarPlayPlaybackBridgeTests.swift in Sources */,
