@@ -2,8 +2,7 @@
 
 ### Bug Fixes
 
-- **Audiobook previous/next chapter (Android)**: `Flureadium.previous()` / `next()` now move one track along the reading order instead of performing a 30-second seek, so the chapter buttons are distinct from skip-back / skip-forward. Bounded at the first and last track. `audioSeekBy` (skip) behaviour is unchanged.
-- **Audiobook previous/next chapter (iOS)**: the `"next"` / `"previous"` method-channel calls now route to track navigation (`skipForward` / `skipBackward` → Readium `goForward` / `goBackward`) instead of a 30-second seek. For TTS they map to next/previous sentence. `audioSeekBy` (skip) behaviour is unchanged.
+- **Audiobook previous/next chapter (Android & iOS)**: `Flureadium.previous()` / `next()` now move one track along the reading order on both platforms, instead of performing a 30-second seek that made the chapter buttons identical to skip-back / skip-forward. Bounded at the first and last track. TTS still maps these to previous/next sentence, and `audioSeekBy` (skip) behaviour is unchanged.
 
 ## 0.12.1
 

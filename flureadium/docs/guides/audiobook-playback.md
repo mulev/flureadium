@@ -82,6 +82,13 @@ await flureadium.next();
 await flureadium.previous();
 ```
 
+`next()` and `previous()` move one track along the publication's reading order (the audiobook equivalent of a chapter). They are bounded: `previous()` on the first track and `next()` on the last track stay put.
+
+Do not confuse them with the seek and TOC APIs:
+
+- `audioSeekBy(Duration)` moves the playhead by a relative offset inside the current playback, never across tracks. Use it for the skip-back / skip-forward buttons.
+- `skipToNext()` / `skipToPrevious()` on `ReadiumReaderWidget` walk the EPUB table of contents and have no effect on an audiobook.
+
 ### Seeking
 
 ```dart
