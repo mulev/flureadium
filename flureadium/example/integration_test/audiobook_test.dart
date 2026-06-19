@@ -1,6 +1,7 @@
 @Tags(['native'])
 library;
 
+import 'package:flutter/widgets.dart';
 import 'package:flureadium/flureadium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -9,6 +10,11 @@ import 'package:flureadium_example/main.dart' as app;
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  // Reads the keyed current-track indicator the example surfaces from the
+  // audiobook timebased state. The text is 'track: <position> <href>'.
+  String currentTrack(WidgetTester tester) =>
+      tester.widget<Text>(find.byKey(const Key('current-track'))).data ?? '';
 
   group('Audiobook', () {
     tearDown(() async {
@@ -233,6 +239,69 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.text('Audio Pause').evaluate().isNotEmpty) break;
       }
+      expect(find.text('Audio Pause'), findsOneWidget);
+    });
+
+    testWidgets('next chapter advances the track', (tester) async {
+      // Audio Next Chapter drives Flureadium.next(), which must move to the
+      // next reading-order track — not seek inside the current one. The bug
+      // this guards made next() a 30s seek, so the track never changed.
+      app.main();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
+      }
+      await tester.tap(find.text('Open AudioBook'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      await tester.tap(find.text('Audio Play'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+      }
+
+      final before = currentTrack(tester);
+
+      await tester.tap(find.text('Audio Next Chapter'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (currentTrack(tester) != before) break;
+      }
+
+      // The displayed track changed and playback is still active.
+      expect(currentTrack(tester), isNot(before));
+      expect(find.text('Audio Pause'), findsOneWidget);
+    });
+
+    testWidgets('previous chapter at first track is a no-op', (tester) async {
+      // From track 1, Audio Prev Chapter must be bounded: next()/previous()
+      // move exactly one track and clamp at the ends, so this leaves the
+      // current track unchanged and does not crash.
+      app.main();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
+      }
+      await tester.tap(find.text('Open AudioBook'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      await tester.tap(find.text('Audio Play'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+      }
+
+      final before = currentTrack(tester);
+
+      await tester.tap(find.text('Audio Prev Chapter'));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+
+      // Still on the first track; no crash.
+      expect(currentTrack(tester), before);
       expect(find.text('Audio Pause'), findsOneWidget);
     });
   });

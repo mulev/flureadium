@@ -387,6 +387,10 @@ class _ReaderPageState extends State<ReaderPage> {
   Future<void> _seekForward() =>
       _flureadium.audioSeekBy(const Duration(seconds: 30));
 
+  Future<void> _nextChapter() => _flureadium.next();
+
+  Future<void> _previousChapter() => _flureadium.previous();
+
   Future<void> _goToFirstChapter() async {
     final pub = _publication;
     if (pub == null) return;
@@ -461,6 +465,15 @@ class _ReaderPageState extends State<ReaderPage> {
                           fontSize: 11,
                         ),
                       ),
+                    Text(
+                      key: const Key('current-track'),
+                      'track: ${_timebasedState?.currentLocator?.locations?.position ?? '-'} '
+                      '${_timebasedState?.currentLocator?.href ?? ''}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
                     Text(
                       key: const Key('locator_href'),
                       _locator?.href ?? '',
@@ -632,6 +645,16 @@ class _ReaderPageState extends State<ReaderPage> {
                           TextButton(
                             onPressed: _seekForward,
                             child: const Text('+30s'),
+                          ),
+                        if (_audioEnabled)
+                          TextButton(
+                            onPressed: _previousChapter,
+                            child: const Text('Audio Prev Chapter'),
+                          ),
+                        if (_audioEnabled)
+                          TextButton(
+                            onPressed: _nextChapter,
+                            child: const Text('Audio Next Chapter'),
                           ),
                       ],
                     ),
