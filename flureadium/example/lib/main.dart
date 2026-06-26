@@ -42,6 +42,7 @@ class _ReaderPageState extends State<ReaderPage> {
   Locator? _locator;
   Locator? _savedLocator;
   ReadiumTimebasedState? _timebasedState;
+  bool _endedSeen = false;
   bool _controlsVisible = true;
   bool _ttsEnabled = false;
   Locator? _lastTtsLocator;
@@ -70,6 +71,10 @@ class _ReaderPageState extends State<ReaderPage> {
     _timebasedSub = _flureadium.onTimebasedPlayerStateChanged.listen(
       (s) => setState(() {
         _timebasedState = s;
+        // Latch end-of-book: the player can settle to `paused` immediately
+        // after emitting `ended`, so the resting state is not reliable. Record
+        // that `ended` was ever delivered for end-of-book assertions.
+        if (s.state == TimebasedState.ended) _endedSeen = true;
         _ttsPlaybackState = _ttsEnabled ? s.state : null;
         _ttsErrorType = _ttsEnabled ? s.ttsErrorType : null;
       }),
@@ -142,6 +147,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
+        _endedSeen = false;
         _ttsEnabled = false;
         _lastTtsLocator = null;
         _readerLocatorAtTtsDisable = null;
@@ -469,6 +475,31 @@ class _ReaderPageState extends State<ReaderPage> {
                       key: const Key('current-track'),
                       'track: ${_timebasedState?.currentLocator?.locations?.position ?? '-'} '
                       '${_timebasedState?.currentLocator?.href ?? ''}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('timebased-state'),
+                      'state: ${_timebasedState?.state.name ?? '-'}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('timebased-position'),
+                      'pos: ${_timebasedState?.currentOffset?.inMilliseconds ?? -1} '
+                      'dur: ${_timebasedState?.currentDuration?.inMilliseconds ?? -1}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('ended-seen'),
+                      'ended-seen: $_endedSeen',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 10,

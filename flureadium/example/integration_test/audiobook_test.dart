@@ -16,6 +16,27 @@ void main() {
   String currentTrack(WidgetTester tester) =>
       tester.widget<Text>(find.byKey(const Key('current-track'))).data ?? '';
 
+  // Reads the keyed end-of-book latch. The example sets this once it has ever
+  // seen TimebasedState.ended, because the player can settle to `paused`
+  // immediately after `ended` and a polled resting state would miss it.
+  bool endedSeen(WidgetTester tester) =>
+      (tester.widget<Text>(find.byKey(const Key('ended-seen'))).data ?? '')
+          .contains('true');
+
+  // Reads the keyed position indicator: 'pos: <ms> dur: <ms>'. Returns the
+  // parsed (offset, duration) in milliseconds, or -1 for either when unknown.
+  ({int posMs, int durMs}) timebasedPosition(WidgetTester tester) {
+    final text =
+        tester.widget<Text>(find.byKey(const Key('timebased-position'))).data ??
+        '';
+    final match = RegExp(r'pos: (-?\d+) dur: (-?\d+)').firstMatch(text);
+    if (match == null) return (posMs: -1, durMs: -1);
+    return (
+      posMs: int.parse(match.group(1)!),
+      durMs: int.parse(match.group(2)!),
+    );
+  }
+
   group('Audiobook', () {
     tearDown(() async {
       final flureadium = Flureadium();
@@ -303,6 +324,79 @@ void main() {
       // Still on the first track; no crash.
       expect(currentTrack(tester), before);
       expect(find.text('Audio Pause'), findsOneWidget);
+    });
+
+    testWidgets('audiobook reaches ended state at end of book', (tester) async {
+      // Playing the last track to its natural end must surface
+      // TimebasedState.ended — the signal fablum turns into its completion
+      // popup. Guards the iOS (shouldPlayNextResource) and Android (forward
+      // Ended before teardown) fixes end-to-end.
+      //
+      // iOS only emits .ended from the end-of-resource hook, which fires when
+      // the player reaches the end while playing — NOT when a seek lands past
+      // it (that clamps to paused). So advance to the last track, seek to just
+      // before its end, and let it play out naturally instead of over-seeking.
+      app.main();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
+      }
+      await tester.tap(find.text('Open AudioBook'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      await tester.tap(find.text('Audio Play'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
+      }
+
+      // Advance to the last track: next() clamps at the end, so keep skipping
+      // until the surfaced track stops changing.
+      var previousTrack = currentTrack(tester);
+      for (var skip = 0; skip < 12; skip++) {
+        await tester.tap(find.text('Audio Next Chapter'));
+        var changed = false;
+        for (var i = 0; i < 10; i++) {
+          await tester.pump(const Duration(seconds: 1));
+          if (currentTrack(tester) != previousTrack) {
+            changed = true;
+            break;
+          }
+        }
+        if (!changed) break; // already at the last track
+        previousTrack = currentTrack(tester);
+      }
+
+      // Wait for the last track's duration to be reported.
+      for (var i = 0; i < 10; i++) {
+        if (timebasedPosition(tester).durMs > 0) break;
+        await tester.pump(const Duration(seconds: 1));
+      }
+      final pos = timebasedPosition(tester);
+      expect(pos.durMs, greaterThan(0), reason: 'duration should be known');
+
+      // Seek to ~3s before the end so the remaining audio plays out and the
+      // engine fires its natural end-of-resource callback. +30s is the only
+      // seek-forward control, so step forward until within the last 30s.
+      const tailMs = 3000;
+      for (var seek = 0; seek < 20; seek++) {
+        final p = timebasedPosition(tester);
+        if (p.durMs <= 0 || p.durMs - p.posMs <= 30000 + tailMs) break;
+        await tester.tap(find.text('+30s'));
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
+      }
+
+      // Let the last track play out; the ended latch must flip within a
+      // bounded window. The latch (not the resting state) is asserted because
+      // the player can settle to `paused` the instant after emitting `ended`.
+      for (var i = 0; i < 45; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (endedSeen(tester)) break;
+      }
+
+      expect(endedSeen(tester), isTrue);
     });
   });
 }
