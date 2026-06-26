@@ -135,6 +135,23 @@ enum TimebasedState {
 }
 ```
 
+### End of Book
+
+When playback finishes the last resource in the reading order, flureadium emits
+a single `TimebasedState.ended`. Listen for it to show end-of-book UI such as a
+completion screen:
+
+```dart
+flureadium.timebasedStateStream.listen((state) {
+  if (state.state == TimebasedState.ended) {
+    // Audiobook finished — show the completion screen.
+  }
+});
+```
+
+On iOS this fires from the navigator's last-resource hook when the final track
+ends; see [platform-specific/ios.md](../platform-specific/ios.md).
+
 ## Audio Preferences
 
 ### Configuration Options

@@ -193,6 +193,16 @@ Uses Readium Swift Toolkit 3.5.0:
 - `AVSpeechSynthesizer` for TTS
 - `AVPlayer` for audio
 
+### Audiobook End of Book
+
+`FlutterAudioNavigator` emits `TimebasedState.ended` when an audiobook reaches
+its natural end. Readium calls the `shouldPlayNextResource` delegate hook each
+time a resource finishes; at the last resource (`resourceIndex` is the final
+index of `publication.readingOrder`) the navigator emits one `.ended` state and
+returns `false` to stop playback. Earlier resources return `true` and emit
+nothing, so the next track plays as usual. This is the signal hosts listen for
+to show an end-of-book completion screen.
+
 ### Local Server
 
 Uses GCDWebServer to serve EPUB resources:
