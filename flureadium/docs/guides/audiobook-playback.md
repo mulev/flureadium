@@ -155,6 +155,9 @@ navigator forwards `ended` to the listener before it tears down the media
 session, so the state reaches Flutter ahead of any post-end cleanup; see
 [platform-specific/android.md](../platform-specific/android.md).
 
+The integration test `audiobook_test.dart` covers this end to end: it advances
+to the last track, runs it out, and asserts the example app surfaces `ended`.
+
 ## Audio Preferences
 
 ### Configuration Options
