@@ -204,6 +204,17 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
   /// Called when the navigator finished playing the current resource.
   /// Returns whether the next resource should be played. Default is true.
   public func navigator(_ navigator: AudioNavigator, shouldPlayNextResource info: MediaPlaybackInfo) -> Bool {
+    return shouldPlayNext(info: info)
+  }
+
+  /// Param-free seam reused by tests: decides whether to continue to the next
+  /// resource without touching the live navigator. Mirrors `handleLocationChange`.
+  internal func shouldPlayNext(info: MediaPlaybackInfo) -> Bool {
+    let lastIndex = publication.readingOrder.count - 1
+    if info.resourceIndex >= lastIndex {
+      self.listener?.timebasedNavigator(self, didChangeState: .init(state: .ended))
+      return false
+    }
     return true
   }
 

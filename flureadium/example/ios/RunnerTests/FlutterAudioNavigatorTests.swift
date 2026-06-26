@@ -40,6 +40,24 @@ final class FlutterAudioNavigatorTests: XCTestCase {
         Publication(manifest: Manifest(metadata: Metadata(title: "Audio")))
     }
 
+    /// Builds a publication with `count` resources in the `readingOrder`, so
+    /// `resourceIndex` math in `shouldPlayNextResource` is meaningful.
+    private func makePublication(readingOrderCount count: Int) -> Publication {
+        let links = (0..<count).map { Link(href: "track\($0).mp3", mediaType: .mp3) }
+        return Publication(manifest: Manifest(metadata: Metadata(title: "Audio"), readingOrder: links))
+    }
+
+    private func makeNavigator(readingOrderCount count: Int) -> (FlutterAudioNavigator, MockTimebasedListener) {
+        let nav = FlutterAudioNavigator(
+            publication: makePublication(readingOrderCount: count),
+            preferences: FlutterAudioPreferences(),
+            initialLocator: nil
+        )
+        let mock = MockTimebasedListener()
+        nav.listener = mock
+        return (nav, mock)
+    }
+
     private func makeLocator(href: String = "track1.mp3") -> Locator {
         Locator(href: URL(string: href)!, mediaType: .mp3)
     }
@@ -85,6 +103,28 @@ final class FlutterAudioNavigatorTests: XCTestCase {
         nav.handleLoadedTimeRanges([0.0..<10.0])
         XCTAssertEqual(mock.stateChanges.count, 0,
             "with no cached playback info, callbacks must guard and not emit timebased state")
+    }
+
+    // MARK: - End-of-book emits .ended
+
+    func testShouldPlayNextResourceAtLastResourceEmitsEnded() {
+        let (nav, mock) = makeNavigator(readingOrderCount: 3)
+        let shouldContinue = nav.shouldPlayNext(info: MediaPlaybackInfo(resourceIndex: 2))
+        XCTAssertFalse(shouldContinue,
+            "at the last resource, playback must stop (return false)")
+        XCTAssertEqual(mock.stateChanges.count, 1,
+            "last resource must emit exactly one state change")
+        XCTAssertEqual(mock.stateChanges.first?.state, .ended,
+            "last resource must emit a .ended timebased state")
+    }
+
+    func testShouldPlayNextResourceBeforeLastReturnsTrueAndEmitsNothing() {
+        let (nav, mock) = makeNavigator(readingOrderCount: 3)
+        let shouldContinue = nav.shouldPlayNext(info: MediaPlaybackInfo(resourceIndex: 1))
+        XCTAssertTrue(shouldContinue,
+            "before the last resource, playback must continue (return true)")
+        XCTAssertEqual(mock.stateChanges.count, 0,
+            "a non-last resource must not emit any timebased state")
     }
 
     // MARK: - Locator listener still fires
