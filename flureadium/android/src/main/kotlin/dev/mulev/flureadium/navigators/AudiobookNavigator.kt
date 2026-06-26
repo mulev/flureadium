@@ -97,7 +97,7 @@ open class AudiobookNavigator(
                             }
 
                             is AudioNavigator.State.Ended -> {
-                                mediaServiceFacade?.closeSession()
+                                onAudioNavigatorEnded()
                             }
 
                             is AudioNavigator.State.Failure<*> -> {
@@ -110,6 +110,20 @@ open class AudiobookNavigator(
 
             setupNavigatorListeners()
         }.await()
+    }
+
+    /**
+     * Handles natural end-of-book. Forwards [TimebasedState.Ended] to the
+     * listener BEFORE teardown, so the un-throttled closeSession()/
+     * navigator.close() can't push a post-Ended state that the stacked
+     * throttleLatest windows coalesce over Ended. Cancels forwarding jobs so
+     * no late tick races the listener after Ended is delivered.
+     */
+    protected open fun onAudioNavigatorEnded() {
+        timebaseListener.onTimebasedPlaybackStateChanged(TimebasedState.Ended)
+        jobs.forEach { it.cancel() }
+        jobs.clear()
+        mediaServiceFacade?.closeSession()
     }
 
     override suspend fun play(fromLocator: Locator?) {
