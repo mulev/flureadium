@@ -150,7 +150,10 @@ flureadium.timebasedStateStream.listen((state) {
 ```
 
 On iOS this fires from the navigator's last-resource hook when the final track
-ends; see [platform-specific/ios.md](../platform-specific/ios.md).
+ends; see [platform-specific/ios.md](../platform-specific/ios.md). On Android the
+navigator forwards `ended` to the listener before it tears down the media
+session, so the state reaches Flutter ahead of any post-end cleanup; see
+[platform-specific/android.md](../platform-specific/android.md).
 
 ## Audio Preferences
 

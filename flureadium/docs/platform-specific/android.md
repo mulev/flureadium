@@ -193,6 +193,24 @@ Uses Readium Kotlin Toolkit:
 - `TTS` and `MediaPlayer` for audio
 - `PdfiumNavigator` for PDF rendering (via Pdfium adapter)
 
+### Audiobook End of Book
+
+When an audiobook reaches the end of its last resource, `AudiobookNavigator`
+forwards `TimebasedState.ended` to the listener **before** it tears down the
+media session. The ordering matters: regular playback states reach Flutter
+through a stacked `throttleLatest` chain, but the `Ended` tick also triggers an
+un-throttled `closeSession()`/`navigator.close()`. If `ended` went through the
+throttled path, a post-end state could be pushed in the same window and the
+latest-wins throttle would coalesce `ended` away before it reached Flutter.
+
+`onAudioNavigatorEnded()` handles this in a fixed order: forward `ended` to the
+listener, cancel and clear the forwarding jobs, then close the session. Cancelling
+the jobs first stops any late tick from racing the listener after `ended` is
+delivered.
+
+**Files:**
+- `AudiobookNavigator.kt` — `onAudioNavigatorEnded()` and the `State.Ended` branch
+
 ### PDF Support
 
 PDF support is implemented using Readium's Pdfium adapter, which provides native PDF rendering via Android's Pdfium library.
