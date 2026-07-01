@@ -155,6 +155,11 @@ navigator forwards `ended` to the listener before it tears down the media
 session, so the state reaches Flutter ahead of any post-end cleanup; see
 [platform-specific/android.md](../platform-specific/android.md).
 
+`ended` means the book reached its natural end — it is never emitted during
+teardown. Closing or disposing the reader mid-playback tears the navigator down
+silently, so a listener will not see a spurious `ended` on close and can treat
+every `ended` as a real completion.
+
 The integration test `audiobook_test.dart` covers this end to end: it advances
 to the last track, runs it out, and asserts the example app surfaces `ended`.
 
