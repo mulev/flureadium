@@ -127,6 +127,17 @@ final class FlutterAudioNavigatorTests: XCTestCase {
             "a non-last resource must not emit any timebased state")
     }
 
+    // MARK: - dispose() must not emit a phantom .ended
+
+    func testDisposeDoesNotEmitEnded() {
+        let (nav, mock) = makeNavigator(readingOrderCount: 3)
+        nav.dispose()
+        XCTAssertEqual(mock.stateChanges.count, 0,
+            "dispose() is teardown, not end-of-book — it must not emit any timebased state")
+        XCTAssertFalse(mock.stateChanges.contains { $0.state == .ended },
+            "dispose() must not emit a phantom .ended; only shouldPlayNext at the last resource may emit .ended")
+    }
+
     // MARK: - Locator listener still fires
 
     func testLocationDidChangeStillReachesLocatorListener() {

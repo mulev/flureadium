@@ -90,7 +90,9 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
     self._audioNavigator?.pause()
     self._audioNavigator?.delegate = nil
     self._audioNavigator = nil
-    self.listener?.timebasedNavigator(self, didChangeState: .init(state: .ended))
+    // Teardown is not end-of-book: emitting .ended here is a phantom natural-end
+    // signal Android never produces. Only shouldPlayNext at the last resource
+    // may emit .ended. See flureadium-amn.
     self.listener = nil
   }
 
