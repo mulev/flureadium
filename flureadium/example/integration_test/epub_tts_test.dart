@@ -63,7 +63,12 @@ void main() {
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
       await tester.tap(find.text('TTS On'));
-      await tester.pump(const Duration(seconds: 60));
+      // Poll for readiness — TTS On flips to 'TTS Off' once enabled. Break early
+      // instead of blindly sleeping the 60s worst-case ceiling.
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('TTS Off').evaluate().isNotEmpty) break;
+      }
       expect(find.text('TTS Off'), findsOneWidget);
     });
 
@@ -104,7 +109,12 @@ void main() {
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
       await tester.tap(find.text('TTS On'));
-      await tester.pump(const Duration(seconds: 60));
+      // Poll for the sentence nav button — it appears once TTS is enabled.
+      // Break early instead of blindly sleeping the 60s worst-case ceiling.
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Next Sentence').evaluate().isNotEmpty) break;
+      }
       await tester.tap(find.text('Next Sentence'));
       await tester.pump(const Duration(seconds: 2));
       expect(find.text('TTS Off'), findsOneWidget);
@@ -117,7 +127,12 @@ void main() {
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
       await tester.tap(find.text('TTS On'));
-      await tester.pump(const Duration(seconds: 60));
+      // Poll for the sentence nav button — it appears once TTS is enabled.
+      // Break early instead of blindly sleeping the 60s worst-case ceiling.
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Prev Sentence').evaluate().isNotEmpty) break;
+      }
       await tester.tap(find.text('Prev Sentence'));
       await tester.pump(const Duration(seconds: 2));
       expect(find.text('TTS Off'), findsOneWidget);
@@ -130,7 +145,12 @@ void main() {
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
       await tester.tap(find.text('TTS On'));
-      await tester.pump(const Duration(seconds: 60));
+      // Poll for readiness — TTS On flips to 'TTS Off' once enabled. Break early
+      // instead of blindly sleeping the 60s worst-case ceiling.
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('TTS Off').evaluate().isNotEmpty) break;
+      }
       final voiceButton = find.textContaining('Voice');
       expect(voiceButton, findsOneWidget);
       await tester.tap(voiceButton);
@@ -233,7 +253,12 @@ void main() {
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
       await tester.tap(find.text('TTS On'));
-      await tester.pump(const Duration(seconds: 60));
+      // Poll for the sentence nav button — it appears once TTS is enabled.
+      // Break early instead of blindly sleeping the 60s worst-case ceiling.
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.text('Prev Sentence').evaluate().isNotEmpty) break;
+      }
       expect(find.text('Prev Sentence'), findsOneWidget);
       await tester.tap(find.text('TTS Off'));
       await tester.pump(const Duration(seconds: 3));
