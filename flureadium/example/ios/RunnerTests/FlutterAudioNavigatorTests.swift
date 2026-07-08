@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 import Combine
 import ReadiumShared
 import ReadiumNavigator
@@ -145,5 +146,86 @@ final class FlutterAudioNavigatorTests: XCTestCase {
         nav.handleLocationChange(makeLocator(href: "track2.mp3"))
         XCTAssertEqual(mock.reachedLocatorCalls.count, 1,
             "locationDidChange must still forward the locator to the listener")
+    }
+
+    // MARK: - Playback-failure seam
+
+    func testHandlePlaybackFailureForwardsErrorToListener() {
+        let (nav, mock) = makeNavigator()
+        let underlying = NSError(domain: "avf", code: 42)
+        nav.handlePlaybackFailure(underlying, description: "boom")
+        XCTAssertEqual(mock.errors.count, 1,
+            "handlePlaybackFailure must forward the failure to the listener")
+        XCTAssertEqual((mock.errors.first?.error as NSError?)?.code, 42,
+            "the underlying error must be forwarded unchanged")
+        XCTAssertEqual(mock.errors.first?.description, "boom")
+    }
+
+    func testHandlePlaybackFailureSynthesizesErrorWhenNil() {
+        let (nav, mock) = makeNavigator()
+        nav.handlePlaybackFailure(nil, description: "no underlying error")
+        XCTAssertEqual(mock.errors.count, 1,
+            "a nil AVFoundation error must still reach the listener")
+        XCTAssertEqual((mock.errors.first?.error as NSError?)?.localizedDescription, "no underlying error",
+            "the synthesized error must carry the description")
+    }
+
+    // MARK: - NotificationCenter observer lifecycle
+
+    func testRegisterPlaybackFailureObserversAddsTokens() {
+        let (nav, _) = makeNavigator()
+        nav.registerPlaybackFailureObservers()
+        XCTAssertEqual(nav.playbackFailureObservers.count, 2,
+            "both failed-to-play and new-error-log observers must be registered")
+        nav.removePlaybackFailureObservers()
+    }
+
+    func testDisposeRemovesPlaybackFailureObservers() {
+        let (nav, _) = makeNavigator()
+        nav.registerPlaybackFailureObservers()
+        nav.dispose()
+        XCTAssertTrue(nav.playbackFailureObservers.isEmpty,
+            "dispose() must remove all playback-failure observers (leak-free)")
+    }
+
+    func testFailedToPlayNotificationRoutesToListener() {
+        let (nav, mock) = makeNavigator()
+        nav.registerPlaybackFailureObservers()
+
+        let underlying = NSError(domain: "avf", code: 7)
+        NotificationCenter.default.post(
+            name: .AVPlayerItemFailedToPlayToEndTime,
+            object: nil,
+            userInfo: [AVPlayerItemFailedToPlayToEndTimeErrorKey: underlying]
+        )
+
+        // Observers hop to OperationQueue.main; drain it before asserting.
+        let drained = expectation(description: "main queue drained")
+        OperationQueue.main.addOperation { drained.fulfill() }
+        wait(for: [drained], timeout: 1.0)
+
+        XCTAssertEqual(mock.errors.count, 1,
+            "a failed-to-play-to-end notification must forward an error to the listener")
+        XCTAssertEqual((mock.errors.first?.error as NSError?)?.code, 7)
+        nav.removePlaybackFailureObservers()
+    }
+
+    func testRemovedObserverDoesNotRouteAfterDispose() {
+        let (nav, mock) = makeNavigator()
+        nav.registerPlaybackFailureObservers()
+        nav.dispose()
+
+        NotificationCenter.default.post(
+            name: .AVPlayerItemFailedToPlayToEndTime,
+            object: nil,
+            userInfo: [AVPlayerItemFailedToPlayToEndTimeErrorKey: NSError(domain: "avf", code: 1)]
+        )
+
+        let drained = expectation(description: "main queue drained")
+        OperationQueue.main.addOperation { drained.fulfill() }
+        wait(for: [drained], timeout: 1.0)
+
+        XCTAssertEqual(mock.errors.count, 0,
+            "after dispose(), a posted notification must not reach the listener")
     }
 }

@@ -1,5 +1,6 @@
 import XCTest
 import Flutter
+import ReadiumShared
 @testable import flureadium
 
 /// Captures events routed to a sink without needing a real Flutter event
@@ -78,5 +79,36 @@ final class FlureadiumPluginErrorChannelTests: XCTestCase {
     XCTAssertFalse(sink.disposed, "reader-view lifecycle must not dispose the plugin error sink")
     XCTAssertEqual((sink.events[0] as? FlureadiumError)?.message, "before")
     XCTAssertEqual((sink.events[1] as? FlureadiumError)?.message, "after")
+  }
+
+  // Test: the plugin's timebased `encounteredError` delegate forwards the audio
+  // error onto the error sink as {message, code, data}. This is the audio path's
+  // entry point — FlutterAudioNavigator routes both Readium's
+  // didFailToLoadResourceAt and the AVFoundation notifications through it.
+  @MainActor
+  func testEncounteredErrorForwardsToSink() {
+    let plugin = FlureadiumPlugin()
+    let sink = CapturingEventStreamSink()
+    plugin.errorStreamHandler = sink
+
+    let underlying = NSError(
+      domain: "avf", code: 9,
+      userInfo: [NSLocalizedDescriptionKey: "stream stalled"]
+    )
+    plugin.timebasedNavigator(
+      FlutterAudioNavigator(
+        publication: Publication(manifest: Manifest(metadata: Metadata(title: "Audio"))),
+        preferences: FlutterAudioPreferences(),
+        initialLocator: nil
+      ),
+      encounteredError: underlying,
+      withDescription: "AVPlayerItemFailedToPlayToEndTime"
+    )
+
+    XCTAssertEqual(sink.events.count, 1)
+    let error = sink.events.first as? FlureadiumError
+    XCTAssertEqual(error?.message, "stream stalled")
+    XCTAssertEqual(error?.code, "TimebasedError")
+    XCTAssertEqual(error?.data as? String, "AVPlayerItemFailedToPlayToEndTime")
   }
 }

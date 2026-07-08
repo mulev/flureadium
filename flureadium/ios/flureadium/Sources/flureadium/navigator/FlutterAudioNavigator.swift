@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import MediaPlayer
 import ReadiumShared
@@ -24,6 +25,12 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
   internal var _lastLocation: Locator?
 
   internal var subscriptions: Set<AnyCancellable> = []
+
+  /// NotificationCenter tokens for the best-effort AVFoundation playback-failure
+  /// observers. Readium keeps its `AVPlayer` private and never routes audio
+  /// load failures to `AudioNavigatorDelegate`, so these are the only signal we
+  /// get for those. Held for the navigator's lifetime and removed in `dispose()`.
+  internal var playbackFailureObservers: [NSObjectProtocol] = []
 
   @Published var cover: UIImage?
   @Published var playback: MediaPlaybackInfo = .init()
@@ -63,6 +70,7 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
 
     // TODO: Why is this public, if always called from itself?
     self.setupNavigatorListeners()
+    self.registerPlaybackFailureObservers()
 
     Task {
       cover = try? await publication.cover().get()
@@ -87,6 +95,7 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
   }
 
   public func dispose() -> Void {
+    self.removePlaybackFailureObservers()
     self._audioNavigator?.pause()
     self._audioNavigator?.delegate = nil
     self._audioNavigator = nil
@@ -227,6 +236,62 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
 
   public func navigator(_ navigator: any ReadiumNavigator.Navigator, didFailToLoadResourceAt href: ReadiumShared.RelativeURL, withError error: ReadiumShared.ReadError) {
     self.listener?.timebasedNavigator(self, encounteredError: error, withDescription: "DidFailToLoadResourceAt: \(href)")
+  }
+
+  // MARK: AVFoundation playback-failure observation (best-effort)
+
+  /// Converts an AVFoundation playback failure into a listener error. Kept as an
+  /// `internal` seam so it can be unit-tested without a live `AVPlayer`, which
+  /// Readium keeps private. A missing `error` is synthesized from `description`
+  /// so the listener always receives a non-nil error.
+  internal func handlePlaybackFailure(_ error: Error?, description: String) {
+    let resolved = error ?? NSError(
+      domain: TAG,
+      code: -1,
+      userInfo: [NSLocalizedDescriptionKey: description]
+    )
+    self.listener?.timebasedNavigator(self, encounteredError: resolved, withDescription: description)
+  }
+
+  /// Registers best-effort AVFoundation failure observers (`object: nil`, since
+  /// the player item is private). These catch failed-to-play-to-end and new
+  /// error-log entries — the failures Readium's audio stack swallows. A pure
+  /// load-time `.status == .failed` is a KVO signal on the private item and is
+  /// not guaranteed to post a notification (accepted limitation).
+  internal func registerPlaybackFailureObservers() {
+    let center = NotificationCenter.default
+    let failedToken = center.addObserver(
+      forName: .AVPlayerItemFailedToPlayToEndTime,
+      object: nil,
+      queue: .main
+    ) { [weak self] note in
+      let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+      self?.handlePlaybackFailure(error, description: "AVPlayerItemFailedToPlayToEndTime")
+    }
+    let errorLogToken = center.addObserver(
+      forName: .AVPlayerItemNewErrorLogEntry,
+      object: nil,
+      queue: .main
+    ) { [weak self] note in
+      let event = (note.object as? AVPlayerItem)?.errorLog()?.events.last
+      let error = event.map { event -> NSError in
+        NSError(
+          domain: event.errorDomain,
+          code: event.errorStatusCode,
+          userInfo: [NSLocalizedDescriptionKey: event.errorComment ?? "AVPlayerItemNewErrorLogEntry"]
+        )
+      }
+      self?.handlePlaybackFailure(error, description: "AVPlayerItemNewErrorLogEntry")
+    }
+    playbackFailureObservers = [failedToken, errorLogToken]
+  }
+
+  /// Removes all playback-failure observers. Called from `dispose()` so the
+  /// observers never outlive the navigator (leak-free).
+  internal func removePlaybackFailureObservers() {
+    let center = NotificationCenter.default
+    playbackFailureObservers.forEach { center.removeObserver($0) }
+    playbackFailureObservers = []
   }
 
   // MARK: AudioNavigator specific API

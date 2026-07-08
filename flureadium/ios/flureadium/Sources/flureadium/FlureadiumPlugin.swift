@@ -557,7 +557,11 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
 
   public func timebasedNavigator(_: any FlutterTimebasedNavigator, encounteredError error: any Error, withDescription description: String?) {
     print(TAG, "TimebasedNavigator error: \(error), description: \(String(describing: description))")
-    // TODO: submit on error stream
+    sendError(
+      message: error.localizedDescription,
+      code: "TimebasedError",
+      data: description
+    )
   }
 
   public func timebasedNavigator(_: any FlutterTimebasedNavigator, reachedLocator locator: ReadiumShared.Locator, readingOrderLink: ReadiumShared.Link?) {
