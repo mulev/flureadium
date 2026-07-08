@@ -54,6 +54,9 @@ class _ReaderPageState extends State<ReaderPage> {
   TimebasedState? _ttsPlaybackState;
   TtsErrorType? _ttsErrorType;
   double _ttsSpeed = 1.0;
+  // Latches the last error delivered on onErrorEvent so integration tests can
+  // assert that a failed audio resource load surfaces instead of stalling.
+  String _lastAudioError = '';
 
   StreamSubscription<ReadiumReaderStatus>? _statusSub;
   StreamSubscription<Locator>? _locatorSub;
@@ -102,9 +105,11 @@ class _ReaderPageState extends State<ReaderPage> {
         _savedLocator = l;
       }),
     );
-    _errorSub = _flureadium.onErrorEvent.listen(
-      (e) => debugPrint('FlureadiumError: $e'),
-    );
+    _errorSub = _flureadium.onErrorEvent.listen((e) {
+      debugPrint('FlureadiumError: $e');
+      if (!mounted) return;
+      setState(() => _lastAudioError = e.message);
+    });
   }
 
   @override
@@ -180,6 +185,53 @@ class _ReaderPageState extends State<ReaderPage> {
       });
     } catch (e) {
       debugPrint('openAudiobookUntitledChapter error: $e');
+    }
+  }
+
+  Future<void> _openUnreachableAudiobook() async {
+    // A well-formed audiobook manifest whose only track points at an
+    // unreachable host. The manifest parses, but the first audio resource load
+    // fails inside AVFoundation — the streaming path Phase 2 forwards to
+    // onErrorEvent instead of stalling silently at 0:00.
+    const manifest = '''
+{
+  "@context": "https://readium.org/webpub-manifest/context.jsonld",
+  "metadata": {
+    "@type": "http://schema.org/Audiobook",
+    "conformsTo": "https://readium.org/webpub-manifest/profiles/audiobook",
+    "title": "Unreachable Audio",
+    "duration": 120
+  },
+  "links": [
+    { "rel": "self", "href": "http://127.0.0.1:9/manifest.json", "type": "application/audiobook+json" }
+  ],
+  "readingOrder": [
+    { "href": "http://127.0.0.1:9/unreachable.mp3", "type": "audio/mpeg", "duration": 120 }
+  ]
+}
+''';
+    try {
+      final tmp = File(
+        '${Directory.systemTemp.path}/'
+        '${DateTime.now().millisecondsSinceEpoch}_unreachable.json',
+      );
+      await tmp.writeAsString(manifest);
+      final pub = await _flureadium.openPublication(tmp.path);
+      if (!mounted) return;
+      setState(() {
+        _publication = pub;
+        _lastAudioError = '';
+        _endedSeen = false;
+        _ttsEnabled = false;
+        _lastTtsLocator = null;
+        _readerLocatorAtTtsDisable = null;
+        _audioEnabled = false;
+        _audioPaused = false;
+        _voices = [];
+        _voiceIndex = 0;
+      });
+    } catch (e) {
+      debugPrint('openUnreachableAudiobook error: $e');
     }
   }
 
@@ -506,6 +558,14 @@ class _ReaderPageState extends State<ReaderPage> {
                       ),
                     ),
                     Text(
+                      key: const Key('audio-error'),
+                      'audio-error: $_lastAudioError',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
                       key: const Key('locator_href'),
                       _locator?.href ?? '',
                       style: const TextStyle(
@@ -530,6 +590,10 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _openAudiobookUntitledChapter,
                           child: const Text('Open AudioBook NoTitle'),
+                        ),
+                        TextButton(
+                          onPressed: _openUnreachableAudiobook,
+                          child: const Text('Open AudioBook BadUrl'),
                         ),
                         TextButton(
                           onPressed: _openCbz,

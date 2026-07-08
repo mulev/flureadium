@@ -37,6 +37,12 @@ void main() {
     );
   }
 
+  // Reads the keyed error indicator the example latches from onErrorEvent.
+  // The text is 'audio-error: <message>'; empty until an error surfaces.
+  String lastAudioError(WidgetTester tester) =>
+      (tester.widget<Text>(find.byKey(const Key('audio-error'))).data ?? '')
+          .replaceFirst('audio-error: ', '');
+
   group('Audiobook', () {
     tearDown(() async {
       final flureadium = Flureadium();
@@ -397,6 +403,42 @@ void main() {
       }
 
       expect(endedSeen(tester), isTrue);
+    });
+
+    testWidgets('unreachable streamed audio surfaces an error event', (
+      tester,
+    ) async {
+      // Regression for the streaming-error observability gap: an audio resource
+      // that fails to load must surface on onErrorEvent (Phase 2) instead of
+      // the player stalling silently at 0:00 with nothing logged. The example's
+      // 'Open AudioBook BadUrl' opens a manifest whose only track points at an
+      // unreachable host, so the first load fails inside AVFoundation.
+      app.main();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
+      }
+      await tester.tap(find.text('Open AudioBook BadUrl'));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      await tester.tap(find.text('Audio Play'));
+
+      // Poll the latched error indicator: the failed load surfaces via
+      // didFailToLoadResourceAt or the AVFoundation failure notifications.
+      var surfaced = false;
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        if (lastAudioError(tester).isNotEmpty) {
+          surfaced = true;
+          break;
+        }
+      }
+      expect(
+        surfaced,
+        isTrue,
+        reason: 'a failed streamed audio load must surface on onErrorEvent',
+      );
     });
   });
 }
