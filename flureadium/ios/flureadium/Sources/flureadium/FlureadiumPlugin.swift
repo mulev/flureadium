@@ -22,6 +22,10 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
 
   static var registrar: FlutterPluginRegistrar? = nil
 
+  /// The registered plugin instance. Reader views route errors through this so
+  /// the `"error"` channel has a single, process-stable owner.
+  static weak var shared: FlureadiumPlugin?
+
   /// TTS Decoration style
   internal var ttsUtteranceDecorationStyle: Decoration.Style? = .highlight(tint: .yellow)
   internal var ttsRangeDecorationStyle: Decoration.Style? = .underline(tint: .black)
@@ -29,6 +33,10 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
   /// Timebased player events & state
   internal var timebasedPlayerStateStreamHandler: EventStreamHandler?
   internal var lastTimebasedPlayerState: ReadiumTimebasedState? = nil
+
+  /// Single owner of the `dev.mulev.flureadium/error` channel. Reader views and
+  /// (from Phase 2) the audio path forward errors here via `sendError`.
+  internal var errorStreamHandler: EventStreamSink?
 
   /// Timebased Navigator. Can be TTS, Audio or MediaOverlay implementations.
   internal var timebasedNavigator: FlutterTimebasedNavigator? = nil
@@ -46,12 +54,21 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
     let instance = FlureadiumPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
     instance.timebasedPlayerStateStreamHandler = EventStreamHandler(withName: "timebased-state", messenger: registrar.messenger())
+    instance.errorStreamHandler = EventStreamHandler(withName: "error", messenger: registrar.messenger())
 
     // Register reader view factory
     let factory = ReadiumReaderViewFactory(registrar: registrar)
     registrar.register(factory, withId: readiumReaderViewType)
 
     self.registrar = registrar
+    shared = instance
+  }
+
+  /// Forwards an error onto the plugin-owned `"error"` channel. Single send
+  /// point for both reader views and the audio path.
+  internal func sendError(message: String, code: String? = nil, data: Any? = nil) {
+    let error = FlureadiumError(message: message, code: code, data: data)
+    errorStreamHandler?.sendEvent(error)
   }
 
   public func log(_ warning: Warning) {
@@ -76,6 +93,8 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
         await MainActor.run {
           self.timebasedPlayerStateStreamHandler?.dispose()
           self.timebasedPlayerStateStreamHandler = nil
+          self.errorStreamHandler?.dispose()
+          self.errorStreamHandler = nil
           result(nil)
         }
       }

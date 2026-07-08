@@ -265,7 +265,9 @@ class ReadiumError implements Error {
 
 ### Platform Notes
 
-The `error` EventChannel handler is registered on both Android and iOS at activity/view attach time. Android does not currently emit error events automatically — the `sendError()` helper in `ReadiumReader` exists for future native failure paths (e.g. failed resource loads). Subscribe to this stream for forward compatibility.
+On iOS the `error` EventChannel is owned by `FlureadiumPlugin`, registered once in `register(with:)` and kept for the lifetime of the plugin. Reader views no longer register their own `error` handler; both `ReadiumReaderView` and `ImageReaderView` route resource-load failures through the plugin's `sendError(message:code:data:)`. Because the channel has a single owner, the Dart subscription survives reader-view open/close cycles, and paths that have no reader view (such as the audiobook player) can send on the same channel. The PDF reader uses a separate `pdf-error` channel and is unaffected.
+
+On Android the `error` EventChannel handler is registered at activity attach time. Android does not currently emit error events automatically — the `sendError()` helper in `ReadiumReader` exists for future native failure paths (e.g. failed resource loads). Subscribe to this stream for forward compatibility.
 
 ### Error Handling Pattern
 

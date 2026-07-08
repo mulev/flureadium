@@ -13,7 +13,6 @@ private let ImageReaderNavigationReadyPollNanoseconds: UInt64 = 50_000_000
 
 class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, VisualNavigatorDelegate {
   private let channel: ReadiumReaderChannel
-  private var errorStreamHandler: EventStreamHandler?
   private var readerStatusStreamHandler: EventStreamHandler?
   private var textLocatorStreamHandler: EventStreamHandler?
   private let viewContainer: UIView
@@ -50,7 +49,6 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
       name: "\(readiumReaderViewType):\(viewId)", binaryMessenger: registrar.messenger())
     textLocatorStreamHandler = EventStreamHandler(withName: "text-locator", messenger: registrar.messenger())
     readerStatusStreamHandler = EventStreamHandler(withName: "reader-status", messenger: registrar.messenger())
-    errorStreamHandler = EventStreamHandler(withName: "error", messenger: registrar.messenger())
 
     readerStatusStreamHandler?.sendEvent(ImageReaderStatusLoading)
 
@@ -98,8 +96,9 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
   func navigator(_ navigator: Navigator, didFailToLoadResourceAt href: ReadiumShared.RelativeURL, withError error: ReadiumShared.ReadError) {
     print(TAG, "didFailToLoadResourceAt: \(href). err: \(error)")
     readerStatusStreamHandler?.sendEvent(ImageReaderStatusError)
-    let flureadiumError = FlureadiumError(message: error.localizedDescription, code: "DidFailToLoadResource", data: href.string)
-    errorStreamHandler?.sendEvent(flureadiumError)
+    // Route through the plugin, which owns the single "error" channel.
+    FlureadiumPlugin.shared?.sendError(
+      message: error.localizedDescription, code: "DidFailToLoadResource", data: href.string)
   }
 
   func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
@@ -277,8 +276,6 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
       textLocatorStreamHandler = nil
       readerStatusStreamHandler?.dispose()
       readerStatusStreamHandler = nil
-      errorStreamHandler?.dispose()
-      errorStreamHandler = nil
       channel.setMethodCallHandler(nil)
       if currentImageReaderView === self { currentImageReaderView = nil }
       result(nil)

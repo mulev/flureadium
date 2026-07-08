@@ -338,6 +338,8 @@ Readium's `EditingAction` support with
 
 Flureadium iOS uses `EventStreamHandler` to manage Flutter EventChannel streams (text locator, reader status, errors). The `"dispose"` method call from Dart is the single comprehensive cleanup point. `deinit` is a minimal safety net.
 
+The `error` channel is the exception to per-view ownership. `FlureadiumPlugin` owns it: the handler is created once in `register(with:)` and disposed only when the plugin's own `"dispose"` runs. Reader views forward resource-load failures through the plugin's `sendError(message:code:data:)` instead of holding their own `error` handler, so closing a reader view no longer end-streams the Dart subscription, and the audiobook player (which has no reader view) can send on the same channel. The PDF reader keeps its separate `pdf-error` channel.
+
 **dispose handler** owns all cleanup that needs a live Flutter engine:
 
 | Responsibility | Why in dispose |

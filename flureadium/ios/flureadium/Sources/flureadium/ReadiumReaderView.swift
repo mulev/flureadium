@@ -33,7 +33,6 @@ func parseLocatorFragmentsResult(_ result: Any?) -> Locator? {
 class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, VisualNavigatorDelegate {
 
   private let channel: ReadiumReaderChannel
-  private var errorStreamHandler: EventStreamHandler?
   private var readerStatusStreamHandler: EventStreamHandler?
   private var textLocatorStreamHandler: EventStreamHandler?
   private let _view: UIView
@@ -97,7 +96,6 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       name: "\(readiumReaderViewType):\(viewId)", binaryMessenger: registrar.messenger())
     textLocatorStreamHandler = EventStreamHandler(withName: "text-locator", messenger: registrar.messenger())
     readerStatusStreamHandler = EventStreamHandler(withName: "reader-status", messenger: registrar.messenger())
-    errorStreamHandler = EventStreamHandler(withName: "error", messenger: registrar.messenger())
 
     readerStatusStreamHandler?.sendEvent(ReadiumReaderStatusLoading)
 
@@ -219,8 +217,9 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     // TODO: Should we send resource-load error like this?
     self.readerStatusStreamHandler?.sendEvent(ReadiumReaderStatusError)
 
-    let error = FlureadiumError(message: error.localizedDescription, code: "DidFailToLoadResource", data: href.string)
-    self.errorStreamHandler?.sendEvent(error)
+    // Route through the plugin, which owns the single "error" channel.
+    FlureadiumPlugin.shared?.sendError(
+      message: error.localizedDescription, code: "DidFailToLoadResource", data: href.string)
   }
 
   // override NavigatorDelegate::navigator:locationDidChange
@@ -619,8 +618,6 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       textLocatorStreamHandler = nil
       readerStatusStreamHandler?.dispose()
       readerStatusStreamHandler = nil
-      errorStreamHandler?.dispose()
-      errorStreamHandler = nil
       channel.setMethodCallHandler(nil)
       if currentReaderView === self { currentReaderView = nil }
       result(nil)
