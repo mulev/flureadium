@@ -203,6 +203,27 @@ returns `false` to stop playback. Earlier resources return `true` and emit
 nothing, so the next track plays as usual. This is the signal hosts listen for
 to show an end-of-book completion screen.
 
+### Audiobook Error Forwarding
+
+Streamed audio load failures reach Flutter on the `onErrorEvent` stream. The
+plugin owns the single `error` channel; the audio path forwards through it two
+ways:
+
+- **Delegate route** — `FlutterAudioNavigator`'s `didFailToLoadResourceAt`
+  delegate routes any error Readium surfaces into the timebased navigator's
+  `encounteredError` hook, which the plugin implements as
+  `sendError(message:, code: "TimebasedError", data:)`.
+- **NotificationCenter route** — Readium's audio stack never routes AVFoundation
+  load failures to its delegate, and its `AVPlayer` is private. So the navigator
+  also registers best-effort observers for `AVPlayerItemFailedToPlayToEndTime`
+  and `AVPlayerItemNewErrorLogEntry` (`object: nil`) over its lifetime, removed
+  in `dispose()`. Both route through the same `handlePlaybackFailure` seam.
+
+**Limitation:** a pure load-time `AVPlayerItem.status == .failed` is a KVO
+signal on the private item and is not guaranteed to post a notification, so it
+may not be caught. A deterministic upstream hook is a tracked follow-up. Treat
+audio error delivery as best-effort.
+
 ### Local Server
 
 Uses GCDWebServer to serve EPUB resources:

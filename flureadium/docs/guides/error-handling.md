@@ -115,6 +115,45 @@ try {
 
 ---
 
+## Error Event Stream: `onErrorEvent`
+
+Not every failure is thrown from the call you made. Playback failures happen
+asynchronously, after `play()` has already returned, so they arrive on a stream
+rather than as an exception. `Flureadium.onErrorEvent` delivers a `ReadiumError`
+(`{message, code?, data?}`) for these out-of-band errors.
+
+```dart
+final sub = flureadium.onErrorEvent.listen((error) {
+  R2Log.e(error);
+  // Surface it — a streamed audio track that fails to load otherwise stalls
+  // silently at 0:00 with nothing to show the user.
+  showErrorToast(error.message);
+});
+// Cancel in dispose().
+```
+
+### Audiobook streaming failures
+
+When a streamed audio resource fails to load (unreachable host, 404, codec
+rejection), the native audio path forwards the failure onto this stream:
+
+- **iOS** — the plugin implements the timebased navigator's `encounteredError`
+  hook, which forwards both Readium's `didFailToLoadResourceAt` and a
+  best-effort NotificationCenter observation of AVFoundation's
+  `AVPlayerItemFailedToPlayToEndTime` / `AVPlayerItemNewErrorLogEntry`. Errors
+  arrive with `code: "TimebasedError"`.
+- **Android** — the timebased playback-failure callback forwards onto the same
+  channel.
+
+**Known limitation (iOS):** Readium keeps its `AVPlayer` private, so a pure
+load-time `AVPlayerItem.status == .failed` is a KVO signal that is not
+guaranteed to post a notification. The NotificationCenter net catches
+failed-to-play-to-end and new-error-log entries; a deterministic load-failure
+hook is tracked as an upstream follow-up. Treat audio error delivery as
+best-effort, not a guarantee for every failure mode.
+
+---
+
 ## Logging System: `R2Log`
 
 ### Log Levels

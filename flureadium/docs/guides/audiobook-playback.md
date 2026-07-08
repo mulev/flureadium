@@ -163,6 +163,27 @@ every `ended` as a real completion.
 The integration test `audiobook_test.dart` covers this end to end: it advances
 to the last track, runs it out, and asserts the example app surfaces `ended`.
 
+### Handling Playback Errors
+
+A streamed track can fail to load after playback has already started —
+unreachable host, 404, a codec the device rejects. These do not throw from
+`play()`; they arrive asynchronously on `Flureadium.onErrorEvent` as a
+`ReadiumError`. Subscribe to it so a failed load surfaces to the listener
+instead of the player stalling silently at `0:00`:
+
+```dart
+final errorSub = flureadium.onErrorEvent.listen((error) {
+  showErrorToast(error.message); // e.g. show a toast on the player surface
+});
+// Cancel in dispose().
+```
+
+Delivery is best-effort on iOS (see the limitation in
+[error-handling.md](error-handling.md#audiobook-streaming-failures) and
+[platform-specific/ios.md](../platform-specific/ios.md)). The integration test
+`audiobook_test.dart` opens an audiobook whose only track points at an
+unreachable host and asserts the error surfaces on this stream.
+
 ## Audio Preferences
 
 ### Configuration Options
