@@ -99,6 +99,28 @@ Conventions:
   awaits `getCurrentLocator()` each tick and returns the `Locator`) stays a
   hand-rolled loop, but ticks at the same 250ms so its granularity matches.
 
+## Jumping to the last track instead of skipping to it
+
+The end-of-book audiobook test needs the last reading-order track. Stepping there
+with repeated `Audio Next Chapter` taps cost one poll per track. Load the manifest
+and jump straight to the end instead:
+
+```dart
+final path = await _extractAsset('assets/pubs/38533.audiobook');
+final pub = await Flureadium().loadPublication(path);
+await Flureadium().goByLink(pub.readingOrder.last, pub);
+```
+
+`loadPublication` only parses the manifest, so it is cheap; `goByLink` is the same
+navigation the app performs. The near-end seek and natural play-out that follow
+stay as they are — that tail is real audio time and is the point of the test.
+
+Note the audiobook is still opened through the button flow (boot the default EPUB,
+tap `Open AudioBook`), not a direct `initialAsset` boot. On Android the reader
+widget hosts a visual navigator and an audiobook has none, so it must ride on an
+EPUB host; audio plays on top. CBZ and DIVINA are image publications with their own
+navigator, so those groups can and do boot directly via `initialAsset`.
+
 ## Prerequisites
 
 ### Android
