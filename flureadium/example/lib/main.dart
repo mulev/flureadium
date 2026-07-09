@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:collection/collection.dart';
@@ -57,6 +58,10 @@ class _ReaderPageState extends State<ReaderPage> {
   // Latches the last error delivered on onErrorEvent so integration tests can
   // assert that a failed audio resource load surfaces instead of stalling.
   String _lastAudioError = '';
+  // Local server backing the 'Open AudioBook BadStream' action: serves a WAV
+  // whose Content-Length promises the full clip but drops the socket after a
+  // partial body, producing a mid-stream failure both audio engines observe.
+  HttpServer? _badStreamServer;
 
   StreamSubscription<ReadiumReaderStatus>? _statusSub;
   StreamSubscription<Locator>? _locatorSub;
@@ -118,6 +123,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _locatorSub?.cancel();
     _errorSub?.cancel();
     _timebasedSub?.cancel();
+    _badStreamServer?.close(force: true);
     super.dispose();
   }
 
@@ -232,6 +238,120 @@ class _ReaderPageState extends State<ReaderPage> {
       });
     } catch (e) {
       debugPrint('openUnreachableAudiobook error: $e');
+    }
+  }
+
+  // Builds a 44-byte canonical PCM WAV header declaring [dataSize] bytes of
+  // audio data. The header is valid on its own, so a player can start decoding
+  // before the (never fully delivered) data chunk arrives.
+  Uint8List _wavHeader({
+    required int dataSize,
+    int sampleRate = 8000,
+    int channels = 1,
+    int bitsPerSample = 16,
+  }) {
+    final byteRate = sampleRate * channels * (bitsPerSample ~/ 8);
+    final blockAlign = channels * (bitsPerSample ~/ 8);
+    final header = ByteData(44);
+    void putAscii(int offset, String s) {
+      for (var i = 0; i < s.length; i++) {
+        header.setUint8(offset + i, s.codeUnitAt(i));
+      }
+    }
+
+    putAscii(0, 'RIFF');
+    header.setUint32(4, 36 + dataSize, Endian.little);
+    putAscii(8, 'WAVE');
+    putAscii(12, 'fmt ');
+    header.setUint32(16, 16, Endian.little); // PCM fmt chunk size
+    header.setUint16(20, 1, Endian.little); // audioFormat = PCM
+    header.setUint16(22, channels, Endian.little);
+    header.setUint32(24, sampleRate, Endian.little);
+    header.setUint32(28, byteRate, Endian.little);
+    header.setUint16(32, blockAlign, Endian.little);
+    header.setUint16(34, bitsPerSample, Endian.little);
+    putAscii(36, 'data');
+    header.setUint32(40, dataSize, Endian.little);
+    return header.buffer.asUint8List();
+  }
+
+  // Opens an audiobook whose single track streams from a local server that
+  // sends a valid WAV header plus a short PCM prefix, then drops the socket
+  // before satisfying the advertised Content-Length. Playback starts and then
+  // fails mid-stream — the observable failure path (unlike a dead host, which
+  // fails at load time before iOS can surface it).
+  Future<void> _openMidStreamFailAudiobook() async {
+    const sampleRate = 8000;
+    const bytesPerSample = 2; // 16-bit mono
+    const fullDataSize = sampleRate * bytesPerSample * 30; // 30s promised
+    const prefixSize = sampleRate * bytesPerSample; // 1s actually sent
+    final header = _wavHeader(dataSize: fullDataSize, sampleRate: sampleRate);
+    final contentLength = header.length + fullDataSize;
+
+    await _badStreamServer?.close(force: true);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _badStreamServer = server;
+    server.listen((request) async {
+      // Bypass HttpResponse's length bookkeeping: write a raw response whose
+      // Content-Length exceeds what we send, then close early.
+      final socket = await request.response.detachSocket(writeHeaders: false);
+      socket.add(
+        utf8.encode(
+          'HTTP/1.1 200 OK\r\n'
+          'Content-Type: audio/wav\r\n'
+          'Content-Length: $contentLength\r\n'
+          'Accept-Ranges: none\r\n'
+          'Connection: close\r\n\r\n',
+        ),
+      );
+      socket.add(header);
+      socket.add(Uint8List(prefixSize)); // 1s of silence, then nothing
+      await socket.flush();
+      await socket.close();
+      socket.destroy();
+    });
+
+    final audioUrl = 'http://127.0.0.1:${server.port}/audio.wav';
+    final manifest =
+        '''
+{
+  "@context": "https://readium.org/webpub-manifest/context.jsonld",
+  "metadata": {
+    "@type": "http://schema.org/Audiobook",
+    "conformsTo": "https://readium.org/webpub-manifest/profiles/audiobook",
+    "title": "Truncated Stream Audio",
+    "duration": 30
+  },
+  "links": [
+    { "rel": "self", "href": "$audioUrl", "type": "application/audiobook+json" }
+  ],
+  "readingOrder": [
+    { "href": "$audioUrl", "type": "audio/wav", "duration": 30 }
+  ]
+}
+''';
+    try {
+      final tmp = File(
+        '${Directory.systemTemp.path}/'
+        '${DateTime.now().millisecondsSinceEpoch}_truncated.json',
+      );
+      await tmp.writeAsString(manifest);
+      final pub = await _flureadium.openPublication(tmp.path);
+      if (!mounted) return;
+      setState(() {
+        _publication = pub;
+        _lastAudioError = '';
+        _endedSeen = false;
+        _ttsEnabled = false;
+        _lastTtsLocator = null;
+        _readerLocatorAtTtsDisable = null;
+        _audioEnabled = false;
+        _audioPaused = false;
+        _voices = [];
+        _voiceIndex = 0;
+      });
+    } catch (e) {
+      debugPrint('openMidStreamFailAudiobook error: $e');
     }
   }
 
@@ -594,6 +714,10 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _openUnreachableAudiobook,
                           child: const Text('Open AudioBook BadUrl'),
+                        ),
+                        TextButton(
+                          onPressed: _openMidStreamFailAudiobook,
+                          child: const Text('Open AudioBook BadStream'),
                         ),
                         TextButton(
                           onPressed: _openCbz,
