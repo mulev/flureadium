@@ -43,6 +43,11 @@ class _ReaderPageState extends State<ReaderPage> {
   Locator? _locator;
   Locator? _savedLocator;
   ReadiumTimebasedState? _timebasedState;
+  // Bumped each time a publication finishes opening (after openPublication
+  // returns). Integration tests read this before tapping an "Open ..." button
+  // and poll until it increments, so they wait exactly until the new
+  // publication is loaded instead of a fixed duration.
+  int _openGeneration = 0;
   bool _endedSeen = false;
   bool _controlsVisible = true;
   bool _ttsEnabled = false;
@@ -158,6 +163,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
+        _openGeneration++;
         _endedSeen = false;
         _ttsEnabled = false;
         _lastTtsLocator = null;
@@ -181,6 +187,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
+        _openGeneration++;
         _ttsEnabled = false;
         _lastTtsLocator = null;
         _readerLocatorAtTtsDisable = null;
@@ -226,6 +233,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
+        _openGeneration++;
         _lastAudioError = '';
         _endedSeen = false;
         _ttsEnabled = false;
@@ -340,6 +348,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
+        _openGeneration++;
         _lastAudioError = '';
         _endedSeen = false;
         _ttsEnabled = false;
@@ -380,6 +389,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
+        _openGeneration++;
         _ttsEnabled = false;
         _lastTtsLocator = null;
         _readerLocatorAtTtsDisable = null;
@@ -643,6 +653,14 @@ class _ReaderPageState extends State<ReaderPage> {
                           fontSize: 11,
                         ),
                       ),
+                    Text(
+                      key: const Key('open-generation'),
+                      'open-generation: $_openGeneration',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
                     Text(
                       key: const Key('current-track'),
                       'track: ${_timebasedState?.currentLocator?.locations?.position ?? '-'} '

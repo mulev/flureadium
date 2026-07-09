@@ -45,6 +45,32 @@ void main() {
       (tester.widget<Text>(find.byKey(const Key('audio-error'))).data ?? '')
           .replaceFirst('audio-error: ', '');
 
+  // Reads the keyed open-generation counter. The example bumps it once each
+  // time a publication finishes opening (after openPublication returns). The
+  // text is 'open-generation: <n>'.
+  int openGeneration(WidgetTester tester) =>
+      int.tryParse(
+        (tester.widget<Text>(find.byKey(const Key('open-generation'))).data ??
+                '')
+            .replaceFirst('open-generation: ', ''),
+      ) ??
+      0;
+
+  // Taps an 'Open ...' button and waits until the publication has finished
+  // opening, polling the open-generation counter instead of a fixed delay.
+  // Switching to an audiobook does not recreate the reader platform view (no
+  // onReady refire), so the generation bump is the observable "loaded" signal.
+  // The 15-iteration ceiling stays as a safety bound: a stuck open still fails
+  // within the same window as the old fixed wait.
+  Future<void> openPublicationVia(WidgetTester tester, String button) async {
+    final gen = openGeneration(tester);
+    await tester.tap(find.text(button));
+    for (var i = 0; i < 15; i++) {
+      await tester.pump(const Duration(seconds: 1));
+      if (openGeneration(tester) > gen) break;
+    }
+  }
+
   group('Audiobook', () {
     tearDown(() async {
       final flureadium = Flureadium();
@@ -60,14 +86,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
-      await tester.tap(find.text('Open AudioBook'));
-      // Pump in short intervals so platform channel events get processed
-      // during the audiobook switch. A single pump(10s) only processes events
-      // once; frequent pumps catch native callbacks as they arrive. 15s
-      // ceiling adds headroom for parallel test runs where CPU is shared.
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await openPublicationVia(tester, 'Open AudioBook');
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
     });
 
@@ -77,10 +96,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
-      await tester.tap(find.text('Open AudioBook'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
       // audioEnable() + play() + setState; poll for the button (max 15s).
       for (var i = 0; i < 15; i++) {
@@ -96,10 +112,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
-      await tester.tap(find.text('Open AudioBook'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
       for (var i = 0; i < 15; i++) {
         await tester.pump(const Duration(seconds: 1));
@@ -116,10 +129,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
-      await tester.tap(find.text('Open AudioBook'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
       for (var i = 0; i < 15; i++) {
         await tester.pump(const Duration(seconds: 1));
@@ -150,10 +160,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
-      await tester.tap(find.text('Open AudioBook'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
       for (var i = 0; i < 15; i++) {
         await tester.pump(const Duration(seconds: 1));
@@ -178,10 +185,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
-      await tester.tap(find.text('Open AudioBook'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
       for (var i = 0; i < 15; i++) {
         await tester.pump(const Duration(seconds: 1));
@@ -215,10 +219,7 @@ void main() {
           await tester.pump(const Duration(seconds: 1));
           if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
         }
-        await tester.tap(find.text('Open AudioBook'));
-        for (var i = 0; i < 15; i++) {
-          await tester.pump(const Duration(seconds: 1));
-        }
+        await openPublicationVia(tester, 'Open AudioBook');
         await tester.tap(find.text('Audio Play'));
         for (var i = 0; i < 15; i++) {
           await tester.pump(const Duration(seconds: 1));
@@ -252,10 +253,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
-      await tester.tap(find.text('Open AudioBook NoTitle'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await openPublicationVia(tester, 'Open AudioBook NoTitle');
       await tester.tap(find.text('Audio Play'));
       for (var i = 0; i < 15; i++) {
         await tester.pump(const Duration(seconds: 1));
@@ -280,10 +278,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
-      await tester.tap(find.text('Open AudioBook'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
       for (var i = 0; i < 15; i++) {
         await tester.pump(const Duration(seconds: 1));
@@ -312,10 +307,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
-      await tester.tap(find.text('Open AudioBook'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
       for (var i = 0; i < 15; i++) {
         await tester.pump(const Duration(seconds: 1));
@@ -349,10 +341,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
-      await tester.tap(find.text('Open AudioBook'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
       for (var i = 0; i < 15; i++) {
         await tester.pump(const Duration(seconds: 1));
@@ -422,10 +411,7 @@ void main() {
           await tester.pump(const Duration(seconds: 1));
           if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
         }
-        await tester.tap(find.text('Open AudioBook BadUrl'));
-        for (var i = 0; i < 15; i++) {
-          await tester.pump(const Duration(seconds: 1));
-        }
+        await openPublicationVia(tester, 'Open AudioBook BadUrl');
         await tester.tap(find.text('Audio Play'));
 
         var surfaced = false;
@@ -465,10 +451,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
-      await tester.tap(find.text('Open AudioBook BadStream'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await openPublicationVia(tester, 'Open AudioBook BadStream');
       await tester.tap(find.text('Audio Play'));
 
       var surfaced = false;
