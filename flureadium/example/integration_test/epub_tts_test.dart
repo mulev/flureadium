@@ -145,11 +145,13 @@ void main() {
         if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
       }
       await tester.tap(find.text('TTS On'));
-      // Poll for readiness — TTS On flips to 'TTS Off' once enabled. Break early
-      // instead of blindly sleeping the 60s worst-case ceiling.
+      // Poll for the Voice button. It renders only after ttsGetAvailableVoices()
+      // resolves — which lags the 'TTS Off' flip by play() + a voices fetch that
+      // is slow on the Android emulator. Waiting on 'TTS Off' would break too
+      // early; wait on the button this test actually needs. 60s ceiling retained.
       for (var i = 0; i < 60; i++) {
         await tester.pump(const Duration(seconds: 1));
-        if (find.text('TTS Off').evaluate().isNotEmpty) break;
+        if (find.textContaining('Voice').evaluate().isNotEmpty) break;
       }
       final voiceButton = find.textContaining('Voice');
       expect(voiceButton, findsOneWidget);
