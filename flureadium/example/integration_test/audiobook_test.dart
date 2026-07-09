@@ -3,6 +3,7 @@ library;
 
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flureadium/flureadium.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -288,19 +289,15 @@ void main() {
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
 
-      // Advance to the last track: next() clamps at the end, so keep skipping
-      // until the surfaced track stops changing.
-      var previousTrack = currentTrack(tester);
-      for (var skip = 0; skip < 12; skip++) {
-        await tester.tap(find.text('Audio Next Chapter'));
-        final changed = await pumpUntil(
-          tester,
-          () => currentTrack(tester) != previousTrack,
-          timeout: const Duration(seconds: 10),
-        );
-        if (!changed) break; // already at the last track
-        previousTrack = currentTrack(tester);
-      }
+      // Jump straight to the last reading-order track instead of skipping
+      // track by track. goByLink is the same navigation the app performs;
+      // loading the manifest separately just gets the reading order so we can
+      // pick the last link. The audiobook stays opened through the button flow
+      // above — on Android the reader widget must host an EPUB, so an audiobook
+      // cannot be a direct initialAsset boot.
+      final path = await _extractAsset('assets/pubs/38533.audiobook');
+      final pub = await Flureadium().loadPublication(path);
+      await Flureadium().goByLink(pub.readingOrder.last, pub);
 
       // Wait for the last track's duration to be reported.
       await pumpUntil(
@@ -396,4 +393,17 @@ void main() {
       );
     }, skip: Platform.isIOS);
   });
+}
+
+// Extracts a bundled asset to a temp file so loadPublication can read the
+// manifest to pick the last reading-order track. Mirrors the app's own
+// _extractAsset and cbz_test's copy.
+Future<String> _extractAsset(String assetPath) async {
+  final bytes = await rootBundle.load(assetPath);
+  final filename = assetPath.split('/').last;
+  final tmp = File(
+    '${Directory.systemTemp.path}/${DateTime.now().millisecondsSinceEpoch}_$filename',
+  );
+  await tmp.writeAsBytes(bytes.buffer.asUint8List());
+  return tmp.path;
 }
