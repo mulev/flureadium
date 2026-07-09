@@ -164,8 +164,9 @@ Future<Locator> _waitForCbzReaderReady(
   WidgetTester tester, {
   String? href,
 }) async {
-  for (var i = 0; i < 30; i++) {
-    await tester.pump(const Duration(milliseconds: 500));
+  // 60 ticks × 250ms keeps the original 15s ceiling at finer granularity.
+  for (var i = 0; i < 60; i++) {
+    await tester.pump(const Duration(milliseconds: 250));
 
     if (find.byType(ReadiumReaderWidget).evaluate().isEmpty) {
       continue;

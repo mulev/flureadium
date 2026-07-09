@@ -10,6 +10,8 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:flureadium_example/main.dart' as app;
 
+import 'helpers/pump_until.dart';
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -60,16 +62,36 @@ void main() {
   // opening, polling the open-generation counter instead of a fixed delay.
   // Switching to an audiobook does not recreate the reader platform view (no
   // onReady refire), so the generation bump is the observable "loaded" signal.
-  // The 15-iteration ceiling stays as a safety bound: a stuck open still fails
-  // within the same window as the old fixed wait.
+  // The 15s ceiling stays as a safety bound: a stuck open still fails within
+  // the same window as the old fixed wait.
   Future<void> openPublicationVia(WidgetTester tester, String button) async {
     final gen = openGeneration(tester);
     await tester.tap(find.text(button));
-    for (var i = 0; i < 15; i++) {
-      await tester.pump(const Duration(seconds: 1));
-      if (openGeneration(tester) > gen) break;
-    }
+    await pumpUntil(
+      tester,
+      () => openGeneration(tester) > gen,
+      timeout: const Duration(seconds: 15),
+    );
   }
+
+  // Waits for the reader widget after app.main() auto-opens an EPUB.
+  // CircularProgressIndicator prevents pumpAndSettle from settling, so poll
+  // for the reader widget instead. 30s ceiling matches the original.
+  Future<void> waitForReader(WidgetTester tester) => pumpUntil(
+    tester,
+    () => find.byType(ReadiumReaderWidget).evaluate().isNotEmpty,
+    timeout: const Duration(seconds: 30),
+  );
+
+  // Waits for playback to report as active ('Audio Pause' shows while playing).
+  Future<void> waitForPlaying(
+    WidgetTester tester, {
+    Duration timeout = const Duration(seconds: 15),
+  }) => pumpUntil(
+    tester,
+    () => find.text('Audio Pause').evaluate().isNotEmpty,
+    timeout: timeout,
+  );
 
   group('Audiobook', () {
     tearDown(() async {
@@ -80,44 +102,27 @@ void main() {
 
     testWidgets('opens audiobook and shows reader widget', (tester) async {
       app.main();
-      // app.main() auto-opens an EPUB. CircularProgressIndicator prevents
-      // pumpAndSettle from settling, so poll for the reader widget instead.
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-      }
+      await waitForReader(tester);
       await openPublicationVia(tester, 'Open AudioBook');
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
     });
 
     testWidgets('audio play changes button to Audio Pause', (tester) async {
       app.main();
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-      }
+      await waitForReader(tester);
       await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
       // audioEnable() + play() + setState; poll for the button (max 15s).
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester);
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
     testWidgets('audioSeekBy does not crash', (tester) async {
       app.main();
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-      }
+      await waitForReader(tester);
       await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester);
       await tester.tap(find.text('+30s'));
       await tester.pump(const Duration(seconds: 2));
       expect(find.text('Audio Pause'), findsOneWidget);
@@ -125,29 +130,21 @@ void main() {
 
     testWidgets('pause then resume restores playback', (tester) async {
       app.main();
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-      }
+      await waitForReader(tester);
       await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester);
 
       await tester.tap(find.text('Audio Pause'));
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Resume').evaluate().isNotEmpty) break;
-      }
+      await pumpUntil(
+        tester,
+        () => find.text('Audio Resume').evaluate().isNotEmpty,
+        timeout: const Duration(seconds: 5),
+      );
       expect(find.text('Audio Resume'), findsOneWidget);
 
       await tester.tap(find.text('Audio Resume'));
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester, timeout: const Duration(seconds: 5));
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
@@ -156,22 +153,13 @@ void main() {
       // drives when the listener picks a chapter or hits next-track. This
       // guards that the MediaLibraryService migration left it working.
       app.main();
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-      }
+      await waitForReader(tester);
       await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester);
 
       await tester.tap(find.text('Skip Next'));
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester, timeout: const Duration(seconds: 10));
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
@@ -181,29 +169,17 @@ void main() {
       // backward seek. Skip Next is tested above; this guards the symmetric
       // previous path through the shared navigator.
       app.main();
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-      }
+      await waitForReader(tester);
       await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester);
 
       // Advance a chapter first so there is a previous chapter to skip back to.
       await tester.tap(find.text('Skip Next'));
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester, timeout: const Duration(seconds: 10));
 
       await tester.tap(find.text('Skip Prev'));
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester, timeout: const Duration(seconds: 10));
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
@@ -215,28 +191,16 @@ void main() {
         // old delegate re-read playbackInfo -> currentTime() -> __ulock_wait. This
         // guards the cached-state fix.
         app.main();
-        for (var i = 0; i < 30; i++) {
-          await tester.pump(const Duration(seconds: 1));
-          if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-        }
+        await waitForReader(tester);
         await openPublicationVia(tester, 'Open AudioBook');
         await tester.tap(find.text('Audio Play'));
-        for (var i = 0; i < 15; i++) {
-          await tester.pump(const Duration(seconds: 1));
-          if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-        }
+        await waitForPlaying(tester);
         // Advance to track 2 so the next go(to:) crosses a real track boundary.
         await tester.tap(find.text('Skip Next'));
-        for (var i = 0; i < 10; i++) {
-          await tester.pump(const Duration(seconds: 1));
-          if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-        }
+        await waitForPlaying(tester, timeout: const Duration(seconds: 10));
         // Cross-boundary go-to while playing — the path that deadlocked pre-fix.
         await tester.tap(find.text('Ch.1'));
-        for (var i = 0; i < 15; i++) {
-          await tester.pump(const Duration(seconds: 1));
-          if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-        }
+        await waitForPlaying(tester);
         expect(find.text('Audio Pause'), findsOneWidget);
       },
     );
@@ -249,23 +213,14 @@ void main() {
       // builders down their "Chapter N" fallback path with the actual audio
       // engine — the path that is otherwise only unit-tested with mock pubs.
       app.main();
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-      }
+      await waitForReader(tester);
       await openPublicationVia(tester, 'Open AudioBook NoTitle');
       await tester.tap(find.text('Audio Play'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester);
 
       // Skip into the untitled second chapter.
       await tester.tap(find.text('Skip Next'));
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester, timeout: const Duration(seconds: 10));
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
@@ -274,24 +229,19 @@ void main() {
       // next reading-order track — not seek inside the current one. The bug
       // this guards made next() a 30s seek, so the track never changed.
       app.main();
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-      }
+      await waitForReader(tester);
       await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester);
 
       final before = currentTrack(tester);
 
       await tester.tap(find.text('Audio Next Chapter'));
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (currentTrack(tester) != before) break;
-      }
+      await pumpUntil(
+        tester,
+        () => currentTrack(tester) != before,
+        timeout: const Duration(seconds: 10),
+      );
 
       // The displayed track changed and playback is still active.
       expect(currentTrack(tester), isNot(before));
@@ -303,20 +253,16 @@ void main() {
       // move exactly one track and clamp at the ends, so this leaves the
       // current track unchanged and does not crash.
       app.main();
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-      }
+      await waitForReader(tester);
       await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester);
 
       final before = currentTrack(tester);
 
       await tester.tap(find.text('Audio Prev Chapter'));
+      // Fixed settle wait: there is no state change to poll for — assert the
+      // track stayed put after giving the no-op time to (not) act.
       for (var i = 0; i < 5; i++) {
         await tester.pump(const Duration(seconds: 1));
       }
@@ -337,39 +283,31 @@ void main() {
       // it (that clamps to paused). So advance to the last track, seek to just
       // before its end, and let it play out naturally instead of over-seeking.
       app.main();
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-      }
+      await waitForReader(tester);
       await openPublicationVia(tester, 'Open AudioBook');
       await tester.tap(find.text('Audio Play'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('Audio Pause').evaluate().isNotEmpty) break;
-      }
+      await waitForPlaying(tester);
 
       // Advance to the last track: next() clamps at the end, so keep skipping
       // until the surfaced track stops changing.
       var previousTrack = currentTrack(tester);
       for (var skip = 0; skip < 12; skip++) {
         await tester.tap(find.text('Audio Next Chapter'));
-        var changed = false;
-        for (var i = 0; i < 10; i++) {
-          await tester.pump(const Duration(seconds: 1));
-          if (currentTrack(tester) != previousTrack) {
-            changed = true;
-            break;
-          }
-        }
+        final changed = await pumpUntil(
+          tester,
+          () => currentTrack(tester) != previousTrack,
+          timeout: const Duration(seconds: 10),
+        );
         if (!changed) break; // already at the last track
         previousTrack = currentTrack(tester);
       }
 
       // Wait for the last track's duration to be reported.
-      for (var i = 0; i < 10; i++) {
-        if (timebasedPosition(tester).durMs > 0) break;
-        await tester.pump(const Duration(seconds: 1));
-      }
+      await pumpUntil(
+        tester,
+        () => timebasedPosition(tester).durMs > 0,
+        timeout: const Duration(seconds: 10),
+      );
       final pos = timebasedPosition(tester);
       expect(pos.durMs, greaterThan(0), reason: 'duration should be known');
 
@@ -388,10 +326,11 @@ void main() {
       // Let the last track play out; the ended latch must flip within a
       // bounded window. The latch (not the resting state) is asserted because
       // the player can settle to `paused` the instant after emitting `ended`.
-      for (var i = 0; i < 45; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (endedSeen(tester)) break;
-      }
+      await pumpUntil(
+        tester,
+        () => endedSeen(tester),
+        timeout: const Duration(seconds: 45),
+      );
 
       expect(endedSeen(tester), isTrue);
     });
@@ -407,21 +346,15 @@ void main() {
         // best-effort limitation in FlutterAudioNavigator). The cross-platform
         // observable failure is exercised by 'partial stream failure ...' below.
         app.main();
-        for (var i = 0; i < 30; i++) {
-          await tester.pump(const Duration(seconds: 1));
-          if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-        }
+        await waitForReader(tester);
         await openPublicationVia(tester, 'Open AudioBook BadUrl');
         await tester.tap(find.text('Audio Play'));
 
-        var surfaced = false;
-        for (var i = 0; i < 20; i++) {
-          await tester.pump(const Duration(seconds: 1));
-          if (lastAudioError(tester).isNotEmpty) {
-            surfaced = true;
-            break;
-          }
-        }
+        final surfaced = await pumpUntil(
+          tester,
+          () => lastAudioError(tester).isNotEmpty,
+          timeout: const Duration(seconds: 20),
+        );
         expect(
           surfaced,
           isTrue,
@@ -447,21 +380,15 @@ void main() {
       // platform-specific/ios.md). The Android forwarding itself is also
       // covered by the ReadiumReaderTimebasedErrorTest unit test.
       app.main();
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-      }
+      await waitForReader(tester);
       await openPublicationVia(tester, 'Open AudioBook BadStream');
       await tester.tap(find.text('Audio Play'));
 
-      var surfaced = false;
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (lastAudioError(tester).isNotEmpty) {
-          surfaced = true;
-          break;
-        }
-      }
+      final surfaced = await pumpUntil(
+        tester,
+        () => lastAudioError(tester).isNotEmpty,
+        timeout: const Duration(seconds: 30),
+      );
       expect(
         surfaced,
         isTrue,

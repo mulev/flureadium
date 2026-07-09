@@ -4,11 +4,14 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:flureadium_example/main.dart' as app;
 
+import 'helpers/pump_until.dart';
+
 Future<void> _waitForReader(WidgetTester tester) async {
-  for (var i = 0; i < 15; i++) {
-    await tester.pump(const Duration(seconds: 1));
-    if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-  }
+  await pumpUntil(
+    tester,
+    () => find.byType(ReadiumReaderWidget).evaluate().isNotEmpty,
+    timeout: const Duration(seconds: 15),
+  );
 }
 
 void _navigationTests(String assetLabel, String Function() openButtonLabel) {
