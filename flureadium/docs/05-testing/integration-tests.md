@@ -62,6 +62,43 @@ streams deliver events asynchronously. Test timing does not guarantee stream del
 a 5-second `pumpAndSettle` window — this works because `onReady` ensures the channel is
 active before the reader starts emitting locator events.
 
+## Bounded polling with `pumpUntil`
+
+Most tests wait for an async signal — the reader widget mounting, a button label
+flipping once native playback starts. `pumpAndSettle` can't be used here: a
+`CircularProgressIndicator` or a WebView keeps scheduling frames, so it never
+settles. The pattern is to pump on a fixed tick and stop once the signal shows,
+with a wall-clock ceiling as a safety bound.
+
+`integration_test/helpers/pump_until.dart` holds the shared helper:
+
+```dart
+await pumpUntil(
+  tester,
+  () => find.byType(ReadiumReaderWidget).evaluate().isNotEmpty,
+  timeout: const Duration(seconds: 15),
+);
+```
+
+It pumps every `interval` (250ms by default) until the condition holds or the
+cumulative time reaches `timeout`, then returns whether the condition held. It
+pumps first and checks after, so a caller keeps the same ceiling it had as a
+hand-rolled loop — only the tick shrinks. At the old 1-second granularity a
+condition met at 200ms still cost a full second; at 250ms it costs one tick.
+
+Conventions:
+
+- **Every bounded poll uses `pumpUntil`** with its own `timeout`. Keep the
+  ceiling that the test needs (15s for a reader mount, 60s for Android TTS
+  cold-start, and so on) — the helper only changes the tick, never the ceiling.
+- **Settle waits stay explicit.** A fixed `await tester.pump(const Duration(seconds: 3))`
+  after a tap, with no condition to break on, is a deliberate real-time wait.
+  Leave those as bare `pump` calls — converting them would change timing and
+  risk races.
+- **A specialised poll that needs an async body** (CBZ's `_waitForCbzReaderReady`
+  awaits `getCurrentLocator()` each tick and returns the `Locator`) stays a
+  hand-rolled loop, but ticks at the same 250ms so its granularity matches.
+
 ## Prerequisites
 
 ### Android
