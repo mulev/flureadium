@@ -9,8 +9,7 @@ import 'package:flureadium/flureadium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:flureadium_example/main.dart' as app;
-
+import 'helpers/ensure_app_showing.dart';
 import 'helpers/pump_until.dart';
 
 void main() {
@@ -48,40 +47,20 @@ void main() {
       (tester.widget<Text>(find.byKey(const Key('audio-error'))).data ?? '')
           .replaceFirst('audio-error: ', '');
 
-  // Reads the keyed open-generation counter. The example bumps it once each
-  // time a publication finishes opening (after openPublication returns). The
-  // text is 'open-generation: <n>'.
-  int openGeneration(WidgetTester tester) =>
-      int.tryParse(
-        (tester.widget<Text>(find.byKey(const Key('open-generation'))).data ??
-                '')
-            .replaceFirst('open-generation: ', ''),
-      ) ??
-      0;
-
-  // Taps an 'Open ...' button and waits until the publication has finished
-  // opening, polling the open-generation counter instead of a fixed delay.
-  // Switching to an audiobook does not recreate the reader platform view (no
-  // onReady refire), so the generation bump is the observable "loaded" signal.
-  // The 15s ceiling stays as a safety bound: a stuck open still fails within
-  // the same window as the old fixed wait.
-  Future<void> openPublicationVia(WidgetTester tester, String button) async {
-    final gen = openGeneration(tester);
-    await tester.tap(find.text(button));
-    await pumpUntil(
-      tester,
-      () => openGeneration(tester) > gen,
-      timeout: const Duration(seconds: 15),
-    );
-  }
-
-  // Waits for the reader widget after app.main() auto-opens an EPUB.
-  // CircularProgressIndicator prevents pumpAndSettle from settling, so poll
-  // for the reader widget instead. 30s ceiling matches the original.
-  Future<void> waitForReader(WidgetTester tester) => pumpUntil(
+  // Boots (or reuses) the app and opens the wanted audiobook. On Android the
+  // reader widget must host an EPUB, so an audiobook cannot be a direct
+  // initialAsset boot: the group cold-boots the host EPUB and then opens the
+  // audiobook via [button]. openAfterColdBoot makes the cold-boot path tap
+  // [button] too, so both cold and reuse calls end on a freshly opened
+  // audiobook — its open-generation bump being the observable "loaded" signal.
+  Future<void> showAudiobook(
+    WidgetTester tester, {
+    String button = 'Open AudioBook',
+  }) => ensureAppShowing(
     tester,
-    () => find.byType(ReadiumReaderWidget).evaluate().isNotEmpty,
-    timeout: const Duration(seconds: 30),
+    initialAsset: 'assets/pubs/moby_dick.epub',
+    reopenButton: button,
+    openAfterColdBoot: true,
   );
 
   // Waits for playback to report as active ('Audio Pause' shows while playing).
@@ -102,16 +81,12 @@ void main() {
     });
 
     testWidgets('opens audiobook and shows reader widget', (tester) async {
-      app.main();
-      await waitForReader(tester);
-      await openPublicationVia(tester, 'Open AudioBook');
+      await showAudiobook(tester);
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
     });
 
     testWidgets('audio play changes button to Audio Pause', (tester) async {
-      app.main();
-      await waitForReader(tester);
-      await openPublicationVia(tester, 'Open AudioBook');
+      await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));
       // audioEnable() + play() + setState; poll for the button (max 15s).
       await waitForPlaying(tester);
@@ -119,9 +94,7 @@ void main() {
     });
 
     testWidgets('audioSeekBy does not crash', (tester) async {
-      app.main();
-      await waitForReader(tester);
-      await openPublicationVia(tester, 'Open AudioBook');
+      await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
       await tester.tap(find.text('+30s'));
@@ -130,9 +103,7 @@ void main() {
     });
 
     testWidgets('pause then resume restores playback', (tester) async {
-      app.main();
-      await waitForReader(tester);
-      await openPublicationVia(tester, 'Open AudioBook');
+      await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
 
@@ -153,9 +124,7 @@ void main() {
       // Skipping a chapter is the navigator path a head unit (Android Auto)
       // drives when the listener picks a chapter or hits next-track. This
       // guards that the MediaLibraryService migration left it working.
-      app.main();
-      await waitForReader(tester);
-      await openPublicationVia(tester, 'Open AudioBook');
+      await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
 
@@ -169,9 +138,7 @@ void main() {
       // Android Auto, PluginSimpleBasePlayer remaps a head-unit "previous" to a
       // backward seek. Skip Next is tested above; this guards the symmetric
       // previous path through the shared navigator.
-      app.main();
-      await waitForReader(tester);
-      await openPublicationVia(tester, 'Open AudioBook');
+      await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
 
@@ -191,9 +158,7 @@ void main() {
         // loadedTimeRangesDidChange synchronously while AVPlayer's lock is held; the
         // old delegate re-read playbackInfo -> currentTime() -> __ulock_wait. This
         // guards the cached-state fix.
-        app.main();
-        await waitForReader(tester);
-        await openPublicationVia(tester, 'Open AudioBook');
+        await showAudiobook(tester);
         await tester.tap(find.text('Audio Play'));
         await waitForPlaying(tester);
         // Advance to track 2 so the next go(to:) crosses a real track boundary.
@@ -213,9 +178,7 @@ void main() {
       // title. Skipping into it drives the real native now-playing / browse-tree
       // builders down their "Chapter N" fallback path with the actual audio
       // engine — the path that is otherwise only unit-tested with mock pubs.
-      app.main();
-      await waitForReader(tester);
-      await openPublicationVia(tester, 'Open AudioBook NoTitle');
+      await showAudiobook(tester, button: 'Open AudioBook NoTitle');
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
 
@@ -229,9 +192,7 @@ void main() {
       // Audio Next Chapter drives Flureadium.next(), which must move to the
       // next reading-order track — not seek inside the current one. The bug
       // this guards made next() a 30s seek, so the track never changed.
-      app.main();
-      await waitForReader(tester);
-      await openPublicationVia(tester, 'Open AudioBook');
+      await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
 
@@ -253,9 +214,7 @@ void main() {
       // From track 1, Audio Prev Chapter must be bounded: next()/previous()
       // move exactly one track and clamp at the ends, so this leaves the
       // current track unchanged and does not crash.
-      app.main();
-      await waitForReader(tester);
-      await openPublicationVia(tester, 'Open AudioBook');
+      await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
 
@@ -283,16 +242,14 @@ void main() {
       // the player reaches the end while playing — NOT when a seek lands past
       // it (that clamps to paused). So advance to the last track, seek to just
       // before its end, and let it play out naturally instead of over-seeking.
-      app.main();
-      await waitForReader(tester);
-      await openPublicationVia(tester, 'Open AudioBook');
+      await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
 
       // Jump straight to the last reading-order track instead of skipping
       // track by track. goByLink is the same navigation the app performs;
       // loading the manifest separately just gets the reading order so we can
-      // pick the last link. The audiobook stays opened through the button flow
+      // pick the last link. The audiobook stays opened through showAudiobook
       // above — on Android the reader widget must host an EPUB, so an audiobook
       // cannot be a direct initialAsset boot.
       final path = await _extractAsset('assets/pubs/38533.audiobook');
@@ -342,9 +299,7 @@ void main() {
         // player item and posts no notification the plugin can observe (see the
         // best-effort limitation in FlutterAudioNavigator). The cross-platform
         // observable failure is exercised by 'partial stream failure ...' below.
-        app.main();
-        await waitForReader(tester);
-        await openPublicationVia(tester, 'Open AudioBook BadUrl');
+        await showAudiobook(tester, button: 'Open AudioBook BadUrl');
         await tester.tap(find.text('Audio Play'));
 
         final surfaced = await pumpUntil(
@@ -376,9 +331,7 @@ void main() {
       // error delivery stays best-effort (see FlutterAudioNavigator and
       // platform-specific/ios.md). The Android forwarding itself is also
       // covered by the ReadiumReaderTimebasedErrorTest unit test.
-      app.main();
-      await waitForReader(tester);
-      await openPublicationVia(tester, 'Open AudioBook BadStream');
+      await showAudiobook(tester, button: 'Open AudioBook BadStream');
       await tester.tap(find.text('Audio Play'));
 
       final surfaced = await pumpUntil(

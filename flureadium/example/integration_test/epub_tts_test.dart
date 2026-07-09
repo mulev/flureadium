@@ -1,23 +1,23 @@
 @Tags(['native'])
 library;
 
-import 'package:flureadium/flureadium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:flureadium_example/main.dart' as app;
+import 'package:flureadium/flureadium.dart';
 
+import 'helpers/ensure_app_showing.dart';
 import 'helpers/pump_until.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  // pumpAndSettle can hang when a PlatformView (WebView) keeps scheduling
-  // frames. Poll for the reader widget instead. 15s ceiling matches original.
-  Future<void> waitForReader(WidgetTester tester) => pumpUntil(
+  // Boots (or reuses) the app on the TTS EPUB before each test. Reuse reopens
+  // via 'Open EPUB', which resets TTS/audio state so tests stay isolated.
+  Future<void> showEpub(WidgetTester tester) => ensureAppShowing(
     tester,
-    () => find.byType(ReadiumReaderWidget).evaluate().isNotEmpty,
-    timeout: const Duration(seconds: 15),
+    initialAsset: 'assets/pubs/moby_dick.epub',
+    reopenButton: 'Open EPUB',
   );
 
   // Polls for a text label to appear, keeping each call's own ceiling.
@@ -41,8 +41,7 @@ void main() {
     testWidgets('ttsGetSystemVoices returns voices before TTS is enabled', (
       tester,
     ) async {
-      app.main();
-      await waitForReader(tester);
+      await showEpub(tester);
       // Call ttsGetSystemVoices before enabling TTS — should work without a navigator.
       final flureadium = Flureadium();
       final voices = await flureadium.ttsGetSystemVoices();
@@ -52,8 +51,7 @@ void main() {
     });
 
     testWidgets('TTS enable makes sentence nav buttons appear', (tester) async {
-      app.main();
-      await waitForReader(tester);
+      await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll every tick — iOS TTS starts in ~5s; Android emulator can take ~30s.
       // Ceiling kept at 60s to match the original safe upper bound.
@@ -71,8 +69,7 @@ void main() {
     testWidgets('ttsCanSpeak returns true — TTS On enables without snackbar', (
       tester,
     ) async {
-      app.main();
-      await waitForReader(tester);
+      await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll for readiness — TTS On flips to 'TTS Off' once enabled. Break early
       // instead of blindly sleeping the 60s worst-case ceiling.
@@ -85,8 +82,7 @@ void main() {
     });
 
     testWidgets('tts pause then resume restores playing state', (tester) async {
-      app.main();
-      await waitForReader(tester);
+      await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll for 'Pause TTS' — requires _ttsPlaybackState == playing, which
       // arrives via the onTimebasedPlayerStateChanged stream after play().
@@ -115,8 +111,7 @@ void main() {
     });
 
     testWidgets('tts next sentence does not crash', (tester) async {
-      app.main();
-      await waitForReader(tester);
+      await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll for the sentence nav button — it appears once TTS is enabled.
       // Break early instead of blindly sleeping the 60s worst-case ceiling.
@@ -131,8 +126,7 @@ void main() {
     });
 
     testWidgets('tts previous sentence does not crash', (tester) async {
-      app.main();
-      await waitForReader(tester);
+      await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll for the sentence nav button — it appears once TTS is enabled.
       // Break early instead of blindly sleeping the 60s worst-case ceiling.
@@ -147,8 +141,7 @@ void main() {
     });
 
     testWidgets('tts voice cycling does not crash', (tester) async {
-      app.main();
-      await waitForReader(tester);
+      await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll for the Voice button. It renders only after ttsGetAvailableVoices()
       // resolves — which lags the 'TTS Off' flip by play() + a voices fetch that
@@ -167,8 +160,7 @@ void main() {
     });
 
     testWidgets('tts disable and re-enable does not crash', (tester) async {
-      app.main();
-      await waitForReader(tester);
+      await showEpub(tester);
       // Enable TTS
       await tester.tap(find.text('TTS On'));
       await waitForText(
@@ -203,8 +195,7 @@ void main() {
     testWidgets(
       'tts disable, navigate to next page, re-enable does not crash',
       (tester) async {
-        app.main();
-        await waitForReader(tester);
+        await showEpub(tester);
         // Enable TTS
         await tester.tap(find.text('TTS On'));
         await waitForText(
@@ -251,8 +242,7 @@ void main() {
     );
 
     testWidgets('tts off hides sentence nav buttons', (tester) async {
-      app.main();
-      await waitForReader(tester);
+      await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll for the sentence nav button — it appears once TTS is enabled.
       // Break early instead of blindly sleeping the 60s worst-case ceiling.

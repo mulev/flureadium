@@ -2,9 +2,7 @@ import 'package:flureadium/flureadium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:flureadium_example/main.dart' as app;
-
-import 'helpers/pump_until.dart';
+import 'helpers/ensure_app_showing.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -18,22 +16,20 @@ void main() {
     testWidgets('app auto-opens DIVINA and shows reader widget', (
       tester,
     ) async {
-      app.main(initialAsset: 'assets/pubs/sample_visual.divina');
-      await pumpUntil(
+      await ensureAppShowing(
         tester,
-        () => find.byType(ReadiumReaderWidget).evaluate().isNotEmpty,
-        timeout: const Duration(seconds: 15),
+        initialAsset: 'assets/pubs/sample_visual.divina',
+        reopenButton: 'Open DIVINA',
       );
 
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
     });
 
     testWidgets('navigate left and right in DIVINA reader', (tester) async {
-      app.main(initialAsset: 'assets/pubs/sample_visual.divina');
-      await pumpUntil(
+      await ensureAppShowing(
         tester,
-        () => find.byType(ReadiumReaderWidget).evaluate().isNotEmpty,
-        timeout: const Duration(seconds: 15),
+        initialAsset: 'assets/pubs/sample_visual.divina',
+        reopenButton: 'Open DIVINA',
       );
 
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
@@ -49,11 +45,10 @@ void main() {
     testWidgets('revisiting pages loads from cache without errors', (
       tester,
     ) async {
-      app.main(initialAsset: 'assets/pubs/sample_visual.divina');
-      await pumpUntil(
+      await ensureAppShowing(
         tester,
-        () => find.byType(ReadiumReaderWidget).evaluate().isNotEmpty,
-        timeout: const Duration(seconds: 15),
+        initialAsset: 'assets/pubs/sample_visual.divina',
+        reopenButton: 'Open DIVINA',
       );
 
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
