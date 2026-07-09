@@ -121,6 +121,49 @@ widget hosts a visual navigator and an audiobook has none, so it must ride on an
 EPUB host; audio plays on top. CBZ and DIVINA are image publications with their own
 navigator, so those groups can and do boot directly via `initialAsset`.
 
+## Sharing one app boot across a group with `ensureAppShowing`
+
+Booting the app and opening a publication is the largest fixed cost each test
+pays. Tests in a group open the same publication type, so they can boot once and
+reuse the running app between tests instead of tearing it down and starting over.
+
+For that, a helper needs one signal every open exposes so it can tell when the
+switch to the next publication has finished. `_openPublicationAsset` in
+`example/lib/main.dart` now bumps `_openGeneration` and resets `_endedSeen` in
+its `setState`, matching what `_openAudiobook` already did. So whether a
+publication opens at cold boot or from an `Open …` button tap, the
+`open-generation` counter increments once it has loaded, and `ended-seen` starts
+clean.
+
+`integration_test/helpers/ensure_app_showing.dart` turns that into the group
+helper:
+
+```dart
+await ensureAppShowing(
+  tester,
+  initialAsset: 'assets/pubs/sample_comic.cbz',
+  reopenButton: 'Open CBZ',
+);
+```
+
+The first call in a suite finds no app on screen and cold-boots via
+`initialAsset`. Later calls find the app already up, tap `reopenButton`, and poll
+`open-generation` until it bumps. Whether the app is already showing is read from
+the widget tree — the reader view is mounted, or (after a `tearDown` that closed
+the publication) the control bar with the reopen button is showing — so no
+module-level flag leaks across files or suite re-runs.
+
+Conventions:
+
+- **`tearDown` closes the publication, not the app.** Closing the publication
+  leaves the control bar and its `Open …` buttons on screen, which is exactly the
+  state the next `ensureAppShowing` call reuses.
+- **A reused app carries state.** Assert that anything a test depends on is reset
+  on reopen (the `open-generation` bump and `ended-seen` reset are the loaded
+  signal; check any other state your test reads).
+
+This is applied to the group test files in Phase 4.
+
 ## Prerequisites
 
 ### Android
