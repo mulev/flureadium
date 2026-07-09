@@ -208,6 +208,17 @@ listener, cancel and clear the forwarding jobs, then close the session. Cancelli
 the jobs first stops any late tick from racing the listener after `ended` is
 delivered.
 
+### Audiobook Streaming Errors
+
+When ExoPlayer reports a playback failure — a `Source error` from an unreachable
+host, a 404, or a stream that drops mid-play — it reaches
+`AudiobookNavigator` as `AudioNavigator.State.Failure` and is relayed through
+`onTimebasedPlaybackFailure`. `ReadiumReader.onTimebasedPlaybackFailure` forwards
+it to Flutter's `onErrorEvent` via `sendError`, with `code: "TimebasedError"`
+and `data` set to the Readium error category. Unlike iOS (see
+[ios.md](ios.md#audiobook-error-forwarding)), Android surfaces both load-time
+and mid-stream failures. Covered by `ReadiumReaderTimebasedErrorTest`.
+
 **Files:**
 - `AudiobookNavigator.kt` — `onAudioNavigatorEnded()` and the `State.Ended` branch
 

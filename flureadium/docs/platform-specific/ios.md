@@ -219,10 +219,20 @@ ways:
   and `AVPlayerItemNewErrorLogEntry` (`object: nil`) over its lifetime, removed
   in `dispose()`. Both route through the same `handlePlaybackFailure` seam.
 
-**Limitation:** a pure load-time `AVPlayerItem.status == .failed` is a KVO
-signal on the private item and is not guaranteed to post a notification, so it
-may not be caught. A deterministic upstream hook is a tracked follow-up. Treat
-audio error delivery as best-effort.
+**Limitation:** the NotificationCenter observers do not fire for every failure.
+A pure **load-time** `AVPlayerItem.status == .failed` — e.g. an unreachable host
+that fails before playback — is a KVO signal on the private item that posts no
+notification. In practice even some **mid-stream** interruptions go unreported
+(a truncated stream can play the buffered part and stop without an error entry).
+So treat iOS audio-error delivery as **best-effort** — the player may stall at
+0:00 with no `onErrorEvent`. A deterministic upstream hook is a tracked
+follow-up. Android has no such gap: `ReadiumReader.onTimebasedPlaybackFailure`
+forwards every timebased failure.
+
+Because iOS delivery is not guaranteed, the `partial stream failure` integration
+test is skipped on iOS (it runs on Android). The load-time `unreachable streamed
+audio` test is skipped everywhere. `ReadiumReaderTimebasedErrorTest` covers the
+Android forwarding at the unit level.
 
 ### Local Server
 

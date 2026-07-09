@@ -178,11 +178,14 @@ final errorSub = flureadium.onErrorEvent.listen((error) {
 // Cancel in dispose().
 ```
 
-Delivery is best-effort on iOS (see the limitation in
+Android surfaces both load-time and mid-stream failures. On iOS, delivery is
+best-effort — the observers may not fire for a given failure, so the player can
+stall at 0:00 with no error event; don't depend on it (see the limitation in
 [error-handling.md](error-handling.md#audiobook-streaming-failures) and
 [platform-specific/ios.md](../platform-specific/ios.md)). The integration test
-`audiobook_test.dart` opens an audiobook whose only track points at an
-unreachable host and asserts the error surfaces on this stream.
+`partial stream failure surfaces an error event` in `audiobook_test.dart` opens
+an audiobook whose track drops mid-stream and asserts the error surfaces; it
+runs on Android (skipped on iOS, where delivery is not guaranteed).
 
 ## Audio Preferences
 

@@ -137,20 +137,33 @@ final sub = flureadium.onErrorEvent.listen((error) {
 When a streamed audio resource fails to load (unreachable host, 404, codec
 rejection), the native audio path forwards the failure onto this stream:
 
+- **Android** — `ReadiumReader.onTimebasedPlaybackFailure` forwards the failure
+  onto the stream with `code: "TimebasedError"` and `data` set to the Readium
+  error category (e.g. `"unknown"`). This covers both load-time failures (dead
+  host, 404) and mid-stream failures.
 - **iOS** — the plugin implements the timebased navigator's `encounteredError`
-  hook, which forwards both Readium's `didFailToLoadResourceAt` and a
-  best-effort NotificationCenter observation of AVFoundation's
+  hook, which forwards Readium's `didFailToLoadResourceAt` plus a best-effort
+  NotificationCenter observation of AVFoundation's
   `AVPlayerItemFailedToPlayToEndTime` / `AVPlayerItemNewErrorLogEntry`. Errors
-  arrive with `code: "TimebasedError"`.
-- **Android** — the timebased playback-failure callback forwards onto the same
-  channel.
+  arrive with the same `code: "TimebasedError"`.
 
-**Known limitation (iOS):** Readium keeps its `AVPlayer` private, so a pure
-load-time `AVPlayerItem.status == .failed` is a KVO signal that is not
-guaranteed to post a notification. The NotificationCenter net catches
-failed-to-play-to-end and new-error-log entries; a deterministic load-failure
-hook is tracked as an upstream follow-up. Treat audio error delivery as
-best-effort, not a guarantee for every failure mode.
+**Known limitation (iOS):** Readium keeps its `AVPlayer` private, so the plugin
+can only observe failures through `NotificationCenter`
+(`AVPlayerItemFailedToPlayToEndTime`, `AVPlayerItemNewErrorLogEntry`). In
+practice these do not fire for every failure — a load-time failure (unreachable
+host, where `AVPlayerItem.status` goes straight to `.failed`) is a KVO signal
+that posts no notification, and even some mid-stream interruptions are not
+reported. **Treat iOS audio-error delivery as best-effort — do not rely on an
+error event for a given failure; the player may simply stall at 0:00.** A
+deterministic upstream hook is tracked as a follow-up.
+
+Android has no such gap — every timebased failure is forwarded. Coverage:
+`ReadiumReaderTimebasedErrorTest` (Android unit) verifies the forwarding, and
+the `partial stream failure surfaces an error event` integration test asserts it
+end-to-end on Android (skipped on iOS, where delivery is best-effort). The
+load-time `unreachable streamed audio` integration test is skipped everywhere —
+kept for documentation and manual runs, with the Android forwarding it would
+exercise already covered by the unit test.
 
 ---
 
