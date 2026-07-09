@@ -75,9 +75,13 @@ void main() {
 
   group('Audiobook', () {
     tearDown(() async {
-      final flureadium = Flureadium();
-      await flureadium.stop();
-      await flureadium.closePublication();
+      // Stop playback but leave the publication open. The next test's
+      // ensureAppShowing switches publications via the Open button, exactly as a
+      // user opening another book does — the app-accurate teardown. Closing the
+      // container here while the reader widget is still mounted is a sequence the
+      // app never performs, and on Android it races the live WebView still
+      // reading the container (flureadium-i0s).
+      await Flureadium().stop();
     });
 
     testWidgets('opens audiobook and shows reader widget', (tester) async {

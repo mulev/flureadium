@@ -33,9 +33,11 @@ void main() {
 
   group('EPUB TTS', () {
     tearDown(() async {
-      final flureadium = Flureadium();
-      await flureadium.stop();
-      await flureadium.closePublication();
+      // Stop TTS playback but leave the publication open. The next test's
+      // ensureAppShowing reopens via the Open button, switching publications the
+      // way the app does. Closing the container here under a still-mounted reader
+      // is not an app flow and races the Android WebView (flureadium-i0s).
+      await Flureadium().stop();
     });
 
     testWidgets('ttsGetSystemVoices returns voices before TTS is enabled', (

@@ -11,10 +11,9 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('CBZ', () {
-    tearDown(() async {
-      final flureadium = Flureadium();
-      await flureadium.closePublication();
-    });
+    // No tearDown close: the next test's ensureAppShowing switches publications
+    // via the Open button, mirroring the app. Closing the container under a
+    // still-mounted reader is not an app flow (flureadium-i0s).
 
     testWidgets('app auto-opens CBZ and shows reader widget', (tester) async {
       await ensureAppShowing(

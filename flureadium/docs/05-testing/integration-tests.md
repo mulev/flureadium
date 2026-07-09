@@ -155,9 +155,15 @@ module-level flag leaks across files or suite re-runs.
 
 Conventions:
 
-- **`tearDown` closes the publication, not the app.** Closing the publication
-  leaves the control bar and its `Open …` buttons on screen, which is exactly the
-  state the next `ensureAppShowing` call reuses.
+- **`tearDown` does not close the publication.** Switching publications is the
+  next test's job, done through `ensureAppShowing` tapping an `Open …` button —
+  exactly what a user opening another book does. The app's own open path releases
+  the previous publication on the main thread as the reader rebuilds. Closing the
+  container in `tearDown` while the reader widget is still mounted is a sequence
+  the app never performs; on Android it races the live WebView still reading the
+  container and crashes the process (`flureadium-i0s`). Audio groups still call
+  `Flureadium().stop()` in `tearDown` to halt playback — that touches the player,
+  not the container.
 - **A reused app carries state.** Assert that anything a test depends on is reset
   on reopen (the `open-generation` bump and `ended-seen` reset are the loaded
   signal; check any other state your test reads). Every `Open …` opener resets
