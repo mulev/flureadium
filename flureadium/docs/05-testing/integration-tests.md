@@ -160,9 +160,33 @@ Conventions:
   state the next `ensureAppShowing` call reuses.
 - **A reused app carries state.** Assert that anything a test depends on is reset
   on reopen (the `open-generation` bump and `ended-seen` reset are the loaded
-  signal; check any other state your test reads).
+  signal; check any other state your test reads). Every `Open …` opener resets
+  TTS, audio, `ended-seen`, and the audio-error latch in its `setState`, so a
+  reopen gives each test a clean slate.
 
-This is applied to the group test files in Phase 4.
+### Audiobooks: boot a host EPUB, then open the audiobook
+
+An audiobook has no visual navigator, so on Android it cannot be a direct
+`initialAsset` boot — it rides on an EPUB host. `ensureAppShowing` takes
+`openAfterColdBoot` for this: the group cold-boots the host EPUB and then taps
+the audiobook's `Open …` button, so both the cold-boot and reuse paths finish on
+a freshly opened audiobook.
+
+```dart
+await ensureAppShowing(
+  tester,
+  initialAsset: 'assets/pubs/moby_dick.epub',
+  reopenButton: 'Open AudioBook',
+  openAfterColdBoot: true,
+);
+```
+
+The audiobook group wraps this in a local `showAudiobook(tester, button: …)` so
+variant tests (`Open AudioBook NoTitle`/`BadUrl`/`BadStream`) reuse the same boot
+path and just pass their own button.
+
+This is applied to all four group test files (`audiobook`, `cbz`, `divina`,
+`epub_tts`) — each boots once per group and reuses the running app between tests.
 
 ## Prerequisites
 
