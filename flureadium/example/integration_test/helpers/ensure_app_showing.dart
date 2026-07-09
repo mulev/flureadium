@@ -30,10 +30,18 @@ bool appAlreadyShowing(WidgetTester tester, String reopenButton) =>
 /// signal every open exposes after the `_openPublicationAsset` change. Lets a
 /// test group boot once and reuse the app between tests instead of paying a
 /// fresh boot per test.
+///
+/// Set [openAfterColdBoot] when the wanted publication cannot be an
+/// `initialAsset` boot — an audiobook has no visual reader to host on Android,
+/// so the group cold-boots a host EPUB via [initialAsset] and then opens the
+/// audiobook through [reopenButton]. With it set, the cold-boot path taps
+/// [reopenButton] too, so every call ends with the wanted publication freshly
+/// opened regardless of whether the app was already up.
 Future<void> ensureAppShowing(
   WidgetTester tester, {
   required String initialAsset,
   required String reopenButton,
+  bool openAfterColdBoot = false,
 }) async {
   if (!appAlreadyShowing(tester, reopenButton)) {
     app.main(initialAsset: initialAsset);
@@ -42,7 +50,7 @@ Future<void> ensureAppShowing(
       () => _readerMounted(tester),
       timeout: const Duration(seconds: 30),
     );
-    return;
+    if (!openAfterColdBoot) return;
   }
   final gen = _openGeneration(tester);
   await tester.tap(find.text(reopenButton));
