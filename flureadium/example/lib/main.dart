@@ -370,6 +370,8 @@ class _ReaderPageState extends State<ReaderPage> {
     if (!mounted) return;
     setState(() {
       _publication = pub;
+      _openGeneration++;
+      _endedSeen = false;
       _ttsEnabled = false;
       _lastTtsLocator = null;
       _readerLocatorAtTtsDisable = null;
