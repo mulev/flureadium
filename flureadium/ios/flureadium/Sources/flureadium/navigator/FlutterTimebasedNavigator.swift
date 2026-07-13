@@ -8,7 +8,7 @@ public protocol TimebasedListener {
   func timebasedNavigator(_: FlutterTimebasedNavigator, requestsHighlightAt locator: Locator?, withWordLocator wordLocator: Locator?)
 }
 
-public protocol FlutterTimebasedNavigator
+public protocol FlutterTimebasedNavigator: AnyObject
 {
   var publication: Publication { get }
   var initialLocator: Locator? { get }

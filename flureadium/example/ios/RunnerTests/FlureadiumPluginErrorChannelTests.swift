@@ -36,8 +36,32 @@ final class FlureadiumPluginErrorChannelTests: XCTestCase {
     super.tearDown()
   }
 
+  /// Asserts the error payload is a codec-encodable map — not a raw
+  /// `FlureadiumError`, which crashes the Flutter standard codec the `"error"`
+  /// `EventChannel` uses — and returns it for field assertions.
+  private func encodableErrorMap(
+    _ event: Any?, file: StaticString = #filePath, line: UInt = #line
+  ) -> [String: Any] {
+    XCTAssertFalse(
+      event is FlureadiumError,
+      "error payload must be a codec-encodable map, not a raw FlureadiumError",
+      file: file, line: line
+    )
+    // Reproduces the crash condition: the codec aborts on a non-encodable value.
+    XCTAssertFalse(
+      FlutterStandardMethodCodec.sharedInstance().encodeSuccessEnvelope(event).isEmpty,
+      "error payload must be encodable by the Flutter standard codec",
+      file: file, line: line
+    )
+    guard let map = event as? [String: Any] else {
+      XCTFail("error payload must be a [String: Any] map", file: file, line: line)
+      return [:]
+    }
+    return map
+  }
+
   // Test A: sendError forwards the {message, code, data} payload to the
-  // plugin-owned error sink unchanged.
+  // plugin-owned error sink as a codec-encodable map.
   func testSendErrorForwardsPayloadToSink() {
     let plugin = FlureadiumPlugin()
     let sink = CapturingEventStreamSink()
@@ -46,11 +70,10 @@ final class FlureadiumPluginErrorChannelTests: XCTestCase {
     plugin.sendError(message: "boom", code: "DidFailToLoadResource", data: "chapter1.xhtml")
 
     XCTAssertEqual(sink.events.count, 1)
-    let error = sink.events.first as? FlureadiumError
-    XCTAssertNotNil(error, "sendError should forward a FlureadiumError")
-    XCTAssertEqual(error?.message, "boom")
-    XCTAssertEqual(error?.code, "DidFailToLoadResource")
-    XCTAssertEqual(error?.data as? String, "chapter1.xhtml")
+    let map = encodableErrorMap(sink.events[0])
+    XCTAssertEqual(map["message"] as? String, "boom")
+    XCTAssertEqual(map["code"] as? String, "DidFailToLoadResource")
+    XCTAssertEqual(map["data"] as? String, "chapter1.xhtml")
   }
 
   // Test B (regression for the latent last-writer-wins / end-of-stream bug):
@@ -77,8 +100,13 @@ final class FlureadiumPluginErrorChannelTests: XCTestCase {
 
     XCTAssertEqual(sink.events.count, 2, "both errors reach the durable plugin sink")
     XCTAssertFalse(sink.disposed, "reader-view lifecycle must not dispose the plugin error sink")
-    XCTAssertEqual((sink.events[0] as? FlureadiumError)?.message, "before")
-    XCTAssertEqual((sink.events[1] as? FlureadiumError)?.message, "after")
+    XCTAssertEqual(encodableErrorMap(sink.events[0])["message"] as? String, "before")
+    XCTAssertEqual(encodableErrorMap(sink.events[1])["message"] as? String, "after")
+    // With nil code/data, toJson omits those keys entirely — the codec-safety
+    // property that keeps the payload free of optional dictionary values.
+    let firstMap = encodableErrorMap(sink.events[0])
+    XCTAssertNil(firstMap["code"], "nil code must be omitted, not sent as a null value")
+    XCTAssertNil(firstMap["data"], "nil data must be omitted, not sent as a null value")
   }
 
   // Test: the plugin's timebased `encounteredError` delegate forwards the audio
@@ -106,9 +134,9 @@ final class FlureadiumPluginErrorChannelTests: XCTestCase {
     )
 
     XCTAssertEqual(sink.events.count, 1)
-    let error = sink.events.first as? FlureadiumError
-    XCTAssertEqual(error?.message, "stream stalled")
-    XCTAssertEqual(error?.code, "TimebasedError")
-    XCTAssertEqual(error?.data as? String, "AVPlayerItemFailedToPlayToEndTime")
+    let map = encodableErrorMap(sink.events[0])
+    XCTAssertEqual(map["message"] as? String, "stream stalled")
+    XCTAssertEqual(map["code"] as? String, "TimebasedError")
+    XCTAssertEqual(map["data"] as? String, "AVPlayerItemFailedToPlayToEndTime")
   }
 }

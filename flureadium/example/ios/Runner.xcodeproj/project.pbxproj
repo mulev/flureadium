@@ -12,6 +12,8 @@
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		A1B2C3D4E5F6A7B800112233 /* FlutterTTSNavigatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B800112234 /* FlutterTTSNavigatorTests.swift */; };
 		A1B2C3D4E5F6A7B800113344 /* FlutterAudioNavigatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B800113345 /* FlutterAudioNavigatorTests.swift */; };
+		FDFEFF0011AA220000000002 /* LoadFailureObservingResourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDFEFF0011AA220000000001 /* LoadFailureObservingResourceTests.swift */; };
+		FDFEFF0011AA220000000004 /* AudioResourceLoadFailureReporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDFEFF0011AA220000000003 /* AudioResourceLoadFailureReporterTests.swift */; };
 		B1C2D3E4F5A6B7C800001002 /* UtilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C800001001 /* UtilityTests.swift */; };
 		B1C2D3E4F5A6B7C800002002 /* ModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C800002001 /* ModelTests.swift */; };
 		B1C2D3E4F5A6B7C800003002 /* StateSerializationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C800003001 /* StateSerializationTests.swift */; };
@@ -71,6 +73,8 @@
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B800112234 /* FlutterTTSNavigatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlutterTTSNavigatorTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B800113345 /* FlutterAudioNavigatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlutterAudioNavigatorTests.swift; sourceTree = "<group>"; };
+		FDFEFF0011AA220000000001 /* LoadFailureObservingResourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadFailureObservingResourceTests.swift; sourceTree = "<group>"; };
+		FDFEFF0011AA220000000003 /* AudioResourceLoadFailureReporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioResourceLoadFailureReporterTests.swift; sourceTree = "<group>"; };
 		B1C2D3E4F5A6B7C800001001 /* UtilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilityTests.swift; sourceTree = "<group>"; };
 		B1C2D3E4F5A6B7C800002001 /* ModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTests.swift; sourceTree = "<group>"; };
 		B1C2D3E4F5A6B7C800003001 /* StateSerializationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateSerializationTests.swift; sourceTree = "<group>"; };
@@ -145,6 +149,8 @@
 				331C807B294A618700263BE5 /* RunnerTests.swift */,
 				A1B2C3D4E5F6A7B800112234 /* FlutterTTSNavigatorTests.swift */,
 				A1B2C3D4E5F6A7B800113345 /* FlutterAudioNavigatorTests.swift */,
+				FDFEFF0011AA220000000001 /* LoadFailureObservingResourceTests.swift */,
+				FDFEFF0011AA220000000003 /* AudioResourceLoadFailureReporterTests.swift */,
 				B1C2D3E4F5A6B7C800001001 /* UtilityTests.swift */,
 				B1C2D3E4F5A6B7C800002001 /* ModelTests.swift */,
 				B1C2D3E4F5A6B7C800003001 /* StateSerializationTests.swift */,
@@ -441,6 +447,8 @@
 				331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */,
 				A1B2C3D4E5F6A7B800112233 /* FlutterTTSNavigatorTests.swift in Sources */,
 				A1B2C3D4E5F6A7B800113344 /* FlutterAudioNavigatorTests.swift in Sources */,
+				FDFEFF0011AA220000000002 /* LoadFailureObservingResourceTests.swift in Sources */,
+				FDFEFF0011AA220000000004 /* AudioResourceLoadFailureReporterTests.swift in Sources */,
 				B1C2D3E4F5A6B7C800001002 /* UtilityTests.swift in Sources */,
 				B1C2D3E4F5A6B7C800002002 /* ModelTests.swift in Sources */,
 				B1C2D3E4F5A6B7C800003002 /* StateSerializationTests.swift in Sources */,

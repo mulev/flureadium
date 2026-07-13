@@ -293,35 +293,30 @@ void main() {
       expect(endedSeen(tester), isTrue);
     });
 
-    testWidgets(
-      'unreachable streamed audio surfaces an error event',
-      (tester) async {
-        // A dead host ('Open AudioBook BadUrl') fails at *load time*, before
-        // playback starts. On Android this is forwarded to onErrorEvent (unit
-        // test: ReadiumReaderTimebasedErrorTest), but on iOS a pure load-time
-        // AVPlayerItem.status == .failed is a KVO signal on Readium's private
-        // player item and posts no notification the plugin can observe (see the
-        // best-effort limitation in FlutterAudioNavigator). The cross-platform
-        // observable failure is exercised by 'partial stream failure ...' below.
-        await showAudiobook(tester, button: 'Open AudioBook BadUrl');
-        await tester.tap(find.text('Audio Play'));
+    testWidgets('unreachable streamed audio surfaces an error event', (
+      tester,
+    ) async {
+      // A dead host ('Open AudioBook BadUrl') fails at *load time*, before
+      // playback starts. Android forwards this to onErrorEvent via
+      // ReadiumReader.onTimebasedPlaybackFailure. iOS now observes it too: the
+      // onCreatePublication container wrapper (Readium.swift +
+      // LoadFailureObservingResource/AudioResourceLoadFailureReporter) catches
+      // the failed resource read during opening and routes it onto the error
+      // channel, so a load that never starts playing is no longer silent.
+      await showAudiobook(tester, button: 'Open AudioBook BadUrl');
+      await tester.tap(find.text('Audio Play'));
 
-        final surfaced = await pumpUntil(
-          tester,
-          () => lastAudioError(tester).isNotEmpty,
-          timeout: const Duration(seconds: 20),
-        );
-        expect(
-          surfaced,
-          isTrue,
-          reason: 'a failed streamed audio load must surface on onErrorEvent',
-        );
-      },
-      // iOS cannot observe a load-time failure for the reasons above; kept for
-      // documentation and manual runs. Coverage lives in the Android unit test
-      // and the 'partial stream failure ...' cross-platform test.
-      skip: true,
-    );
+      final surfaced = await pumpUntil(
+        tester,
+        () => lastAudioError(tester).isNotEmpty,
+        timeout: const Duration(seconds: 20),
+      );
+      expect(
+        surfaced,
+        isTrue,
+        reason: 'a failed streamed audio load must surface on onErrorEvent',
+      );
+    });
 
     testWidgets('partial stream failure surfaces an error event', (
       tester,

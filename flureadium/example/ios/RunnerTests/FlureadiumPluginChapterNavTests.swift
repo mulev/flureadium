@@ -95,4 +95,26 @@ final class FlureadiumPluginChapterNavTests: XCTestCase {
     XCTAssertFalse(nav.calls.contains("skipBackward"),
                    "audioSeekBy must remain a relative seek, not a track skip")
   }
+
+  // Regression for the shared-slot teardown race behind the iOS
+  // "TTS Navigator not initialized" failure: `stop` teardown is deferred onto
+  // the main actor, so a straggler stop from a previous session must not clear a
+  // navigator a newer session has since installed.
+  @MainActor
+  func testStaleStopDoesNotClearANewerTimebasedNavigator() {
+    let plugin = FlureadiumPlugin()
+    let navA = RecordingTimebasedNavigator { _ in }
+    let navB = RecordingTimebasedNavigator { _ in }
+
+    plugin.timebasedNavigator = navA // previous session
+    plugin.timebasedNavigator = navB // newer session installed before A's stop runs
+
+    // A's deferred stop must leave B in place (identity guard).
+    XCTAssertFalse(plugin.teardownTimebasedNavigator(navA))
+    XCTAssertTrue(plugin.timebasedNavigator === navB)
+
+    // Tearing down the current navigator clears the slot.
+    XCTAssertTrue(plugin.teardownTimebasedNavigator(navB))
+    XCTAssertNil(plugin.timebasedNavigator)
+  }
 }

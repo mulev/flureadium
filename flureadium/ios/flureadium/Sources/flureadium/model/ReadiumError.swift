@@ -27,14 +27,16 @@ class FlureadiumError {
     self.stack = details
   }
   
-  func toJson() -> [String: Any?] {
-    let map: [String: Any?] = [
-      "message": message,
-      "code": code,
-      "data": data,
-      "stack": stack
-    ]
-    
+  /// Serializes to a Flutter-standard-codec-safe map: only non-nil fields are
+  /// included and every value is non-optional, so it encodes cleanly over the
+  /// `"error"` `EventChannel` (Dart reads it via `ReadiumError.fromJson`, which
+  /// guards each optional field). Sending the `FlureadiumError` object itself
+  /// crashes the codec.
+  func toJson() -> [String: Any] {
+    var map: [String: Any] = ["message": message]
+    if let code = code { map["code"] = code }
+    if let data = data { map["data"] = data }
+    if let stack = stack { map["stack"] = stack }
     return map
   }
 }

@@ -65,10 +65,13 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
   }
 
   /// Forwards an error onto the plugin-owned `"error"` channel. Single send
-  /// point for both reader views and the audio path.
+  /// point for both reader views and the audio path. The payload is serialized
+  /// to a `[String: Any?]` map because the `"error"` `EventChannel` uses the
+  /// Flutter standard codec, which cannot encode a `FlureadiumError` object
+  /// (Dart reads it back via `event as Map`).
   internal func sendError(message: String, code: String? = nil, data: Any? = nil) {
     let error = FlureadiumError(message: message, code: code, data: data)
-    errorStreamHandler?.sendEvent(error)
+    errorStreamHandler?.sendEvent(error.toJson())
   }
 
   public func log(_ warning: Warning) {
@@ -371,12 +374,16 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
         }
       }
     case "stop":
+      // Capture the navigator being stopped now: teardown is deferred onto the
+      // main actor, so a straggler stop from a previous session must not clear a
+      // navigator a newer session has since installed.
+      let navToStop = self.timebasedNavigator
       Task.detached(priority: .high) {
         await MainActor.run {
-          self.timebasedNavigator?.dispose()
-          self.timebasedNavigator = nil
-          CarPlayPlaybackBridge.shared.unregister()
-          self.updateReaderViewTimebasedDecorations([])
+          if self.teardownTimebasedNavigator(navToStop) {
+            CarPlayPlaybackBridge.shared.unregister()
+            self.updateReaderViewTimebasedDecorations([])
+          }
         }
         await MainActor.run { result(nil) }
       }
@@ -654,6 +661,21 @@ extension FlureadiumPlugin {
     } catch let err {
       throw err.toReadiumError()
     }
+  }
+
+  /// Disposes `navigator` and clears the shared timebased slot — but only if the
+  /// slot still holds `navigator`. Teardown (`stop`) is fire-and-forget onto the
+  /// main actor; without this identity guard a straggler teardown from a prior
+  /// session would nil a navigator a newer session already installed (e.g.
+  /// clearing a freshly-enabled TTS navigator, which then reports "TTS Navigator
+  /// not initialized"). Returns whether the shared slot was cleared.
+  @MainActor
+  @discardableResult
+  internal func teardownTimebasedNavigator(_ navigator: FlutterTimebasedNavigator?) -> Bool {
+    navigator?.dispose()
+    guard self.timebasedNavigator === navigator else { return false }
+    self.timebasedNavigator = nil
+    return true
   }
 
   private func closePublication() async {

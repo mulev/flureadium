@@ -255,9 +255,12 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
 
   /// Registers best-effort AVFoundation failure observers (`object: nil`, since
   /// the player item is private). These catch failed-to-play-to-end and new
-  /// error-log entries — the failures Readium's audio stack swallows. A pure
-  /// load-time `.status == .failed` is a KVO signal on the private item and is
-  /// not guaranteed to post a notification (accepted limitation).
+  /// error-log entries — mid-stream and post-load failures Readium's audio stack
+  /// swallows. Load-time resource failures no longer rely on this net: the
+  /// `AudioResourceLoadFailureReporter` container wrapper (see `Readium.swift`)
+  /// catches them deterministically during opening. The accepted limitation now
+  /// applies only to post-load AVPlayer decode/status failures and healthy-URL
+  /// stalls, which remain KVO-only signals with no guaranteed notification.
   internal func registerPlaybackFailureObservers() {
     let center = NotificationCenter.default
     let failedToken = center.addObserver(
