@@ -165,8 +165,8 @@ to the last track, runs it out, and asserts the example app surfaces `ended`.
 
 ### Handling Playback Errors
 
-A streamed track can fail to load after playback has already started —
-unreachable host, 404, a codec the device rejects. These do not throw from
+A streamed track can fail — an unreachable host or 404 at load time, or a codec
+the device rejects or a stream that drops mid-play. These do not throw from
 `play()`; they arrive asynchronously on `Flureadium.onErrorEvent` as a
 `ReadiumError`. Subscribe to it so a failed load surfaces to the listener
 instead of the player stalling silently at `0:00`:
@@ -178,14 +178,18 @@ final errorSub = flureadium.onErrorEvent.listen((error) {
 // Cancel in dispose().
 ```
 
-Android surfaces both load-time and mid-stream failures. On iOS, delivery is
-best-effort — the observers may not fire for a given failure, so the player can
-stall at 0:00 with no error event; don't depend on it (see the limitation in
-[error-handling.md](error-handling.md#audiobook-streaming-failures) and
-[platform-specific/ios.md](../platform-specific/ios.md)). The integration test
-`partial stream failure surfaces an error event` in `audiobook_test.dart` opens
-an audiobook whose track drops mid-stream and asserts the error surfaces; it
-runs on Android (skipped on iOS, where delivery is not guaranteed).
+On iOS a genuine load-time failure (unreachable host, 404, missing or errored
+track) is now caught deterministically: during opening the plugin wraps each
+audio track resource and routes a failed read onto `onErrorEvent` (see
+[platform-specific/ios.md](../platform-specific/ios.md) and
+[error-handling.md](error-handling.md#audiobook-streaming-failures)). What stays
+best-effort on iOS is a **post-load** failure — bytes that load cleanly and then
+fail to decode, or a healthy stream that stalls — so don't depend on an error
+event for those; the player can sit at 0:00 with nothing delivered. Android
+surfaces both load-time and mid-stream failures. The `unreachable streamed audio
+surfaces an error event` integration test covers the load-time path on both
+platforms; `partial stream failure surfaces an error event` covers a mid-stream
+drop on Android (skipped on iOS, where mid-stream delivery is not guaranteed).
 
 ## Audio Preferences
 

@@ -215,9 +215,10 @@ host, a 404, or a stream that drops mid-play — it reaches
 `AudiobookNavigator` as `AudioNavigator.State.Failure` and is relayed through
 `onTimebasedPlaybackFailure`. `ReadiumReader.onTimebasedPlaybackFailure` forwards
 it to Flutter's `onErrorEvent` via `sendError`, with `code: "TimebasedError"`
-and `data` set to the Readium error category. Unlike iOS (see
-[ios.md](ios.md#audiobook-error-forwarding)), Android surfaces both load-time
-and mid-stream failures. Covered by `ReadiumReaderTimebasedErrorTest`.
+and `data` set to the Readium error category. Android surfaces both load-time and
+mid-stream failures; on iOS load-time failures are also caught now (via the
+container wrapper — see [ios.md](ios.md#audiobook-error-forwarding)), but its
+mid-stream/post-load delivery stays best-effort. Covered by `ReadiumReaderTimebasedErrorTest`.
 
 **Files:**
 - `AudiobookNavigator.kt` — `onAudioNavigatorEnded()` and the `State.Ended` branch

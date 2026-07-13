@@ -226,7 +226,7 @@ ways:
   `encounteredError` hook, which the plugin implements as
   `sendError(message:, code: "TimebasedError", data:)`.
 - **NotificationCenter route** — Readium's audio stack never routes AVFoundation
-  load failures to its delegate, and its `AVPlayer` is private. So the navigator
+  playback failures to its delegate, and its `AVPlayer` is private. So the navigator
   also registers best-effort observers for `AVPlayerItemFailedToPlayToEndTime`
   and `AVPlayerItemNewErrorLogEntry` (`object: nil`) over its lifetime, removed
   in `dispose()`. Both route through the same `handlePlaybackFailure` seam.

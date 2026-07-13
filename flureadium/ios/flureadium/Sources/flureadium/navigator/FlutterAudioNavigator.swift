@@ -27,9 +27,12 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
   internal var subscriptions: Set<AnyCancellable> = []
 
   /// NotificationCenter tokens for the best-effort AVFoundation playback-failure
-  /// observers. Readium keeps its `AVPlayer` private and never routes audio
-  /// load failures to `AudioNavigatorDelegate`, so these are the only signal we
-  /// get for those. Held for the navigator's lifetime and removed in `dispose()`.
+  /// observers. Readium keeps its `AVPlayer` private and routes neither post-load
+  /// decode/status failures nor stalls to `AudioNavigatorDelegate`, so these are
+  /// the only signal we get for those. (Load-time resource failures are caught
+  /// deterministically by the `AudioResourceLoadFailureReporter` wrapper instead —
+  /// see `registerPlaybackFailureObservers`.) Held for the navigator's lifetime
+  /// and removed in `dispose()`.
   internal var playbackFailureObservers: [NSObjectProtocol] = []
 
   @Published var cover: UIImage?
