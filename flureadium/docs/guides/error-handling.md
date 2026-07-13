@@ -141,29 +141,33 @@ rejection), the native audio path forwards the failure onto this stream:
   onto the stream with `code: "TimebasedError"` and `data` set to the Readium
   error category (e.g. `"unknown"`). This covers both load-time failures (dead
   host, 404) and mid-stream failures.
-- **iOS** — the plugin implements the timebased navigator's `encounteredError`
-  hook, which forwards Readium's `didFailToLoadResourceAt` plus a best-effort
-  NotificationCenter observation of AVFoundation's
-  `AVPlayerItemFailedToPlayToEndTime` / `AVPlayerItemNewErrorLogEntry`. Errors
-  arrive with the same `code: "TimebasedError"`.
+- **iOS** — a genuine load-time failure (unreachable host, missing or errored
+  track) is caught deterministically. During publication opening the plugin wraps
+  each audiobook track resource (`AudioResourceLoadFailureReporter` +
+  `LoadFailureObservingResource`, installed via Readium's `onCreatePublication`
+  transform); a failed read routes onto the stream with the same
+  `code: "TimebasedError"`, one error per failed track. The plugin also
+  implements the timebased navigator's `encounteredError` hook (Readium's
+  `didFailToLoadResourceAt` plus best-effort NotificationCenter observation of
+  `AVPlayerItemFailedToPlayToEndTime` / `AVPlayerItemNewErrorLogEntry`) for
+  errors Readium surfaces later.
 
-**Known limitation (iOS):** Readium keeps its `AVPlayer` private, so the plugin
-can only observe failures through `NotificationCenter`
-(`AVPlayerItemFailedToPlayToEndTime`, `AVPlayerItemNewErrorLogEntry`). In
-practice these do not fire for every failure — a load-time failure (unreachable
-host, where `AVPlayerItem.status` goes straight to `.failed`) is a KVO signal
-that posts no notification, and even some mid-stream interruptions are not
-reported. **Treat iOS audio-error delivery as best-effort — do not rely on an
-error event for a given failure; the player may simply stall at 0:00.** A
-deterministic upstream hook is tracked as a follow-up.
+**Known limitation (iOS):** the wrapper covers resource-load failures — a track
+that never loads. It does not cover **post-load** failures: once bytes load
+cleanly, an `AVPlayer` decode/status error or a healthy-URL stall (a well-formed
+stream that stops progressing) is a KVO signal on Readium's private `AVPlayer`
+that posts no notification. The NotificationCenter observers are a best-effort net
+for those and do not fire for every one. **So for a post-load failure, do not
+rely on an error event — the player may simply stall.** A deterministic upstream
+hook for that case is tracked as a follow-up.
 
-Android has no such gap — every timebased failure is forwarded. Coverage:
-`ReadiumReaderTimebasedErrorTest` (Android unit) verifies the forwarding, and
-the `partial stream failure surfaces an error event` integration test asserts it
-end-to-end on Android (skipped on iOS, where delivery is best-effort). The
-load-time `unreachable streamed audio` integration test is skipped everywhere —
-kept for documentation and manual runs, with the Android forwarding it would
-exercise already covered by the unit test.
+Android forwards every timebased failure. Coverage:
+`ReadiumReaderTimebasedErrorTest` (Android unit) verifies the forwarding;
+`LoadFailureObservingResourceTests` and `AudioResourceLoadFailureReporterTests`
+(iOS unit) verify the load-time wrapper; and the `unreachable streamed audio
+surfaces an error event` integration test asserts the load-time path end-to-end
+on both platforms. The `partial stream failure surfaces an error event` test
+stays iOS-skipped (mid-stream truncation is best-effort on iOS).
 
 ---
 
