@@ -17,10 +17,11 @@
 # Options:
 #   --skip-android        Skip Android tests
 #   --skip-ios            Skip iOS tests
-#   --rerun               Force Android tests to re-execute even when Gradle
-#                         considers them up-to-date (passes --rerun to the test
-#                         task). Use when nothing changed but you still want a
-#                         real run rather than a cached "up-to-date" pass.
+#   --rerun               Force a complete clean rebuild and fresh re-run of the
+#                         Android tests: runs `clean` and passes `--rerun-tasks`,
+#                         so every task recompiles from scratch (no up-to-date or
+#                         build-cache reuse) and the tests run against a fresh
+#                         build. Slower; use when you want a guaranteed real run.
 #   --java-home <path>    Use this JDK instead of auto-detecting (Android)
 #   --ios-device <id>     iOS simulator UDID to use (auto-detected if omitted)
 #   --ios-class <Class>   Run only one XCTest class, e.g. ModelTests
@@ -33,7 +34,8 @@
 #   The task is :flureadium:testDebugUnitTest. Robolectric runs on the JVM,
 #   so no device or emulator is required — only a JDK 17+.
 #   Gradle skips the test task when its inputs are unchanged (reported as
-#   UP-TO-DATE), so a no-op re-run executes nothing. Pass --rerun to force it.
+#   UP-TO-DATE), so a no-op re-run executes nothing. Pass --rerun for a full
+#   clean rebuild (clean + --rerun-tasks) that always recompiles and runs fresh.
 #
 # iOS notes (macOS only):
 #   The script builds the example app for the simulator first
@@ -317,18 +319,23 @@ if [ "$SKIP_ANDROID" = false ]; then
   else
     log "  JDK:    $RESOLVED_JAVA_HOME"
     log "  Task:   :flureadium:testDebugUnitTest"
-    # --rerun forces the test task to execute even when Gradle marks it
-    # up-to-date; without it an unchanged tree runs no tests at all.
+    # Default: run only the test task (Gradle reports UP-TO-DATE and executes
+    # nothing when the tree is unchanged). --rerun instead does a full clean
+    # rebuild: `clean` wipes all build outputs and `--rerun-tasks` ignores every
+    # task optimization (up-to-date AND build cache), so everything recompiles
+    # and the tests run against a fresh build.
+    GRADLE_TASKS=( :flureadium:testDebugUnitTest )
     GRADLE_RERUN_FLAG=()
     if [ "$RERUN" = true ]; then
-      GRADLE_RERUN_FLAG=( --rerun )
-      log "  Rerun:  forced (ignoring Gradle up-to-date)"
+      GRADLE_TASKS=( clean :flureadium:testDebugUnitTest )
+      GRADLE_RERUN_FLAG=( --rerun-tasks )
+      log "  Rerun:  forced clean rebuild (clean + --rerun-tasks)"
     fi
     if ! ( cd "$ANDROID_APP_DIR" && JAVA_HOME="$RESOLVED_JAVA_HOME" \
         run_test \
           "Android — :flureadium:testDebugUnitTest" \
           "$LOG_DIR/android.log" \
-          ./gradlew :flureadium:testDebugUnitTest "${GRADLE_RERUN_FLAG[@]}" --console=plain ); then
+          ./gradlew "${GRADLE_TASKS[@]}" "${GRADLE_RERUN_FLAG[@]}" --console=plain ); then
       OVERALL_EXIT=1
     fi
   fi
