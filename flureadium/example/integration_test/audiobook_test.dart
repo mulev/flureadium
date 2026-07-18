@@ -47,6 +47,19 @@ void main() {
       (tester.widget<Text>(find.byKey(const Key('audio-error'))).data ?? '')
           .replaceFirst('audio-error: ', '');
 
+  // Reads the keyed latch the streamed-audio fixture flips when the client
+  // cancels an in-flight range request (see StreamedAudioServer). Lets the
+  // cancelled-read test confirm a cancellation actually happened, so its
+  // no-error assertion is not vacuous.
+  bool cancelledStreamDisconnectSeen(WidgetTester tester) =>
+      (tester
+                  .widget<Text>(
+                    find.byKey(const Key('cancelled-stream-disconnect-seen')),
+                  )
+                  .data ??
+              '')
+          .contains('true');
+
   // Boots (or reuses) the app and opens the wanted audiobook. On Android the
   // reader widget must host an EPUB, so an audiobook cannot be a direct
   // initialAsset boot: the group cold-boots the host EPUB and then opens the
@@ -344,6 +357,65 @@ void main() {
         reason: 'a mid-stream audio failure must surface on onErrorEvent',
       );
     }, skip: Platform.isIOS);
+
+    testWidgets(
+      'seeking a streamed audiobook does not surface a spurious cancelled error',
+      (tester) async {
+        // A streamed audiobook served by a local range-seekable WAV server that
+        // trickles the tail of each range, so a read-ahead request is in flight
+        // during playback. Seeking supersedes it — Apple's documented
+        // AVAssetResourceLoaderDelegate.resourceLoader(_:didCancel:) case — so
+        // Readium's read task is cancelled and surfaces HTTPError.cancelled.
+        // The iOS reporter must swallow that: no onErrorEvent, playback
+        // continues. The server latches the client disconnect so this negative
+        // assertion is non-vacuous — if no cancellation happened the latch
+        // stays false and the test fails instead of passing trivially.
+        await showAudiobook(tester, button: 'Open AudioBook Streamed');
+        await tester.tap(find.text('Audio Play'));
+        await waitForPlaying(tester, timeout: const Duration(seconds: 20));
+
+        // Seek forward repeatedly to supersede in-flight read-ahead requests.
+        for (var i = 0; i < 6; i++) {
+          await tester.tap(find.text('+30s'));
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        // A cancellation must actually have occurred (non-vacuity guard).
+        final cancelled = await pumpUntil(
+          tester,
+          () => cancelledStreamDisconnectSeen(tester),
+          timeout: const Duration(seconds: 20),
+        );
+        expect(
+          cancelled,
+          isTrue,
+          reason:
+              'a seek must supersede an in-flight range request so the '
+              'cancelled-read path is actually exercised',
+        );
+
+        // Give any spurious error event time to propagate before asserting it
+        // did not arrive.
+        for (var i = 0; i < 3; i++) {
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        // ...and the benign cancellation must not have surfaced as an error.
+        expect(
+          lastAudioError(tester),
+          isEmpty,
+          reason:
+              'a cancelled read is benign churn and must not surface on '
+              'onErrorEvent',
+        );
+        expect(
+          find.text('Audio Pause'),
+          findsOneWidget,
+          reason: 'playback must continue through the cancellation',
+        );
+      },
+      skip: !Platform.isIOS,
+    );
   });
 }
 

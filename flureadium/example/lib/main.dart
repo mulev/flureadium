@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flureadium/flureadium.dart';
+import 'audio_stream_fixtures.dart';
 
 const _defaultInitialAsset = String.fromEnvironment(
   'FLUREADIUM_INITIAL_ASSET',
@@ -67,6 +68,11 @@ class _ReaderPageState extends State<ReaderPage> {
   // whose Content-Length promises the full clip but drops the socket after a
   // partial body, producing a mid-stream failure both audio engines observe.
   HttpServer? _badStreamServer;
+  StreamedAudioServer? _streamedServer;
+  // Latched by the streamed-audio fixture when AVFoundation cancels an
+  // in-flight range request (client disconnect mid-response); lets the
+  // integration test confirm the benign-cancellation path actually ran.
+  bool _cancelledStreamDisconnectSeen = false;
 
   StreamSubscription<ReadiumReaderStatus>? _statusSub;
   StreamSubscription<Locator>? _locatorSub;
@@ -129,6 +135,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _errorSub?.cancel();
     _timebasedSub?.cancel();
     _badStreamServer?.close(force: true);
+    _streamedServer?.close();
     super.dispose();
   }
 
@@ -249,40 +256,6 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
-  // Builds a 44-byte canonical PCM WAV header declaring [dataSize] bytes of
-  // audio data. The header is valid on its own, so a player can start decoding
-  // before the (never fully delivered) data chunk arrives.
-  Uint8List _wavHeader({
-    required int dataSize,
-    int sampleRate = 8000,
-    int channels = 1,
-    int bitsPerSample = 16,
-  }) {
-    final byteRate = sampleRate * channels * (bitsPerSample ~/ 8);
-    final blockAlign = channels * (bitsPerSample ~/ 8);
-    final header = ByteData(44);
-    void putAscii(int offset, String s) {
-      for (var i = 0; i < s.length; i++) {
-        header.setUint8(offset + i, s.codeUnitAt(i));
-      }
-    }
-
-    putAscii(0, 'RIFF');
-    header.setUint32(4, 36 + dataSize, Endian.little);
-    putAscii(8, 'WAVE');
-    putAscii(12, 'fmt ');
-    header.setUint32(16, 16, Endian.little); // PCM fmt chunk size
-    header.setUint16(20, 1, Endian.little); // audioFormat = PCM
-    header.setUint16(22, channels, Endian.little);
-    header.setUint32(24, sampleRate, Endian.little);
-    header.setUint32(28, byteRate, Endian.little);
-    header.setUint16(32, blockAlign, Endian.little);
-    header.setUint16(34, bitsPerSample, Endian.little);
-    putAscii(36, 'data');
-    header.setUint32(40, dataSize, Endian.little);
-    return header.buffer.asUint8List();
-  }
-
   // Opens an audiobook whose single track streams from a local server that
   // sends a valid WAV header plus a short PCM prefix, then drops the socket
   // before satisfying the advertised Content-Length. Playback starts and then
@@ -293,7 +266,7 @@ class _ReaderPageState extends State<ReaderPage> {
     const bytesPerSample = 2; // 16-bit mono
     const fullDataSize = sampleRate * bytesPerSample * 30; // 30s promised
     const prefixSize = sampleRate * bytesPerSample; // 1s actually sent
-    final header = _wavHeader(dataSize: fullDataSize, sampleRate: sampleRate);
+    final header = wavHeader(dataSize: fullDataSize, sampleRate: sampleRate);
     final contentLength = header.length + fullDataSize;
 
     await _badStreamServer?.close(force: true);
@@ -361,6 +334,67 @@ class _ReaderPageState extends State<ReaderPage> {
       });
     } catch (e) {
       debugPrint('openMidStreamFailAudiobook error: $e');
+    }
+  }
+
+  Future<void> _openStreamedAudiobook() async {
+    // A complete, valid, range-seekable WAV served by a local server that
+    // trickles the tail of each range so a read-ahead request is in flight
+    // during playback. Seeking supersedes it, producing the benign
+    // HTTPError.cancelled the iOS reporter must swallow (see the
+    // 'seeking a streamed audiobook does not surface a spurious cancelled
+    // error' integration test).
+    await _streamedServer?.close();
+    // 10 minutes, so the test's repeated +30s seeks stay well inside the track
+    // (each seek supersedes the in-flight read-ahead request without ending it).
+    final server = await StreamedAudioServer.startSilentWav(seconds: 600);
+    server.onClientCancel = () {
+      if (mounted) setState(() => _cancelledStreamDisconnectSeen = true);
+    };
+    _streamedServer = server;
+
+    final manifest =
+        '''
+{
+  "@context": "https://readium.org/webpub-manifest/context.jsonld",
+  "metadata": {
+    "@type": "http://schema.org/Audiobook",
+    "conformsTo": "https://readium.org/webpub-manifest/profiles/audiobook",
+    "title": "Streamed Audio",
+    "duration": 600
+  },
+  "links": [
+    { "rel": "self", "href": "${server.url}", "type": "application/audiobook+json" }
+  ],
+  "readingOrder": [
+    { "href": "${server.url}", "type": "audio/wav", "duration": 600 }
+  ]
+}
+''';
+    try {
+      final tmp = File(
+        '${Directory.systemTemp.path}/'
+        '${DateTime.now().millisecondsSinceEpoch}_streamed.json',
+      );
+      await tmp.writeAsString(manifest);
+      final pub = await _flureadium.openPublication(tmp.path);
+      if (!mounted) return;
+      setState(() {
+        _publication = pub;
+        _openGeneration++;
+        _lastAudioError = '';
+        _cancelledStreamDisconnectSeen = false;
+        _endedSeen = false;
+        _ttsEnabled = false;
+        _lastTtsLocator = null;
+        _readerLocatorAtTtsDisable = null;
+        _audioEnabled = false;
+        _audioPaused = false;
+        _voices = [];
+        _voiceIndex = 0;
+      });
+    } catch (e) {
+      debugPrint('openStreamedAudiobook error: $e');
     }
   }
 
@@ -706,6 +740,14 @@ class _ReaderPageState extends State<ReaderPage> {
                       ),
                     ),
                     Text(
+                      key: const Key('cancelled-stream-disconnect-seen'),
+                      'cancelled-stream-disconnect-seen: $_cancelledStreamDisconnectSeen',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
                       key: const Key('locator_href'),
                       _locator?.href ?? '',
                       style: const TextStyle(
@@ -738,6 +780,10 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _openMidStreamFailAudiobook,
                           child: const Text('Open AudioBook BadStream'),
+                        ),
+                        TextButton(
+                          onPressed: _openStreamedAudiobook,
+                          child: const Text('Open AudioBook Streamed'),
                         ),
                         TextButton(
                           onPressed: _openCbz,
