@@ -1,3 +1,9 @@
+## 0.13.1
+
+### Bug Fixes
+
+- **iOS/macOS Swift Package Manager resolution**: The SwiftPM library product in `ios/flureadium/Package.swift` was named `flutter-readium`, which does not match the plugin name. Under Flutter 3.44+ (SwiftPM on by default) an app build failed to resolve the plugin: `product 'flureadium' ... not found in package 'flureadium'`. The product is now named `flureadium`, matching the plugin, so SwiftPM integration resolves. No API or behaviour change; CocoaPods builds were unaffected.
+
 ## 0.13.0
 
 ### New Features
