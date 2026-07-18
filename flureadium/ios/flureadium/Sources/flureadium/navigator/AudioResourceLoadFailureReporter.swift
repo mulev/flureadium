@@ -46,10 +46,17 @@ final class AudioResourceLoadFailureReporter {
     }
   }
 
-  /// Sends a track's first load failure onto the error channel. AVFoundation
-  /// issues many range requests per track, so repeats for the same href after
-  /// the first are dropped until the next `reset()`.
+  /// Sends a track's first *genuine* load failure onto the error channel.
+  /// AVFoundation issues many range requests per track, so repeats for the same
+  /// href after the first are dropped until the next `reset()`. Cancelled HTTP
+  /// reads are excluded entirely: AVFoundation routinely cancels in-flight range
+  /// requests while re-planning buffering or seeking, so they are benign churn,
+  /// not load failures, and must not surface as a `TimebasedError`.
   func report(href: AnyURL, error: ReadError) {
+    // Filter benign cancellations BEFORE the de-dup insert — otherwise a genuine
+    // failure arriving later on the same track would be suppressed by the slot a
+    // cancelled read consumed.
+    if case .access(.http(.cancelled)) = error { return }
     lock.lock()
     let isFirstFailure = reported.insert(href.normalized.string).inserted
     lock.unlock()

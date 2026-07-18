@@ -55,6 +55,31 @@ final class AudioResourceLoadFailureReporterTests: XCTestCase {
     XCTAssertEqual(count, 1, "concurrent failures for one track must not race past the de-dup guard")
   }
 
+  func testCancelledHttpReadIsNotReported() {
+    var sends: [(message: String, data: String)] = []
+    let sut = AudioResourceLoadFailureReporter { message, data in sends.append((message, data)) }
+
+    sut.report(href: AnyURL(string: "track1.mp3")!, error: .access(.http(.cancelled)))
+
+    XCTAssertTrue(sends.isEmpty, "a cancelled HTTP read is benign churn, not a load failure")
+  }
+
+  func testCancelledThenGenuineFailureOnSameHrefStillReports() {
+    var sends: [(message: String, data: String)] = []
+    let sut = AudioResourceLoadFailureReporter { message, data in sends.append((message, data)) }
+    let href = AnyURL(string: "track1.mp3")!
+
+    sut.report(href: href, error: .access(.http(.cancelled)))
+    sut.report(href: href, error: anyError)
+
+    guard sends.count == 1 else {
+      return XCTFail("expected exactly one send (the genuine failure), got \(sends.count)")
+    }
+    XCTAssertFalse(
+      sends[0].data.contains("cancelled"),
+      "the cancelled read must not consume the slot; the genuine failure must be the one reported")
+  }
+
   // Exercises the opener transform end-to-end through the real Publication.get
   // path: only audio reading-order tracks are wrapped; a failing cover/resource
   // entry served by the same container is left untouched.
