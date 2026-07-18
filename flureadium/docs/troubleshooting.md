@@ -327,6 +327,34 @@ The audio delegate callbacks read `_audioNavigator?.playbackInfo` synchronously.
 **Fix (applied):**
 `FlutterAudioNavigator` now caches the `MediaPlaybackInfo` that Readium delivers off-lock to `playbackDidChange`, and the last `Locator` from `locationDidChange`. The two transition callbacks serve their state from those cached values instead of reading back into the live navigator, so nothing re-enters the AVPlayer lock.
 
+### iOS: "TTS Navigator not initialized" After Stop Then Re-enable
+
+**Symptom:**
+```
+PlatformException(..., TTS Navigator not initialized)
+```
+Enabling TTS (or opening another audio session) right after stopping playback fails, even though the new navigator was just created.
+
+**Cause:**
+`stop` disposes the timebased navigator on a detached main-actor task, so teardown runs after the call returns. If a newer session installs its own navigator before that straggler teardown runs, the late teardown nils it out and leaves the shared slot empty.
+
+**Fix (applied):**
+`stop` now captures the navigator to tear down at call time and clears the shared slot only when it still holds that same navigator (`teardownTimebasedNavigator`). A straggler teardown from a prior session can no longer clear a navigator a newer session installed.
+
+### Android: Spurious `JobCancellationException` on Close
+
+**Symptom:**
+```
+PlatformException(class kotlinx.coroutines.JobCancellationException, ...)
+```
+Closing a publication while an audiobook `play` (or another suspending call) is still in flight surfaces a platform exception to Dart, even though nothing actually failed.
+
+**Cause:**
+The publication method-channel handler caught every exception and forwarded it to Dart via `result.error`. When the publication closes, the coroutine running the in-flight call is cancelled and throws `CancellationException` — normal unwinding, not a failure — which was reported as a spurious error.
+
+**Fix (applied):**
+`dispatchGuarded` re-throws `CancellationException` instead of reporting it, so a coroutine torn down mid-call unwinds normally and no phantom `PlatformException` reaches Dart.
+
 ## Platform-Specific Issues
 
 ### iOS: Localhost Connection Failed

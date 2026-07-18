@@ -83,20 +83,18 @@ If using ProGuard/R8, add to `android/app/proguard-rules.pro`:
 
 ### 6. Android Auto (Optional)
 
-To expose audiobook chapters and transport controls on Android Auto, the host app declares Auto media support in its manifest. Flureadium's media service already runs as a `MediaLibraryService` and serves a browsable chapter tree — the host only adds the manifest plumbing.
+Audiobook chapters and transport controls work on Android Auto with no host manifest changes. The plugin's manifest already declares Auto media support and its media service, and Android manifest merging brings both into the host app — the example app adds nothing Auto-specific and still exposes the browse tree.
 
-Add the Android Auto metadata to the `<application>` block in `AndroidManifest.xml`:
+For reference, this is what the plugin declares and merges into your app. The `<application>` meta-data points at the automotive descriptor:
 
 ```xml
-<application>
-    <!-- Declares Android Auto media support; points at the automotive descriptor. -->
-    <meta-data
-        android:name="com.google.android.gms.car.application"
-        android:resource="@xml/automotive_app_desc"/>
-</application>
+<!-- Declares Android Auto media support; points at the automotive descriptor. -->
+<meta-data
+    android:name="com.google.android.gms.car.application"
+    android:resource="@xml/automotive_app_desc"/>
 ```
 
-Create `android/app/src/main/res/xml/automotive_app_desc.xml`:
+The descriptor it ships at `res/xml/automotive_app_desc.xml`:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -105,7 +103,7 @@ Create `android/app/src/main/res/xml/automotive_app_desc.xml`:
 </automotiveApp>
 ```
 
-The plugin's own manifest already declares `PluginMediaService` with the `MediaLibraryService` intent filter and `foregroundServiceType="mediaPlayback"`, so the host does not redeclare the service. The foreground-service permissions from step 4 (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`) are required for Auto playback.
+The plugin also declares `PluginMediaService` with the `MediaLibraryService` intent filter and `foregroundServiceType="mediaPlayback"`, plus the foreground-service permissions from step 4 (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`) — all merge in too. A host only needs to act if it defines its own `automotive_app_desc.xml` or the same meta-data, in which case the standard manifest-merger conflict rules apply.
 
 **Testing with the Desktop Head Unit (DHU):**
 
@@ -114,7 +112,7 @@ The plugin's own manifest already declares `PluginMediaService` with the `MediaL
 3. Start the head-unit server on the device: `adb forward tcp:5277 tcp:5277`, then run the DHU binary from the SDK (`extras/google/auto/desktop-head-unit`).
 4. Open the audiobook in the app so a publication is loaded, then pick your app from the DHU's media launcher. The chapter list should browse and transport controls (play/pause/skip) should drive playback.
 
-> Android Auto validates the media app before showing it. If the app does not appear, confirm the `automotive_app_desc.xml` resource resolves and the service is exported.
+> Android Auto validates the media app before showing it. If the app does not appear, check the merged manifest (in the build output) for the `com.google.android.gms.car.application` meta-data and confirm the media service is exported.
 
 ## Implementation Details
 
