@@ -5,14 +5,13 @@
 import PackageDescription
 
 let package = Package(
-    // TODO: Update your plugin name.
     name: "flureadium",
     platforms: [
         .iOS("13.4"),
         .macOS("10.15")
     ],
     products: [
-        .library(name: "flutter-readium", targets: ["flureadium"])
+        .library(name: "flureadium", targets: ["flureadium"])
     ],
     dependencies: [
       .package(url: "https://github.com/readium/swift-toolkit.git", .upToNextMinor(from: "3.5.0")),
