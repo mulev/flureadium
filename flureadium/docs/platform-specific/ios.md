@@ -221,6 +221,25 @@ ways:
   publication. This makes a genuine load-time failure (unreachable host, missing
   or errored track) deterministically observable, even when playback never
   starts.
+  Cancelled reads (`HTTPError.cancelled`) are filtered out in
+  `AudioResourceLoadFailureReporter.report` before the per-track de-dup. A
+  streamed track plays through `PublicationMediaLoader`, an
+  `AVAssetResourceLoaderDelegate`; per Apple, "previously issued loading requests
+  can be cancelled when data from the resource is no longer required or when a
+  loading request is superseded by new requests for data from the same resource"
+  (for example, to complete a seek). Readium handles that in
+  `resourceLoader(_:didCancel:)`, which calls `finishRequest` to cancel the
+  in-flight read task. Its HTTP client then maps the resulting
+  `URLError.cancelled` ("An asynchronous load has been canceled") to
+  `HTTPError.cancelled`. A cancellation is benign churn, not a load
+  failure, so it is never sent; filtering ahead of the de-dup keeps a genuine
+  failure that arrives later on the same track reportable. Sources: Apple —
+  [`AVAssetResourceLoaderDelegate.resourceLoader(_:didCancel:)`](https://developer.apple.com/documentation/avfoundation/avassetresourceloaderdelegate/resourceloader(_:didcancel:)-3nl51)
+  (Obj-C selector `resourceLoader:didCancelLoadingRequest:`) and
+  [`URLError.Code.cancelled`](https://developer.apple.com/documentation/foundation/urlerror/code/cancelled);
+  Readium 3.5.0 — [`DefaultHTTPClient`](https://github.com/readium/swift-toolkit/blob/8bd799d00a835248a6f5987f70c23c4c30280e48/Sources/Shared/Toolkit/HTTP/DefaultHTTPClient.swift#L533-L534)
+  (`URLError.cancelled` → `HTTPError.cancelled`) and
+  [`PublicationMediaLoader.finishRequest`](https://github.com/readium/swift-toolkit/blob/8bd799d00a835248a6f5987f70c23c4c30280e48/Sources/Navigator/Audiobook/PublicationMediaLoader.swift#L88-L109).
 - **Delegate route** — `FlutterAudioNavigator`'s `didFailToLoadResourceAt`
   delegate routes any error Readium surfaces into the timebased navigator's
   `encounteredError` hook, which the plugin implements as

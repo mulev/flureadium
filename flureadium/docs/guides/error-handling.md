@@ -151,6 +151,17 @@ rejection), the native audio path forwards the failure onto this stream:
   `didFailToLoadResourceAt` plus best-effort NotificationCenter observation of
   `AVPlayerItemFailedToPlayToEndTime` / `AVPlayerItemNewErrorLogEntry`) for
   errors Readium surfaces later.
+  Cancelled reads (`HTTPError.cancelled`) are excluded before this routing.
+  AVFoundation cancels an in-flight range request when its data is no longer
+  required or the request is superseded by new requests for the same resource
+  (for example, to complete a seek); Readium then cancels the underlying read,
+  which surfaces as `HTTPError.cancelled`. That is benign churn, not a load
+  failure, so it never surfaces as an error event. Only genuine failures
+  (unreachable host, 404, missing or errored track) are forwarded. Apple
+  documents this cancellation in `AVAssetResourceLoaderDelegate`'s
+  [`resourceLoader(_:didCancel:)`](https://developer.apple.com/documentation/avfoundation/avassetresourceloaderdelegate/resourceloader(_:didcancel:)-3nl51);
+  see [platform-specific/ios.md](../platform-specific/ios.md) for the full
+  AVFoundation → Readium source chain.
 
 **Known limitation (iOS):** the wrapper covers resource-load failures — a track
 that never loads. It does not cover **post-load** failures: once bytes load
