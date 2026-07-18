@@ -115,6 +115,73 @@ try {
 
 ---
 
+## Error Event Stream: `onErrorEvent`
+
+Not every failure is thrown from the call you made. Playback failures happen
+asynchronously, after `play()` has already returned, so they arrive on a stream
+rather than as an exception. `Flureadium.onErrorEvent` delivers a `ReadiumError`
+(`{message, code?, data?}`) for these out-of-band errors.
+
+```dart
+final sub = flureadium.onErrorEvent.listen((error) {
+  R2Log.e(error);
+  // Surface it — a streamed audio track that fails to load otherwise stalls
+  // silently at 0:00 with nothing to show the user.
+  showErrorToast(error.message);
+});
+// Cancel in dispose().
+```
+
+### Audiobook streaming failures
+
+When a streamed audio resource fails to load (unreachable host, 404, codec
+rejection), the native audio path forwards the failure onto this stream:
+
+- **Android** — `ReadiumReader.onTimebasedPlaybackFailure` forwards the failure
+  onto the stream with `code: "TimebasedError"` and `data` set to the Readium
+  error category (e.g. `"unknown"`). This covers both load-time failures (dead
+  host, 404) and mid-stream failures.
+- **iOS** — a genuine load-time failure (unreachable host, missing or errored
+  track) is caught deterministically. During publication opening the plugin wraps
+  each audiobook track resource (`AudioResourceLoadFailureReporter` +
+  `LoadFailureObservingResource`, installed via Readium's `onCreatePublication`
+  transform); a failed read routes onto the stream with the same
+  `code: "TimebasedError"`, one error per failed track. The plugin also
+  implements the timebased navigator's `encounteredError` hook (Readium's
+  `didFailToLoadResourceAt` plus best-effort NotificationCenter observation of
+  `AVPlayerItemFailedToPlayToEndTime` / `AVPlayerItemNewErrorLogEntry`) for
+  errors Readium surfaces later.
+  Cancelled reads (`HTTPError.cancelled`) are excluded before this routing.
+  AVFoundation cancels an in-flight range request when its data is no longer
+  required or the request is superseded by new requests for the same resource
+  (for example, to complete a seek); Readium then cancels the underlying read,
+  which surfaces as `HTTPError.cancelled`. That is benign churn, not a load
+  failure, so it never surfaces as an error event. Only genuine failures
+  (unreachable host, 404, missing or errored track) are forwarded. Apple
+  documents this cancellation in `AVAssetResourceLoaderDelegate`'s
+  [`resourceLoader(_:didCancel:)`](https://developer.apple.com/documentation/avfoundation/avassetresourceloaderdelegate/resourceloader(_:didcancel:)-3nl51);
+  see [platform-specific/ios.md](../platform-specific/ios.md) for the full
+  AVFoundation → Readium source chain.
+
+**Known limitation (iOS):** the wrapper covers resource-load failures — a track
+that never loads. It does not cover **post-load** failures: once bytes load
+cleanly, an `AVPlayer` decode/status error or a healthy-URL stall (a well-formed
+stream that stops progressing) is a KVO signal on Readium's private `AVPlayer`
+that posts no notification. The NotificationCenter observers are a best-effort net
+for those and do not fire for every one. **So for a post-load failure, do not
+rely on an error event — the player may simply stall.** A deterministic upstream
+hook for that case is tracked as a follow-up.
+
+Android forwards every timebased failure. Coverage:
+`ReadiumReaderTimebasedErrorTest` (Android unit) verifies the forwarding;
+`LoadFailureObservingResourceTests` and `AudioResourceLoadFailureReporterTests`
+(iOS unit) verify the load-time wrapper; and the `unreachable streamed audio
+surfaces an error event` integration test asserts the load-time path end-to-end
+on both platforms. The `partial stream failure surfaces an error event` test
+stays iOS-skipped (mid-stream truncation is best-effort on iOS).
+
+---
+
 ## Logging System: `R2Log`
 
 ### Log Levels

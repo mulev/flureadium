@@ -1,6 +1,14 @@
 import Flutter
 
-class EventStreamHandler: NSObject, FlutterStreamHandler {
+/// A minimal seam over `EventStreamHandler` so event routing (e.g. the plugin's
+/// error channel) can be unit-tested without constructing a real Flutter event
+/// channel, which requires a binary messenger.
+protocol EventStreamSink: AnyObject {
+  func sendEvent(_ event: Any?)
+  func dispose()
+}
+
+class EventStreamHandler: NSObject, FlutterStreamHandler, EventStreamSink {
 
   private let TAG: String
   private let streamName: String

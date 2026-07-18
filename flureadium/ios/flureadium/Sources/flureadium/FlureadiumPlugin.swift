@@ -22,6 +22,10 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
 
   static var registrar: FlutterPluginRegistrar? = nil
 
+  /// The registered plugin instance. Reader views route errors through this so
+  /// the `"error"` channel has a single, process-stable owner.
+  static weak var shared: FlureadiumPlugin?
+
   /// TTS Decoration style
   internal var ttsUtteranceDecorationStyle: Decoration.Style? = .highlight(tint: .yellow)
   internal var ttsRangeDecorationStyle: Decoration.Style? = .underline(tint: .black)
@@ -29,6 +33,10 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
   /// Timebased player events & state
   internal var timebasedPlayerStateStreamHandler: EventStreamHandler?
   internal var lastTimebasedPlayerState: ReadiumTimebasedState? = nil
+
+  /// Single owner of the `dev.mulev.flureadium/error` channel. Reader views and
+  /// (from Phase 2) the audio path forward errors here via `sendError`.
+  internal var errorStreamHandler: EventStreamSink?
 
   /// Timebased Navigator. Can be TTS, Audio or MediaOverlay implementations.
   internal var timebasedNavigator: FlutterTimebasedNavigator? = nil
@@ -46,12 +54,24 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
     let instance = FlureadiumPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
     instance.timebasedPlayerStateStreamHandler = EventStreamHandler(withName: "timebased-state", messenger: registrar.messenger())
+    instance.errorStreamHandler = EventStreamHandler(withName: "error", messenger: registrar.messenger())
 
     // Register reader view factory
     let factory = ReadiumReaderViewFactory(registrar: registrar)
     registrar.register(factory, withId: readiumReaderViewType)
 
     self.registrar = registrar
+    shared = instance
+  }
+
+  /// Forwards an error onto the plugin-owned `"error"` channel. Single send
+  /// point for both reader views and the audio path. The payload is serialized
+  /// to a `[String: Any?]` map because the `"error"` `EventChannel` uses the
+  /// Flutter standard codec, which cannot encode a `FlureadiumError` object
+  /// (Dart reads it back via `event as Map`).
+  internal func sendError(message: String, code: String? = nil, data: Any? = nil) {
+    let error = FlureadiumError(message: message, code: code, data: data)
+    errorStreamHandler?.sendEvent(error.toJson())
   }
 
   public func log(_ warning: Warning) {
@@ -76,6 +96,8 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
         await MainActor.run {
           self.timebasedPlayerStateStreamHandler?.dispose()
           self.timebasedPlayerStateStreamHandler = nil
+          self.errorStreamHandler?.dispose()
+          self.errorStreamHandler = nil
           result(nil)
         }
       }
@@ -352,11 +374,16 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
         }
       }
     case "stop":
+      // Capture the navigator being stopped now: teardown is deferred onto the
+      // main actor, so a straggler stop from a previous session must not clear a
+      // navigator a newer session has since installed.
+      let navToStop = self.timebasedNavigator
       Task.detached(priority: .high) {
         await MainActor.run {
-          self.timebasedNavigator?.dispose()
-          self.timebasedNavigator = nil
-          self.updateReaderViewTimebasedDecorations([])
+          if self.teardownTimebasedNavigator(navToStop) {
+            CarPlayPlaybackBridge.shared.unregister()
+            self.updateReaderViewTimebasedDecorations([])
+          }
         }
         await MainActor.run { result(nil) }
       }
@@ -377,12 +404,12 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
       result(nil)
     case "next":
       Task { @MainActor in
-        await self.timebasedNavigator?.seekForward()
+        await self.timebasedNavigator?.skipForward()
       }
       result(nil)
     case "previous":
       Task { @MainActor in
-        await self.timebasedNavigator?.seekBackward()
+        await self.timebasedNavigator?.skipBackward()
       }
       result(nil)
     case "goToLocator":
@@ -461,7 +488,13 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
               message: "Publication does not contain MediaOverlays or conforms to AudioBook profile. Args: \(call.arguments.debugDescription)",
               details: nil))
           }
-          self.timebasedNavigator = await FlutterAudioNavigator(publication: publication, preferences: prefs, initialLocator: locator)
+          let audioNavigator = await FlutterAudioNavigator(publication: publication, preferences: prefs, initialLocator: locator)
+          self.timebasedNavigator = audioNavigator
+          CarPlayPlaybackBridge.shared.register(publication: publication) { [weak audioNavigator] selected in
+            Task { @MainActor in
+              await audioNavigator?.play(fromLocator: selected)
+            }
+          }
         }
 
         self.timebasedNavigator?.listener = self
@@ -531,7 +564,11 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
 
   public func timebasedNavigator(_: any FlutterTimebasedNavigator, encounteredError error: any Error, withDescription description: String?) {
     print(TAG, "TimebasedNavigator error: \(error), description: \(String(describing: description))")
-    // TODO: submit on error stream
+    sendError(
+      message: error.localizedDescription,
+      code: "TimebasedError",
+      data: description
+    )
   }
 
   public func timebasedNavigator(_: any FlutterTimebasedNavigator, reachedLocator locator: ReadiumShared.Locator, readingOrderLink: ReadiumShared.Link?) {
@@ -626,11 +663,27 @@ extension FlureadiumPlugin {
     }
   }
 
+  /// Disposes `navigator` and clears the shared timebased slot — but only if the
+  /// slot still holds `navigator`. Teardown (`stop`) is fire-and-forget onto the
+  /// main actor; without this identity guard a straggler teardown from a prior
+  /// session would nil a navigator a newer session already installed (e.g.
+  /// clearing a freshly-enabled TTS navigator, which then reports "TTS Navigator
+  /// not initialized"). Returns whether the shared slot was cleared.
+  @MainActor
+  @discardableResult
+  internal func teardownTimebasedNavigator(_ navigator: FlutterTimebasedNavigator?) -> Bool {
+    navigator?.dispose()
+    guard self.timebasedNavigator === navigator else { return false }
+    self.timebasedNavigator = nil
+    return true
+  }
+
   private func closePublication() async {
     // Clean-up any resources associated with the publication.
     await MainActor.run {
       self.timebasedNavigator?.dispose()
       self.timebasedNavigator = nil
+      CarPlayPlaybackBridge.shared.unregister()
       currentReaderView = nil
       currentPdfReaderView = nil
       currentImageReaderView = nil

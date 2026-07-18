@@ -13,6 +13,11 @@
 
   <application android:usesCleartextTraffic="true" tools:targetApi="m">
 
+    <!-- Declares Android Auto media support; points at the automotive descriptor. -->
+    <meta-data
+        android:name="com.google.android.gms.car.application"
+        android:resource="@xml/automotive_app_desc"/>
+
     <service android:name=".PluginMediaService"
         android:enabled="true"
         android:exported="true"
@@ -21,6 +26,7 @@
         >
 
         <intent-filter>
+            <action android:name="androidx.media3.session.MediaLibraryService"/>
             <action android:name="androidx.media3.session.MediaSessionService"/>
             <action android:name="androidx.media2.session.MediaSessionService"/>
             <action android:name="android.media.session.MediaSessionService" />

@@ -4,11 +4,14 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:flureadium_example/main.dart' as app;
 
+import 'helpers/pump_until.dart';
+
 Future<void> _waitForReader(WidgetTester tester) async {
-  for (var i = 0; i < 15; i++) {
-    await tester.pump(const Duration(seconds: 1));
-    if (find.byType(ReadiumReaderWidget).evaluate().isNotEmpty) break;
-  }
+  await pumpUntil(
+    tester,
+    () => find.byType(ReadiumReaderWidget).evaluate().isNotEmpty,
+    timeout: const Duration(seconds: 15),
+  );
 }
 
 void _navigationTests(String assetLabel, String Function() openButtonLabel) {
@@ -134,6 +137,35 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
       }
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+    });
+
+    // Regression: the plugin owns the single "error" channel, so a Dart
+    // subscription to onErrorEvent must survive a reader-view dispose. Before
+    // the ownership refactor, closing a reader view end-streamed the
+    // subscription (and clobbered any plugin-scope error sink).
+    testWidgets('onErrorEvent subscription survives reader-view dispose', (
+      tester,
+    ) async {
+      var streamClosed = false;
+      final sub = Flureadium().onErrorEvent.listen(
+        (_) {},
+        onDone: () => streamClosed = true,
+      );
+
+      app.main();
+      await _waitForReader(tester);
+
+      // Dispose the reader — the old bug end-streamed the subscription here.
+      await tester.tap(find.text('Close'));
+      await tester.pump(const Duration(seconds: 3));
+
+      expect(
+        streamClosed,
+        isFalse,
+        reason: 'onErrorEvent must not be end-streamed by a view dispose',
+      );
+
+      await sub.cancel();
     });
 
     testWidgets('close publication removes reader widget', (tester) async {

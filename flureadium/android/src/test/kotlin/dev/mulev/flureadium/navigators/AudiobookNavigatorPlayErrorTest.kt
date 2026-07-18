@@ -69,7 +69,7 @@ internal class AudiobookNavigatorPlayErrorTest {
             as AudioNavigator<ExoPlayerSettings, ExoPlayerPreferences>
         doThrow(RuntimeException("simulated failure"))
             .`when`(mockFacade)
-            .openSession(any())
+            .openSession(any(), any())
         navigator.setTestMediaServiceFacade(mockFacade)
         navigator.setTestAudioNavigator(mockAudioNavigator)
 

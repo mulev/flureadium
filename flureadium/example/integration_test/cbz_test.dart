@@ -5,27 +5,32 @@ import 'package:flureadium/flureadium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:flureadium_example/main.dart' as app;
+import 'helpers/ensure_app_showing.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('CBZ', () {
-    tearDown(() async {
-      final flureadium = Flureadium();
-      await flureadium.closePublication();
-    });
+    // No tearDown close: the next test's ensureAppShowing switches publications
+    // via the Open button, mirroring the app. Closing the container under a
+    // still-mounted reader is not an app flow (flureadium-i0s).
 
     testWidgets('app auto-opens CBZ and shows reader widget', (tester) async {
-      app.main(initialAsset: 'assets/pubs/sample_comic.cbz');
-      await _waitForCbzReaderReady(tester);
+      await ensureAppShowing(
+        tester,
+        initialAsset: 'assets/pubs/sample_comic.cbz',
+        reopenButton: 'Open CBZ',
+      );
 
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
     });
 
     testWidgets('navigate left and right in CBZ reader', (tester) async {
-      app.main(initialAsset: 'assets/pubs/sample_comic.cbz');
-      await _waitForCbzReaderReady(tester);
+      await ensureAppShowing(
+        tester,
+        initialAsset: 'assets/pubs/sample_comic.cbz',
+        reopenButton: 'Open CBZ',
+      );
 
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
 
@@ -40,8 +45,11 @@ void main() {
     testWidgets('revisiting pages loads from cache without errors', (
       tester,
     ) async {
-      app.main(initialAsset: 'assets/pubs/sample_comic.cbz');
-      await _waitForCbzReaderReady(tester);
+      await ensureAppShowing(
+        tester,
+        initialAsset: 'assets/pubs/sample_comic.cbz',
+        reopenButton: 'Open CBZ',
+      );
 
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
 
@@ -63,8 +71,11 @@ void main() {
     testWidgets(
       'Flureadium.goToLocator navigates CBZ reader (Bug 1 regression)',
       (tester) async {
-        app.main(initialAsset: 'assets/pubs/sample_comic.cbz');
-        await _waitForCbzReaderReady(tester);
+        await ensureAppShowing(
+          tester,
+          initialAsset: 'assets/pubs/sample_comic.cbz',
+          reopenButton: 'Open CBZ',
+        );
 
         expect(find.byType(ReadiumReaderWidget), findsOneWidget);
 
@@ -87,8 +98,11 @@ void main() {
     testWidgets(
       'extractPageThumbnail returns JPEG bytes for a valid CBZ page',
       (tester) async {
-        app.main(initialAsset: 'assets/pubs/sample_comic.cbz');
-        await _waitForCbzReaderReady(tester);
+        await ensureAppShowing(
+          tester,
+          initialAsset: 'assets/pubs/sample_comic.cbz',
+          reopenButton: 'Open CBZ',
+        );
 
         final bytes = await Flureadium().extractPageThumbnail(
           '001.jpg',
@@ -107,8 +121,11 @@ void main() {
     testWidgets('extractPageThumbnail returns null for bogus href', (
       tester,
     ) async {
-      app.main(initialAsset: 'assets/pubs/sample_comic.cbz');
-      await _waitForCbzReaderReady(tester);
+      await ensureAppShowing(
+        tester,
+        initialAsset: 'assets/pubs/sample_comic.cbz',
+        reopenButton: 'Open CBZ',
+      );
 
       final bytes = await Flureadium().extractPageThumbnail(
         '/does/not/exist.jpg',
@@ -122,8 +139,11 @@ void main() {
     testWidgets('extractPageThumbnail returns null after closePublication', (
       tester,
     ) async {
-      app.main(initialAsset: 'assets/pubs/sample_comic.cbz');
-      await _waitForCbzReaderReady(tester);
+      await ensureAppShowing(
+        tester,
+        initialAsset: 'assets/pubs/sample_comic.cbz',
+        reopenButton: 'Open CBZ',
+      );
 
       await Flureadium().closePublication();
       final bytes = await Flureadium().extractPageThumbnail('001.jpg', 80, 70);
@@ -139,7 +159,11 @@ void main() {
     testWidgets('readingOrder hrefs match Locator stream format', (
       tester,
     ) async {
-      app.main(initialAsset: 'assets/pubs/sample_comic.cbz');
+      await ensureAppShowing(
+        tester,
+        initialAsset: 'assets/pubs/sample_comic.cbz',
+        reopenButton: 'Open CBZ',
+      );
       final locator = await _waitForCbzReaderReady(tester);
 
       final path = await _extractAsset('assets/pubs/sample_comic.cbz');
@@ -164,8 +188,9 @@ Future<Locator> _waitForCbzReaderReady(
   WidgetTester tester, {
   String? href,
 }) async {
-  for (var i = 0; i < 30; i++) {
-    await tester.pump(const Duration(milliseconds: 500));
+  // 60 ticks × 250ms keeps the original 15s ceiling at finer granularity.
+  for (var i = 0; i < 60; i++) {
+    await tester.pump(const Duration(milliseconds: 250));
 
     if (find.byType(ReadiumReaderWidget).evaluate().isEmpty) {
       continue;

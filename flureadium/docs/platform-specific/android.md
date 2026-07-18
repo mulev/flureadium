@@ -81,7 +81,56 @@ If using ProGuard/R8, add to `android/app/proguard-rules.pro`:
 -keep class dev.mulev.flureadium.** { *; }
 ```
 
+### 6. Android Auto (Optional)
+
+Audiobook chapters and transport controls work on Android Auto with no host manifest changes. The plugin's manifest already declares Auto media support and its media service, and Android manifest merging brings both into the host app — the example app adds nothing Auto-specific and still exposes the browse tree.
+
+For reference, this is what the plugin declares and merges into your app. The `<application>` meta-data points at the automotive descriptor:
+
+```xml
+<!-- Declares Android Auto media support; points at the automotive descriptor. -->
+<meta-data
+    android:name="com.google.android.gms.car.application"
+    android:resource="@xml/automotive_app_desc"/>
+```
+
+The descriptor it ships at `res/xml/automotive_app_desc.xml`:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<automotiveApp>
+    <uses name="media"/>
+</automotiveApp>
+```
+
+The plugin also declares `PluginMediaService` with the `MediaLibraryService` intent filter and `foregroundServiceType="mediaPlayback"`, plus the foreground-service permissions from step 4 (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`) — all merge in too. A host only needs to act if it defines its own `automotive_app_desc.xml` or the same meta-data, in which case the standard manifest-merger conflict rules apply.
+
+**Testing with the Desktop Head Unit (DHU):**
+
+1. Install the Desktop Head Unit from the SDK Manager (SDK Tools → Android Auto Desktop Head Unit emulator).
+2. On the device or emulator, enable Android Auto developer mode (tap the Android Auto app version 10 times) and turn on **Unknown sources**.
+3. Start the head-unit server on the device: `adb forward tcp:5277 tcp:5277`, then run the DHU binary from the SDK (`extras/google/auto/desktop-head-unit`).
+4. Open the audiobook in the app so a publication is loaded, then pick your app from the DHU's media launcher. The chapter list should browse and transport controls (play/pause/skip) should drive playback.
+
+> Android Auto validates the media app before showing it. If the app does not appear, check the merged manifest (in the build output) for the `com.google.android.gms.car.application` meta-data and confirm the media service is exported.
+
 ## Implementation Details
+
+### Android Auto Browse Tree
+
+`PluginMediaService` runs as a media3 `MediaLibraryService` (not just `MediaSessionService`), which is what Android Auto requires to browse content. `AudiobookBrowseTree` builds the tree the head unit requests:
+
+- The tree is **one level deep**: a browsable root whose children are the open publication's chapters (its `readingOrder` entries).
+- Each chapter is a playable `MediaItem` whose id (`ch_<index>`) round-trips back to a Readium `Locator` the audiobook navigator can seek to. The index matches the audio player's timeline index, so selecting a chapter on the head unit drives a seek on the same navigator the in-app controls use.
+- Chapter titles fall back to `Chapter N` when a reading-order entry has no title; the root falls back to `Audiobook` when the publication has no title.
+
+The browse tree is kept free of Android Auto and service state so it is JVM-unit-testable with a stubbed `Publication` (see `AudiobookBrowseTreeTest.kt`).
+
+**Files:**
+- `AudiobookBrowseTree.kt` — builds the root + chapter `MediaItem`s, maps ids to locators
+- `PluginLibrarySessionCallback.kt` — `MediaLibrarySession.Callback` serving the tree to Auto
+- `PluginMediaService.kt` — hosts the `MediaLibrarySession`
+- `res/xml/automotive_app_desc.xml` — Android Auto media descriptor
 
 ### Plugin Structure
 
@@ -141,6 +190,36 @@ Uses Readium Kotlin Toolkit:
 - `Navigator` for EPUB, PDF, and image-based content display
 - `TTS` and `MediaPlayer` for audio
 - `PdfiumNavigator` for PDF rendering (via Pdfium adapter)
+
+### Audiobook End of Book
+
+When an audiobook reaches the end of its last resource, `AudiobookNavigator`
+forwards `TimebasedState.ended` to the listener **before** it tears down the
+media session. The ordering matters: regular playback states reach Flutter
+through a stacked `throttleLatest` chain, but the `Ended` tick also triggers an
+un-throttled `closeSession()`/`navigator.close()`. If `ended` went through the
+throttled path, a post-end state could be pushed in the same window and the
+latest-wins throttle would coalesce `ended` away before it reached Flutter.
+
+`onAudioNavigatorEnded()` handles this in a fixed order: forward `ended` to the
+listener, cancel and clear the forwarding jobs, then close the session. Cancelling
+the jobs first stops any late tick from racing the listener after `ended` is
+delivered.
+
+### Audiobook Streaming Errors
+
+When ExoPlayer reports a playback failure — a `Source error` from an unreachable
+host, a 404, or a stream that drops mid-play — it reaches
+`AudiobookNavigator` as `AudioNavigator.State.Failure` and is relayed through
+`onTimebasedPlaybackFailure`. `ReadiumReader.onTimebasedPlaybackFailure` forwards
+it to Flutter's `onErrorEvent` via `sendError`, with `code: "TimebasedError"`
+and `data` set to the Readium error category. Android surfaces both load-time and
+mid-stream failures; on iOS load-time failures are also caught now (via the
+container wrapper — see [ios.md](ios.md#audiobook-error-forwarding)), but its
+mid-stream/post-load delivery stays best-effort. Covered by `ReadiumReaderTimebasedErrorTest`.
+
+**Files:**
+- `AudiobookNavigator.kt` — `onAudioNavigatorEnded()` and the `State.Ended` branch
 
 ### PDF Support
 

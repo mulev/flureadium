@@ -68,7 +68,88 @@ For audiobook background playback, add to `Info.plist`:
 </array>
 ```
 
+### 4. CarPlay (Optional)
+
+To expose audiobook chapters and transport controls on CarPlay, the host app adds a CarPlay scene and the CarPlay-audio entitlement. Flureadium ships the scene delegate and chapter-list builder; the host wires them into its scene manifest.
+
+> **External blocker — Apple grant required.** `com.apple.developer.carplay-audio` is a *restricted* entitlement. Apple grants it per app on request (developer.apple.com → CarPlay request form). Until the grant lands, the entitlement cannot be code-signed and CarPlay will not run on device. Plan for this lead time — it gates any consumer (including Fablum) shipping CarPlay.
+
+**Entitlement.** Add to `ios/Runner/Runner.entitlements`:
+
+```xml
+<key>com.apple.developer.carplay-audio</key>
+<true/>
+```
+
+Set `CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements` in the target's build settings once the grant is approved. (The flureadium example ships this file as a reference template but does **not** wire it into `CODE_SIGN_ENTITLEMENTS`, so the example builds without the grant.)
+
+**Scene manifest.** CarPlay uses the UIScene lifecycle, so the app declares both a window scene and a CarPlay scene in `Info.plist`:
+
+```xml
+<key>UIApplicationSceneManifest</key>
+<dict>
+    <key>UIApplicationSupportsMultipleScenes</key>
+    <true/>
+    <key>UISceneConfigurations</key>
+    <dict>
+        <key>UIWindowSceneSessionRoleApplication</key>
+        <array>
+            <dict>
+                <key>UISceneClassName</key>
+                <string>UIWindowScene</string>
+                <key>UISceneDelegateClassName</key>
+                <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+                <key>UISceneConfigurationName</key>
+                <string>flutter</string>
+                <key>UISceneStoryboardFile</key>
+                <string>Main</string>
+            </dict>
+        </array>
+        <key>CPTemplateApplicationSceneSessionRoleApplication</key>
+        <array>
+            <dict>
+                <key>UISceneClassName</key>
+                <string>CPTemplateApplicationScene</string>
+                <key>UISceneDelegateClassName</key>
+                <string>$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate</string>
+                <key>UISceneConfigurationName</key>
+                <string>carplay</string>
+            </dict>
+        </array>
+    </dict>
+</dict>
+```
+
+Adopting the scene lifecycle means `AppDelegate` no longer owns the window. The example app's `AppDelegate` migrates to scene-role routing and registers Flutter plugins against the implicit engine; the `SceneDelegate` owns the Flutter window scene and the `CarPlaySceneDelegate` owns the CarPlay scene. Mirror this split in your host app.
+
+**Background audio.** CarPlay playback also needs the `audio` background mode from step 3.
+
+**Testing in the simulator:**
+
+1. Run the app on an iOS simulator.
+2. From the simulator menu, choose **I/O → External Displays → CarPlay** to open the CarPlay window.
+3. Open an audiobook in the app so a publication is loaded. The app's chapter list appears in the CarPlay window; selecting a row plays that chapter, and the now-playing transport (play/pause/skip/seek) works.
+
+> The simulator does not require the Apple entitlement grant, so it is the fastest way to verify the chapter list and transport wiring before the on-device grant arrives.
+
 ## Implementation Details
+
+### CarPlay Chapter List
+
+The CarPlay scene presents the open audiobook's chapters and routes selections back to the active navigator:
+
+- `CarPlayChapterList.chapters(from:)` derives one row per `readingOrder` entry. Titles fall back to a localized `Chapter N` (English, Danish, Swedish, Norwegian, Icelandic) using the publication's language when an entry has no title.
+- `CarPlaySceneDelegate` builds a `CPListTemplate` of those chapters and, on row selection, calls `CarPlayPlaybackBridge.playChapter(at:)` to seek the same audiobook navigator the in-app controls drive.
+- Transport controls and now-playing metadata come for free from the plugin's `NowPlayingInfoUpdater`, which already drives `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` for the lockscreen. CarPlay reuses that state — no separate wiring.
+
+`CarPlayChapterList` is a pure function over a `Publication`, so it is unit-testable without a CarPlay scene (see `CarPlayChapterListTests.swift` / `CarPlayPlaybackBridgeTests.swift`).
+
+**Files:**
+- `carplay/CarPlayChapterList.swift` — derives chapter rows from the reading order
+- `carplay/CarPlayPlaybackBridge.swift` — bridges row selection to the navigator
+- `example/ios/Runner/CarPlaySceneDelegate.swift` — CarPlay scene: builds the list template
+- `example/ios/Runner/SceneDelegate.swift` — window scene owning the Flutter view
+- `example/ios/Runner/Runner.entitlements` — CarPlay-audio entitlement (reference template)
 
 ### Plugin Structure
 
@@ -111,6 +192,80 @@ Uses Readium Swift Toolkit 3.5.0:
 - `EPUBNavigatorViewController` for content display
 - `AVSpeechSynthesizer` for TTS
 - `AVPlayer` for audio
+
+### Audiobook End of Book
+
+`FlutterAudioNavigator` emits `TimebasedState.ended` when an audiobook reaches
+its natural end. Readium calls the `shouldPlayNextResource` delegate hook each
+time a resource finishes; at the last resource (`resourceIndex` is the final
+index of `publication.readingOrder`) the navigator emits one `.ended` state and
+returns `false` to stop playback. Earlier resources return `true` and emit
+nothing, so the next track plays as usual. This is the signal hosts listen for
+to show an end-of-book completion screen.
+
+### Audiobook Error Forwarding
+
+Streamed audio load failures reach Flutter on the `onErrorEvent` stream. The
+plugin owns the single `error` channel; the audio path forwards through it three
+ways:
+
+- **Container wrapper route (load-time)** — during publication opening,
+  `Readium.setupWithHeaders` installs an `onCreatePublication` transform
+  (`AudioResourceLoadFailureReporter`) that wraps each audiobook track resource
+  in a `LoadFailureObservingResource`. `PublicationMediaLoader` reads every track
+  through that container over a custom `readium://` scheme, so a failed length
+  probe or byte read — the exact failure Readium otherwise hands to
+  `AVAssetResourceLoadingRequest.finishLoading(with:)` and drops — is caught at
+  the read boundary and routed onto the error channel as
+  `sendError(code: "TimebasedError")`. One error per failed track, reset per
+  publication. This makes a genuine load-time failure (unreachable host, missing
+  or errored track) deterministically observable, even when playback never
+  starts.
+  Cancelled reads (`HTTPError.cancelled`) are filtered out in
+  `AudioResourceLoadFailureReporter.report` before the per-track de-dup. A
+  streamed track plays through `PublicationMediaLoader`, an
+  `AVAssetResourceLoaderDelegate`; per Apple, "previously issued loading requests
+  can be cancelled when data from the resource is no longer required or when a
+  loading request is superseded by new requests for data from the same resource"
+  (for example, to complete a seek). Readium handles that in
+  `resourceLoader(_:didCancel:)`, which calls `finishRequest` to cancel the
+  in-flight read task. Its HTTP client then maps the resulting
+  `URLError.cancelled` ("An asynchronous load has been canceled") to
+  `HTTPError.cancelled`. A cancellation is benign churn, not a load
+  failure, so it is never sent; filtering ahead of the de-dup keeps a genuine
+  failure that arrives later on the same track reportable. Sources: Apple —
+  [`AVAssetResourceLoaderDelegate.resourceLoader(_:didCancel:)`](https://developer.apple.com/documentation/avfoundation/avassetresourceloaderdelegate/resourceloader(_:didcancel:)-3nl51)
+  (Obj-C selector `resourceLoader:didCancelLoadingRequest:`) and
+  [`URLError.Code.cancelled`](https://developer.apple.com/documentation/foundation/urlerror/code/cancelled);
+  Readium 3.5.0 — [`DefaultHTTPClient`](https://github.com/readium/swift-toolkit/blob/8bd799d00a835248a6f5987f70c23c4c30280e48/Sources/Shared/Toolkit/HTTP/DefaultHTTPClient.swift#L533-L534)
+  (`URLError.cancelled` → `HTTPError.cancelled`) and
+  [`PublicationMediaLoader.finishRequest`](https://github.com/readium/swift-toolkit/blob/8bd799d00a835248a6f5987f70c23c4c30280e48/Sources/Navigator/Audiobook/PublicationMediaLoader.swift#L88-L109).
+- **Delegate route** — `FlutterAudioNavigator`'s `didFailToLoadResourceAt`
+  delegate routes any error Readium surfaces into the timebased navigator's
+  `encounteredError` hook, which the plugin implements as
+  `sendError(message:, code: "TimebasedError", data:)`.
+- **NotificationCenter route** — Readium's audio stack never routes AVFoundation
+  playback failures to its delegate, and its `AVPlayer` is private. So the navigator
+  also registers best-effort observers for `AVPlayerItemFailedToPlayToEndTime`
+  and `AVPlayerItemNewErrorLogEntry` (`object: nil`) over its lifetime, removed
+  in `dispose()`. Both route through the same `handlePlaybackFailure` seam.
+
+**Limitation:** the container wrapper catches resource-load failures — a track
+that fails to load and never starts. It does not catch **post-load** problems:
+once bytes load cleanly, an `AVPlayer` decode/status failure or a healthy-URL
+stall (a well-formed stream that stops progressing) is a KVO signal on Readium's
+private item and posts no notification. The NotificationCenter observers are the
+best-effort net for those cases and do not fire for every one. So a stall after a
+clean load may still show no `onErrorEvent`; a deterministic upstream hook for
+post-load failures is a tracked follow-up. Android has no such gap:
+`ReadiumReader.onTimebasedPlaybackFailure` forwards every timebased failure.
+
+The `unreachable streamed audio surfaces an error event` integration test runs on
+both platforms and covers the load-time path. The `partial stream failure`
+integration test stays iOS-skipped (it exercises a mid-stream truncation iOS does
+not reliably report). `ReadiumReaderTimebasedErrorTest` covers the Android
+forwarding at the unit level; `LoadFailureObservingResourceTests` and
+`AudioResourceLoadFailureReporterTests` cover the iOS wrapper.
 
 ### Local Server
 
@@ -246,6 +401,8 @@ Readium's `EditingAction` support with
 ### Stream and View Lifecycle
 
 Flureadium iOS uses `EventStreamHandler` to manage Flutter EventChannel streams (text locator, reader status, errors). The `"dispose"` method call from Dart is the single comprehensive cleanup point. `deinit` is a minimal safety net.
+
+The `error` channel is the exception to per-view ownership. `FlureadiumPlugin` owns it: the handler is created once in `register(with:)` and disposed only when the plugin's own `"dispose"` runs. Reader views forward resource-load failures through the plugin's `sendError(message:code:data:)` instead of holding their own `error` handler, so closing a reader view no longer end-streams the Dart subscription, and the audiobook player (which has no reader view) can send on the same channel. The PDF reader keeps its separate `pdf-error` channel.
 
 **dispose handler** owns all cleanup that needs a live Flutter engine:
 

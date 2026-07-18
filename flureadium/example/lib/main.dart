@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:collection/collection.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flureadium/flureadium.dart';
+import 'audio_stream_fixtures.dart';
 
 const _defaultInitialAsset = String.fromEnvironment(
   'FLUREADIUM_INITIAL_ASSET',
@@ -42,6 +44,12 @@ class _ReaderPageState extends State<ReaderPage> {
   Locator? _locator;
   Locator? _savedLocator;
   ReadiumTimebasedState? _timebasedState;
+  // Bumped each time a publication finishes opening (after openPublication
+  // returns). Integration tests read this before tapping an "Open ..." button
+  // and poll until it increments, so they wait exactly until the new
+  // publication is loaded instead of a fixed duration.
+  int _openGeneration = 0;
+  bool _endedSeen = false;
   bool _controlsVisible = true;
   bool _ttsEnabled = false;
   Locator? _lastTtsLocator;
@@ -53,6 +61,18 @@ class _ReaderPageState extends State<ReaderPage> {
   TimebasedState? _ttsPlaybackState;
   TtsErrorType? _ttsErrorType;
   double _ttsSpeed = 1.0;
+  // Latches the last error delivered on onErrorEvent so integration tests can
+  // assert that a failed audio resource load surfaces instead of stalling.
+  String _lastAudioError = '';
+  // Local server backing the 'Open AudioBook BadStream' action: serves a WAV
+  // whose Content-Length promises the full clip but drops the socket after a
+  // partial body, producing a mid-stream failure both audio engines observe.
+  HttpServer? _badStreamServer;
+  StreamedAudioServer? _streamedServer;
+  // Latched by the streamed-audio fixture when AVFoundation cancels an
+  // in-flight range request (client disconnect mid-response); lets the
+  // integration test confirm the benign-cancellation path actually ran.
+  bool _cancelledStreamDisconnectSeen = false;
 
   StreamSubscription<ReadiumReaderStatus>? _statusSub;
   StreamSubscription<Locator>? _locatorSub;
@@ -70,6 +90,10 @@ class _ReaderPageState extends State<ReaderPage> {
     _timebasedSub = _flureadium.onTimebasedPlayerStateChanged.listen(
       (s) => setState(() {
         _timebasedState = s;
+        // Latch end-of-book: the player can settle to `paused` immediately
+        // after emitting `ended`, so the resting state is not reliable. Record
+        // that `ended` was ever delivered for end-of-book assertions.
+        if (s.state == TimebasedState.ended) _endedSeen = true;
         _ttsPlaybackState = _ttsEnabled ? s.state : null;
         _ttsErrorType = _ttsEnabled ? s.ttsErrorType : null;
       }),
@@ -97,9 +121,11 @@ class _ReaderPageState extends State<ReaderPage> {
         _savedLocator = l;
       }),
     );
-    _errorSub = _flureadium.onErrorEvent.listen(
-      (e) => debugPrint('FlureadiumError: $e'),
-    );
+    _errorSub = _flureadium.onErrorEvent.listen((e) {
+      debugPrint('FlureadiumError: $e');
+      if (!mounted) return;
+      setState(() => _lastAudioError = e.message);
+    });
   }
 
   @override
@@ -108,6 +134,8 @@ class _ReaderPageState extends State<ReaderPage> {
     _locatorSub?.cancel();
     _errorSub?.cancel();
     _timebasedSub?.cancel();
+    _badStreamServer?.close(force: true);
+    _streamedServer?.close();
     super.dispose();
   }
 
@@ -142,6 +170,8 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
+        _openGeneration++;
+        _endedSeen = false;
         _ttsEnabled = false;
         _lastTtsLocator = null;
         _readerLocatorAtTtsDisable = null;
@@ -155,12 +185,227 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
+  Future<void> _openAudiobookUntitledChapter() async {
+    try {
+      final path = await _extractAsset(
+        'assets/pubs/untitled_chapter.audiobook',
+      );
+      final pub = await _flureadium.openPublication(path);
+      if (!mounted) return;
+      setState(() {
+        _publication = pub;
+        _openGeneration++;
+        _ttsEnabled = false;
+        _lastTtsLocator = null;
+        _readerLocatorAtTtsDisable = null;
+        _audioEnabled = false;
+        _audioPaused = false;
+        _voices = [];
+        _voiceIndex = 0;
+      });
+    } catch (e) {
+      debugPrint('openAudiobookUntitledChapter error: $e');
+    }
+  }
+
+  Future<void> _openUnreachableAudiobook() async {
+    // A well-formed audiobook manifest whose only track points at an
+    // unreachable host. The manifest parses, but the first audio resource load
+    // fails inside AVFoundation — the streaming path Phase 2 forwards to
+    // onErrorEvent instead of stalling silently at 0:00.
+    const manifest = '''
+{
+  "@context": "https://readium.org/webpub-manifest/context.jsonld",
+  "metadata": {
+    "@type": "http://schema.org/Audiobook",
+    "conformsTo": "https://readium.org/webpub-manifest/profiles/audiobook",
+    "title": "Unreachable Audio",
+    "duration": 120
+  },
+  "links": [
+    { "rel": "self", "href": "http://127.0.0.1:9/manifest.json", "type": "application/audiobook+json" }
+  ],
+  "readingOrder": [
+    { "href": "http://127.0.0.1:9/unreachable.mp3", "type": "audio/mpeg", "duration": 120 }
+  ]
+}
+''';
+    try {
+      final tmp = File(
+        '${Directory.systemTemp.path}/'
+        '${DateTime.now().millisecondsSinceEpoch}_unreachable.json',
+      );
+      await tmp.writeAsString(manifest);
+      final pub = await _flureadium.openPublication(tmp.path);
+      if (!mounted) return;
+      setState(() {
+        _publication = pub;
+        _openGeneration++;
+        _lastAudioError = '';
+        _endedSeen = false;
+        _ttsEnabled = false;
+        _lastTtsLocator = null;
+        _readerLocatorAtTtsDisable = null;
+        _audioEnabled = false;
+        _audioPaused = false;
+        _voices = [];
+        _voiceIndex = 0;
+      });
+    } catch (e) {
+      debugPrint('openUnreachableAudiobook error: $e');
+    }
+  }
+
+  // Opens an audiobook whose single track streams from a local server that
+  // sends a valid WAV header plus a short PCM prefix, then drops the socket
+  // before satisfying the advertised Content-Length. Playback starts and then
+  // fails mid-stream — the observable failure path (unlike a dead host, which
+  // fails at load time before iOS can surface it).
+  Future<void> _openMidStreamFailAudiobook() async {
+    const sampleRate = 8000;
+    const bytesPerSample = 2; // 16-bit mono
+    const fullDataSize = sampleRate * bytesPerSample * 30; // 30s promised
+    const prefixSize = sampleRate * bytesPerSample; // 1s actually sent
+    final header = wavHeader(dataSize: fullDataSize, sampleRate: sampleRate);
+    final contentLength = header.length + fullDataSize;
+
+    await _badStreamServer?.close(force: true);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _badStreamServer = server;
+    server.listen((request) async {
+      // Bypass HttpResponse's length bookkeeping: write a raw response whose
+      // Content-Length exceeds what we send, then close early.
+      final socket = await request.response.detachSocket(writeHeaders: false);
+      socket.add(
+        utf8.encode(
+          'HTTP/1.1 200 OK\r\n'
+          'Content-Type: audio/wav\r\n'
+          'Content-Length: $contentLength\r\n'
+          'Accept-Ranges: none\r\n'
+          'Connection: close\r\n\r\n',
+        ),
+      );
+      socket.add(header);
+      socket.add(Uint8List(prefixSize)); // 1s of silence, then nothing
+      await socket.flush();
+      await socket.close();
+      socket.destroy();
+    });
+
+    final audioUrl = 'http://127.0.0.1:${server.port}/audio.wav';
+    final manifest =
+        '''
+{
+  "@context": "https://readium.org/webpub-manifest/context.jsonld",
+  "metadata": {
+    "@type": "http://schema.org/Audiobook",
+    "conformsTo": "https://readium.org/webpub-manifest/profiles/audiobook",
+    "title": "Truncated Stream Audio",
+    "duration": 30
+  },
+  "links": [
+    { "rel": "self", "href": "$audioUrl", "type": "application/audiobook+json" }
+  ],
+  "readingOrder": [
+    { "href": "$audioUrl", "type": "audio/wav", "duration": 30 }
+  ]
+}
+''';
+    try {
+      final tmp = File(
+        '${Directory.systemTemp.path}/'
+        '${DateTime.now().millisecondsSinceEpoch}_truncated.json',
+      );
+      await tmp.writeAsString(manifest);
+      final pub = await _flureadium.openPublication(tmp.path);
+      if (!mounted) return;
+      setState(() {
+        _publication = pub;
+        _openGeneration++;
+        _lastAudioError = '';
+        _endedSeen = false;
+        _ttsEnabled = false;
+        _lastTtsLocator = null;
+        _readerLocatorAtTtsDisable = null;
+        _audioEnabled = false;
+        _audioPaused = false;
+        _voices = [];
+        _voiceIndex = 0;
+      });
+    } catch (e) {
+      debugPrint('openMidStreamFailAudiobook error: $e');
+    }
+  }
+
+  Future<void> _openStreamedAudiobook() async {
+    // A complete, valid, range-seekable WAV served by a local server that
+    // trickles the tail of each range so a read-ahead request is in flight
+    // during playback. Seeking supersedes it, producing the benign
+    // HTTPError.cancelled the iOS reporter must swallow (see the
+    // 'seeking a streamed audiobook does not surface a spurious cancelled
+    // error' integration test).
+    await _streamedServer?.close();
+    // 10 minutes, so the test's repeated +30s seeks stay well inside the track
+    // (each seek supersedes the in-flight read-ahead request without ending it).
+    final server = await StreamedAudioServer.startSilentWav(seconds: 600);
+    server.onClientCancel = () {
+      if (mounted) setState(() => _cancelledStreamDisconnectSeen = true);
+    };
+    _streamedServer = server;
+
+    final manifest =
+        '''
+{
+  "@context": "https://readium.org/webpub-manifest/context.jsonld",
+  "metadata": {
+    "@type": "http://schema.org/Audiobook",
+    "conformsTo": "https://readium.org/webpub-manifest/profiles/audiobook",
+    "title": "Streamed Audio",
+    "duration": 600
+  },
+  "links": [
+    { "rel": "self", "href": "${server.url}", "type": "application/audiobook+json" }
+  ],
+  "readingOrder": [
+    { "href": "${server.url}", "type": "audio/wav", "duration": 600 }
+  ]
+}
+''';
+    try {
+      final tmp = File(
+        '${Directory.systemTemp.path}/'
+        '${DateTime.now().millisecondsSinceEpoch}_streamed.json',
+      );
+      await tmp.writeAsString(manifest);
+      final pub = await _flureadium.openPublication(tmp.path);
+      if (!mounted) return;
+      setState(() {
+        _publication = pub;
+        _openGeneration++;
+        _lastAudioError = '';
+        _cancelledStreamDisconnectSeen = false;
+        _endedSeen = false;
+        _ttsEnabled = false;
+        _lastTtsLocator = null;
+        _readerLocatorAtTtsDisable = null;
+        _audioEnabled = false;
+        _audioPaused = false;
+        _voices = [];
+        _voiceIndex = 0;
+      });
+    } catch (e) {
+      debugPrint('openStreamedAudiobook error: $e');
+    }
+  }
+
   Future<void> _openPublicationAsset(String assetPath) async {
     final path = await _extractAsset(assetPath);
     final pub = await _flureadium.openPublication(path);
     if (!mounted) return;
     setState(() {
       _publication = pub;
+      _openGeneration++;
+      _endedSeen = false;
       _ttsEnabled = false;
       _lastTtsLocator = null;
       _readerLocatorAtTtsDisable = null;
@@ -180,6 +425,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
+        _openGeneration++;
         _ttsEnabled = false;
         _lastTtsLocator = null;
         _readerLocatorAtTtsDisable = null;
@@ -365,6 +611,10 @@ class _ReaderPageState extends State<ReaderPage> {
   Future<void> _seekForward() =>
       _flureadium.audioSeekBy(const Duration(seconds: 30));
 
+  Future<void> _nextChapter() => _flureadium.next();
+
+  Future<void> _previousChapter() => _flureadium.previous();
+
   Future<void> _goToFirstChapter() async {
     final pub = _publication;
     if (pub == null) return;
@@ -440,6 +690,64 @@ class _ReaderPageState extends State<ReaderPage> {
                         ),
                       ),
                     Text(
+                      key: const Key('open-generation'),
+                      'open-generation: $_openGeneration',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('current-track'),
+                      'track: ${_timebasedState?.currentLocator?.locations?.position ?? '-'} '
+                      '${_timebasedState?.currentLocator?.href ?? ''}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('timebased-state'),
+                      'state: ${_timebasedState?.state.name ?? '-'}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('timebased-position'),
+                      'pos: ${_timebasedState?.currentOffset?.inMilliseconds ?? -1} '
+                      'dur: ${_timebasedState?.currentDuration?.inMilliseconds ?? -1}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('ended-seen'),
+                      'ended-seen: $_endedSeen',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('audio-error'),
+                      'audio-error: $_lastAudioError',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('cancelled-stream-disconnect-seen'),
+                      'cancelled-stream-disconnect-seen: $_cancelledStreamDisconnectSeen',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
                       key: const Key('locator_href'),
                       _locator?.href ?? '',
                       style: const TextStyle(
@@ -460,6 +768,22 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _openAudiobook,
                           child: const Text('Open AudioBook'),
+                        ),
+                        TextButton(
+                          onPressed: _openAudiobookUntitledChapter,
+                          child: const Text('Open AudioBook NoTitle'),
+                        ),
+                        TextButton(
+                          onPressed: _openUnreachableAudiobook,
+                          child: const Text('Open AudioBook BadUrl'),
+                        ),
+                        TextButton(
+                          onPressed: _openMidStreamFailAudiobook,
+                          child: const Text('Open AudioBook BadStream'),
+                        ),
+                        TextButton(
+                          onPressed: _openStreamedAudiobook,
+                          child: const Text('Open AudioBook Streamed'),
                         ),
                         TextButton(
                           onPressed: _openCbz,
@@ -606,6 +930,16 @@ class _ReaderPageState extends State<ReaderPage> {
                           TextButton(
                             onPressed: _seekForward,
                             child: const Text('+30s'),
+                          ),
+                        if (_audioEnabled)
+                          TextButton(
+                            onPressed: _previousChapter,
+                            child: const Text('Audio Prev Chapter'),
+                          ),
+                        if (_audioEnabled)
+                          TextButton(
+                            onPressed: _nextChapter,
+                            child: const Text('Audio Next Chapter'),
                           ),
                       ],
                     ),

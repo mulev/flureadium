@@ -82,6 +82,13 @@ await flureadium.next();
 await flureadium.previous();
 ```
 
+`next()` and `previous()` move one track along the publication's reading order (the audiobook equivalent of a chapter). They are bounded: `previous()` on the first track and `next()` on the last track stay put.
+
+Do not confuse them with the seek and TOC APIs:
+
+- `audioSeekBy(Duration)` moves the playhead by a relative offset inside the current playback, never across tracks. Use it for the skip-back / skip-forward buttons.
+- `skipToNext()` / `skipToPrevious()` on `ReadiumReaderWidget` walk the EPUB table of contents and have no effect on an audiobook.
+
 ### Seeking
 
 ```dart
@@ -91,6 +98,10 @@ await flureadium.audioSeekBy(Duration(seconds: 30));
 // Skip backward 10 seconds
 await flureadium.audioSeekBy(Duration(seconds: -10));
 ```
+
+### Transition Safety
+
+Changing chapter, seeking to a locator, and end-of-track auto-advance all run without blocking the UI thread. The navigator's delegate callbacks serve playback state from the last values Readium delivered off the AVPlayer lock, so a transition never reads back into the live player while the player is mid-seek. Earlier versions read the player's current time from inside the seek itself, which deadlocked and froze the app on every transition (see [Troubleshooting](../troubleshooting.md#ios-app-freezes-on-chapter-change-seek-or-end-of-track-audiobook)).
 
 ## Playback State Tracking
 
@@ -123,6 +134,62 @@ enum TimebasedState {
   failure,   // Error occurred
 }
 ```
+
+### End of Book
+
+When playback finishes the last resource in the reading order, flureadium emits
+a single `TimebasedState.ended`. Listen for it to show end-of-book UI such as a
+completion screen:
+
+```dart
+flureadium.timebasedStateStream.listen((state) {
+  if (state.state == TimebasedState.ended) {
+    // Audiobook finished — show the completion screen.
+  }
+});
+```
+
+On iOS this fires from the navigator's last-resource hook when the final track
+ends; see [platform-specific/ios.md](../platform-specific/ios.md). On Android the
+navigator forwards `ended` to the listener before it tears down the media
+session, so the state reaches Flutter ahead of any post-end cleanup; see
+[platform-specific/android.md](../platform-specific/android.md).
+
+`ended` means the book reached its natural end — it is never emitted during
+teardown. Closing or disposing the reader mid-playback tears the navigator down
+silently, so a listener will not see a spurious `ended` on close and can treat
+every `ended` as a real completion.
+
+The integration test `audiobook_test.dart` covers this end to end: it advances
+to the last track, runs it out, and asserts the example app surfaces `ended`.
+
+### Handling Playback Errors
+
+A streamed track can fail — an unreachable host or 404 at load time, or a codec
+the device rejects or a stream that drops mid-play. These do not throw from
+`play()`; they arrive asynchronously on `Flureadium.onErrorEvent` as a
+`ReadiumError`. Subscribe to it so a failed load surfaces to the listener
+instead of the player stalling silently at `0:00`:
+
+```dart
+final errorSub = flureadium.onErrorEvent.listen((error) {
+  showErrorToast(error.message); // e.g. show a toast on the player surface
+});
+// Cancel in dispose().
+```
+
+On iOS a genuine load-time failure (unreachable host, 404, missing or errored
+track) is now caught deterministically: during opening the plugin wraps each
+audio track resource and routes a failed read onto `onErrorEvent` (see
+[platform-specific/ios.md](../platform-specific/ios.md) and
+[error-handling.md](error-handling.md#audiobook-streaming-failures)). What stays
+best-effort on iOS is a **post-load** failure — bytes that load cleanly and then
+fail to decode, or a healthy stream that stalls — so don't depend on an error
+event for those; the player can sit at 0:00 with nothing delivered. Android
+surfaces both load-time and mid-stream failures. The `unreachable streamed audio
+surfaces an error event` integration test covers the load-time path on both
+platforms; `partial stream failure surfaces an error event` covers a mid-stream
+drop on Android (skipped on iOS, where mid-stream delivery is not guaranteed).
 
 ## Audio Preferences
 
@@ -542,6 +609,29 @@ class SleepTimer {
   int get remainingMinutes => _remainingMinutes;
 }
 ```
+
+## In-Car (Android Auto / CarPlay)
+
+Flureadium exposes the open audiobook to Android Auto and CarPlay head units. When a publication is loaded, both platforms present a browsable chapter list and the same transport controls as the in-app player.
+
+### What the browse tree exposes
+
+Both platforms build the list from the publication's `readingOrder` — one entry per chapter, in order. The tree is one level deep (a root that lists chapters; no nested folders). Chapter titles come from each reading-order entry, falling back to `Chapter N` when an entry has no title.
+
+Selecting a chapter on the head unit seeks the same audiobook navigator the in-app controls use. There is no second player, so the car and the app always show the same position.
+
+### Transport behavior
+
+Play/pause, skip (next/previous chapter), and seek on the head unit drive the same navigator and the same now-playing metadata as the lockscreen. On both platforms this reuses the existing media-session / now-playing wiring, so position, duration, and title stay in sync across the app, the lockscreen, and the head unit.
+
+### Host-app setup
+
+The two platforms differ in what the host does. No Dart API call is involved either way:
+
+- **Android Auto** — nothing to add. The plugin declares the `com.google.android.gms.car.application` meta-data and ships the `automotive_app_desc.xml` descriptor, and Android manifest merging brings them into your app. See [Android platform setup](../platform-specific/android.md#6-android-auto-optional).
+- **CarPlay** — add a CarPlay scene to the scene manifest and the `com.apple.developer.carplay-audio` entitlement. The entitlement requires an Apple per-app grant (request lead time applies). See [iOS platform setup](../platform-specific/ios.md#4-carplay-optional).
+
+No Flureadium Dart API changes are needed — the browse tree is built natively from the already-open publication.
 
 ## See Also
 

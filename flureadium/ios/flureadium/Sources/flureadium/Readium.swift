@@ -33,6 +33,11 @@ final class Readium : DefaultHTTPClientDelegate {
   lazy var publicationOpener: PublicationOpener? = nil
   var additionalHeaders = Dictionary<String, String>()
 
+  /// Observes audiobook track load failures during publication opening and
+  /// forwards them onto the plugin-owned "error" channel. See
+  /// `AudioResourceLoadFailureReporter`.
+  let audioLoadFailureReporter = AudioResourceLoadFailureReporter()
+
   func setupWithHeaders(headers: [String: String]?) {
     self.httpClient = DefaultHTTPClient(
         cachePolicy: .useProtocolCachePolicy, // default = useProtocolCachePolicy
@@ -49,6 +54,7 @@ final class Readium : DefaultHTTPClientDelegate {
         pdfFactory: DefaultPDFDocumentFactory()
       ),
       contentProtections: contentProtections,
+      onCreatePublication: audioLoadFailureReporter.makeTransform()
     )
   }
 

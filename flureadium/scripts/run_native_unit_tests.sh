@@ -17,6 +17,11 @@
 # Options:
 #   --skip-android        Skip Android tests
 #   --skip-ios            Skip iOS tests
+#   --rerun               Force a complete clean rebuild and fresh re-run of the
+#                         Android tests: runs `clean` and passes `--rerun-tasks`,
+#                         so every task recompiles from scratch (no up-to-date or
+#                         build-cache reuse) and the tests run against a fresh
+#                         build. Slower; use when you want a guaranteed real run.
 #   --java-home <path>    Use this JDK instead of auto-detecting (Android)
 #   --ios-device <id>     iOS simulator UDID to use (auto-detected if omitted)
 #   --ios-class <Class>   Run only one XCTest class, e.g. ModelTests
@@ -28,6 +33,9 @@
 #   (example/android/gradlew), so no separate Gradle install is needed.
 #   The task is :flureadium:testDebugUnitTest. Robolectric runs on the JVM,
 #   so no device or emulator is required — only a JDK 17+.
+#   Gradle skips the test task when its inputs are unchanged (reported as
+#   UP-TO-DATE), so a no-op re-run executes nothing. Pass --rerun for a full
+#   clean rebuild (clean + --rerun-tasks) that always recompiles and runs fresh.
 #
 # iOS notes (macOS only):
 #   The script builds the example app for the simulator first
@@ -56,6 +64,7 @@ MIN_JAVA_MAJOR=17
 VERBOSE=false
 SKIP_ANDROID=false
 SKIP_IOS=false
+RERUN=false
 JAVA_HOME_OVERRIDE=""
 IOS_DEVICE=""
 IOS_CLASS=""
@@ -63,7 +72,7 @@ BOOTED_BY_SCRIPT=""   # simulator UDID this script booted (shut down on exit)
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 usage() {
-  sed -n '3,36p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,42p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
@@ -71,6 +80,7 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --skip-android) SKIP_ANDROID=true; shift ;;
     --skip-ios)     SKIP_IOS=true;     shift ;;
+    --rerun)        RERUN=true;        shift ;;
     --java-home)    JAVA_HOME_OVERRIDE="$2"; shift 2 ;;
     --ios-device)   IOS_DEVICE="$2";   shift 2 ;;
     --ios-class)    IOS_CLASS="$2";    shift 2 ;;
@@ -309,11 +319,23 @@ if [ "$SKIP_ANDROID" = false ]; then
   else
     log "  JDK:    $RESOLVED_JAVA_HOME"
     log "  Task:   :flureadium:testDebugUnitTest"
+    # Default: run only the test task (Gradle reports UP-TO-DATE and executes
+    # nothing when the tree is unchanged). --rerun instead does a full clean
+    # rebuild: `clean` wipes all build outputs and `--rerun-tasks` ignores every
+    # task optimization (up-to-date AND build cache), so everything recompiles
+    # and the tests run against a fresh build.
+    GRADLE_TASKS=( :flureadium:testDebugUnitTest )
+    GRADLE_RERUN_FLAG=()
+    if [ "$RERUN" = true ]; then
+      GRADLE_TASKS=( clean :flureadium:testDebugUnitTest )
+      GRADLE_RERUN_FLAG=( --rerun-tasks )
+      log "  Rerun:  forced clean rebuild (clean + --rerun-tasks)"
+    fi
     if ! ( cd "$ANDROID_APP_DIR" && JAVA_HOME="$RESOLVED_JAVA_HOME" \
         run_test \
           "Android — :flureadium:testDebugUnitTest" \
           "$LOG_DIR/android.log" \
-          ./gradlew :flureadium:testDebugUnitTest --console=plain ); then
+          ./gradlew "${GRADLE_TASKS[@]}" "${GRADLE_RERUN_FLAG[@]}" --console=plain ); then
       OVERALL_EXIT=1
     fi
   fi

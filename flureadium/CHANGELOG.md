@@ -1,3 +1,38 @@
+## 0.13.0
+
+### New Features
+
+- **Android Auto**: Audiobooks now show up as a browsable media app on Android Auto head units. `PluginMediaService` runs as a media3 `MediaLibraryService` and serves a one-level browse tree: a root whose children are the open publication's chapters (its `readingOrder`). Picking a chapter on the head unit seeks the same audiobook navigator the in-app controls use, and play/pause/skip plus now-playing metadata reuse the existing media session. Needs no host manifest changes — the plugin declares the `com.google.android.gms.car.application` meta-data and ships the `automotive_app_desc.xml` descriptor, which manifest merging pulls into the host app (the example app adds nothing), and there are no Dart API changes. See `docs/platform-specific/android.md`.
+- **CarPlay (iOS)**: Audiobooks expose a chapter list and transport controls on CarPlay. `CarPlayChapterList` builds one row per `readingOrder` entry (titles fall back to a localized "Chapter N"); selecting a row routes through `CarPlayPlaybackBridge` to the active audio navigator. Now-playing metadata and transport reuse the existing `NowPlayingInfoUpdater`. Host apps add a CarPlay scene to their scene manifest and the `com.apple.developer.carplay-audio` entitlement, which needs a per-app Apple grant, so plan for that lead time. See `docs/platform-specific/ios.md`.
+- **Audiobook end-of-book state**: Reaching the natural end of the last track now emits a single `TimebasedState.ended` on both platforms, so hosts can show a completion screen. It fires only at a real end of book; closing or disposing the reader mid-playback no longer produces a phantom `ended` (iOS previously emitted one from `dispose()`).
+- **Audiobook error events**: Streamed audio failures now reach `Flureadium.onErrorEvent` as a `ReadiumError` with code `TimebasedError`, instead of the player stalling silently at 0:00. Android forwards every timebased failure, load-time and mid-stream. iOS catches load-time track failures deterministically: during opening an `onCreatePublication` transform (`AudioResourceLoadFailureReporter` + `LoadFailureObservingResource`) wraps each audio track resource and reports a failed read, one error per track. Post-load decode/status failures and healthy-URL stalls stay best-effort on iOS (a KVO-only signal on Readium's private `AVPlayer`), and benign cancelled reads are filtered out. See `docs/guides/error-handling.md`.
+
+### Bug Fixes
+
+- **Audiobook previous/next chapter (Android & iOS)**: `Flureadium.previous()` / `next()` now move one track along the reading order on both platforms, instead of performing a 30-second seek that made the chapter buttons identical to skip-back / skip-forward. Bounded at the first and last track. TTS still maps these to previous/next sentence, and `audioSeekBy` (skip) behaviour is unchanged.
+- **iOS audiobook transition freeze**: Changing chapter, seeking to a locator, or auto-advancing at end of track no longer freezes the UI. The audio delegate callbacks used to read `_audioNavigator.playbackInfo` synchronously, which re-entered the `AVPlayer` lock that `AudioNavigator.go(to:)` already held on the same thread — a self-deadlock. They now serve state from the playback info and locator Readium delivers off-lock, so a transition never reads back into the live player.
+- **iOS error channel ownership**: The `error` `EventChannel` is now owned once by `FlureadiumPlugin` instead of being re-registered by each reader view. Closing a reader view no longer end-streams the Dart subscription, the audio path (which has no reader view) can send on the same channel, and `FlureadiumError` is serialized to a codec-safe map — sending the object itself crashed the Flutter standard codec. The PDF reader keeps its separate `pdf-error` channel.
+- **iOS navigator teardown race**: `stop` now disposes the navigator captured at call time and clears the shared slot only if it still holds that navigator. A straggler teardown from a previous session no longer nils a navigator a newer session installed, which had surfaced as a spurious "TTS Navigator not initialized".
+- **Android method-channel cancellation**: A coroutine cancelled mid-call — for example a `play` still suspended when the publication closes — unwinds normally instead of surfacing to Dart as a spurious `PlatformException(JobCancellationException)`. `CancellationException` is re-thrown rather than reported.
+
+### Testing
+
+- Android JVM tests for the Android Auto path: `AudiobookBrowseTree`, `PluginLibrarySessionCallback` (browse tree and chapter-pick seek-to-index), `PluginMediaService` library session, `PluginSimpleBasePlayer` (next/previous seek remap), and `TrackNavigation`; plus `AudiobookNavigatorEnded`, `ReadiumReaderTimebasedError`, and `PublicationChannelCancellation`.
+- iOS XCTests for the CarPlay and error paths: `CarPlayChapterList`, `CarPlayPlaybackBridge`, `FlureadiumPluginChapterNav`, `FlureadiumPluginErrorChannel`, `FlutterAudioNavigator`, `AudioResourceLoadFailureReporter`, and `LoadFailureObservingResource`.
+- Integration coverage: audiobook end-of-book `ended`, chapter and previous-chapter navigation (the same navigator path a head unit drives), unreachable and partial streamed-audio error surfacing, and an untitled-chapter audiobook. Adds the `untitled_chapter.audiobook` fixture and an `audio_stream_fixtures` harness for mid-stream failure.
+- Example integration harness: `pumpUntil` bounded polling and an `ensureAppShowing` shared-boot helper so each test group boots once and reuses the app; TTS readiness is polled instead of waited out on a fixed timer.
+- Test runners: `run_native_unit_tests.sh` gains `--rerun` for a clean Android rebuild, and `run_integration_tests.sh` pins the default Android TTS engine before the EPUB TTS leg so a cold emulator does not report an empty voice list.
+
+### Documentation
+
+- Android Auto setup and the browse-tree implementation, including Desktop Head Unit testing (`docs/platform-specific/android.md`).
+- CarPlay setup — entitlement, scene manifest, simulator testing — and the chapter-list implementation (`docs/platform-specific/ios.md`).
+- Audiobook end-of-book, transition safety, playback-error handling, and in-car sections (`docs/guides/audiobook-playback.md`).
+- The `onErrorEvent` stream and the audiobook streaming-failure platform matrix, with the iOS post-load limitation (`docs/guides/error-handling.md`).
+- Error channel single-ownership platform notes (`docs/api-reference/streams-events.md`).
+- Troubleshooting entries for the iOS transition freeze, the "TTS Navigator not initialized" teardown race, and the Android cancellation `PlatformException` (`docs/troubleshooting.md`).
+- Testing conventions: `pumpUntil`, `ensureAppShowing` shared boot, the `--rerun` runner flag, and the Android TTS prerequisite (`docs/05-testing/`).
+
 ## 0.12.1
 
 ### Bug Fixes

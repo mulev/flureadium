@@ -692,7 +692,10 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
 
     override fun onTimebasedPlaybackFailure(error: PublicationError) {
         Log.d(TAG, ":onTimebasedPlaybackFailure $error")
-        // TODO: Notify client
+        // Forward to onErrorEvent so a failed streaming load surfaces to the
+        // client instead of stalling silently at 0:00. Mirrors the iOS audio
+        // path, which reports timebased failures with code "TimebasedError".
+        sendError(error.message, code = "TimebasedError", data = error.errorCode.name)
     }
 
     override fun onTimebasedCurrentLocatorChanges(

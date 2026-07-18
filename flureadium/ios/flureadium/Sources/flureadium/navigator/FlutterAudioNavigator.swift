@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import MediaPlayer
 import ReadiumShared
@@ -14,7 +15,25 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
   internal var _nowPlayingUpdater: NowPlayingInfoUpdater
   @MainActor internal var _audioNavigator: AudioNavigator?
 
+  /// Last playback info delivered off-lock by Readium's `playbackDidChange`.
+  /// Re-entrant delegate callbacks serve state from this cache instead of
+  /// reading `_audioNavigator?.playbackInfo`, which re-enters AVPlayer's lock
+  /// while `AudioNavigator.go(to:)` holds it and self-deadlocks.
+  internal var _lastPlaybackInfo: MediaPlaybackInfo?
+  /// Last locator delivered off-lock by `locationDidChange`, cached for the
+  /// same reason — keeps `loadedTimeRangesDidChange` off the live navigator.
+  internal var _lastLocation: Locator?
+
   internal var subscriptions: Set<AnyCancellable> = []
+
+  /// NotificationCenter tokens for the best-effort AVFoundation playback-failure
+  /// observers. Readium keeps its `AVPlayer` private and routes neither post-load
+  /// decode/status failures nor stalls to `AudioNavigatorDelegate`, so these are
+  /// the only signal we get for those. (Load-time resource failures are caught
+  /// deterministically by the `AudioResourceLoadFailureReporter` wrapper instead —
+  /// see `registerPlaybackFailureObservers`.) Held for the navigator's lifetime
+  /// and removed in `dispose()`.
+  internal var playbackFailureObservers: [NSObjectProtocol] = []
 
   @Published var cover: UIImage?
   @Published var playback: MediaPlaybackInfo = .init()
@@ -54,6 +73,7 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
 
     // TODO: Why is this public, if always called from itself?
     self.setupNavigatorListeners()
+    self.registerPlaybackFailureObservers()
 
     Task {
       cover = try? await publication.cover().get()
@@ -78,10 +98,13 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
   }
 
   public func dispose() -> Void {
+    self.removePlaybackFailureObservers()
     self._audioNavigator?.pause()
     self._audioNavigator?.delegate = nil
     self._audioNavigator = nil
-    self.listener?.timebasedNavigator(self, didChangeState: .init(state: .ended))
+    // Teardown is not end-of-book: emitting .ended here is a phantom natural-end
+    // signal Android never produces. Only shouldPlayNext at the last resource
+    // may emit .ended. See flureadium-amn.
     self.listener = nil
   }
 
@@ -151,16 +174,26 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
 
   /// Called when the playback updates.
   public func navigator(_ navigator: AudioNavigator, playbackDidChange info: MediaPlaybackInfo) {
+    // Cache the off-lock info first so the re-entrant callbacks below can reuse
+    // it without reading back into the live navigator.
+    self._lastPlaybackInfo = info
     self._nowPlayingUpdater.updatePlaybackFromInfo(info, withSpeedSetting: _audioNavigator?.settings.speed)
     self._nowPlayingUpdater.updateCommandCenterControls()
     self.playback = info
   }
 
   public func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
+    handleLocationChange(locator)
+  }
+
+  /// Param-free seam reused by tests: serves state from cached values only,
+  /// never touching `_audioNavigator`.
+  internal func handleLocationChange(_ locator: Locator) {
+    self._lastLocation = locator
     // Submit new locator to the listener
     self.submitAudioLocatorToListener(locator)
 
-    if let info = _audioNavigator?.playbackInfo {
+    if let info = _lastPlaybackInfo {
       self.submitTimebasedPlayerStateToListener(info: info, location: locator)
     }
   }
@@ -168,12 +201,16 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
   /// Called when the ranges of buffered media data change.
   /// Warning: They may be discontinuous.
   public func navigator(_ navigator: AudioNavigator, loadedTimeRangesDidChange ranges: [Range<Double>]) {
+    handleLoadedTimeRanges(ranges)
+  }
+
+  internal func handleLoadedTimeRanges(_ ranges: [Range<Double>]) {
     // Simplified buffer range to TimeInterval, by just taking highest upper bound.
     // May be too optimistic if ranges are discontinuous.
     let highestUpperBound: TimeInterval = ranges.map(\.upperBound).max() ?? 0
 
-    if let info = _audioNavigator?.playbackInfo,
-       let location = _audioNavigator?.currentLocation {
+    if let info = _lastPlaybackInfo,
+       let location = _lastLocation {
       self.submitTimebasedPlayerStateToListener(info: info, location: location, bufferedInterval: highestUpperBound)
     }
   }
@@ -181,6 +218,17 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
   /// Called when the navigator finished playing the current resource.
   /// Returns whether the next resource should be played. Default is true.
   public func navigator(_ navigator: AudioNavigator, shouldPlayNextResource info: MediaPlaybackInfo) -> Bool {
+    return shouldPlayNext(info: info)
+  }
+
+  /// Param-free seam reused by tests: decides whether to continue to the next
+  /// resource without touching the live navigator. Mirrors `handleLocationChange`.
+  internal func shouldPlayNext(info: MediaPlaybackInfo) -> Bool {
+    let lastIndex = publication.readingOrder.count - 1
+    if info.resourceIndex >= lastIndex {
+      self.listener?.timebasedNavigator(self, didChangeState: .init(state: .ended))
+      return false
+    }
     return true
   }
 
@@ -191,6 +239,65 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
 
   public func navigator(_ navigator: any ReadiumNavigator.Navigator, didFailToLoadResourceAt href: ReadiumShared.RelativeURL, withError error: ReadiumShared.ReadError) {
     self.listener?.timebasedNavigator(self, encounteredError: error, withDescription: "DidFailToLoadResourceAt: \(href)")
+  }
+
+  // MARK: AVFoundation playback-failure observation (best-effort)
+
+  /// Converts an AVFoundation playback failure into a listener error. Kept as an
+  /// `internal` seam so it can be unit-tested without a live `AVPlayer`, which
+  /// Readium keeps private. A missing `error` is synthesized from `description`
+  /// so the listener always receives a non-nil error.
+  internal func handlePlaybackFailure(_ error: Error?, description: String) {
+    let resolved = error ?? NSError(
+      domain: TAG,
+      code: -1,
+      userInfo: [NSLocalizedDescriptionKey: description]
+    )
+    self.listener?.timebasedNavigator(self, encounteredError: resolved, withDescription: description)
+  }
+
+  /// Registers best-effort AVFoundation failure observers (`object: nil`, since
+  /// the player item is private). These catch failed-to-play-to-end and new
+  /// error-log entries — mid-stream and post-load failures Readium's audio stack
+  /// swallows. Load-time resource failures no longer rely on this net: the
+  /// `AudioResourceLoadFailureReporter` container wrapper (see `Readium.swift`)
+  /// catches them deterministically during opening. The accepted limitation now
+  /// applies only to post-load AVPlayer decode/status failures and healthy-URL
+  /// stalls, which remain KVO-only signals with no guaranteed notification.
+  internal func registerPlaybackFailureObservers() {
+    let center = NotificationCenter.default
+    let failedToken = center.addObserver(
+      forName: .AVPlayerItemFailedToPlayToEndTime,
+      object: nil,
+      queue: .main
+    ) { [weak self] note in
+      let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+      self?.handlePlaybackFailure(error, description: "AVPlayerItemFailedToPlayToEndTime")
+    }
+    let errorLogToken = center.addObserver(
+      forName: .AVPlayerItemNewErrorLogEntry,
+      object: nil,
+      queue: .main
+    ) { [weak self] note in
+      let event = (note.object as? AVPlayerItem)?.errorLog()?.events.last
+      let error = event.map { event -> NSError in
+        NSError(
+          domain: event.errorDomain,
+          code: event.errorStatusCode,
+          userInfo: [NSLocalizedDescriptionKey: event.errorComment ?? "AVPlayerItemNewErrorLogEntry"]
+        )
+      }
+      self?.handlePlaybackFailure(error, description: "AVPlayerItemNewErrorLogEntry")
+    }
+    playbackFailureObservers = [failedToken, errorLogToken]
+  }
+
+  /// Removes all playback-failure observers. Called from `dispose()` so the
+  /// observers never outlive the navigator (leak-free).
+  internal func removePlaybackFailureObservers() {
+    let center = NotificationCenter.default
+    playbackFailureObservers.forEach { center.removeObserver($0) }
+    playbackFailureObservers = []
   }
 
   // MARK: AudioNavigator specific API

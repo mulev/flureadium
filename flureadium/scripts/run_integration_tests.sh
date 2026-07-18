@@ -28,6 +28,10 @@
 #   emulators have unreliable audio; local runs include them.
 #   Native logcat is captured to android_native.log alongside flutter output
 #   to diagnose hangs and native-side issues that don't surface in Dart logs.
+#   Before the Android leg the script pins Google TTS as the default engine
+#   (secure setting tts_default_synth). A cold-booted or wiped emulator has no
+#   default synthesizer, so the EPUB TTS tests query an unconfigured engine,
+#   get an empty voice list, and fail nondeterministically.
 #
 # iOS note:
 #   Audiobook tests (tagged @native) are included in the iOS suite.
@@ -62,7 +66,7 @@ ALL_DEVICES_STRIPPED="" # set once by the device scan; reused by both select_dev
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 usage() {
-  sed -n '3,36p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
@@ -196,6 +200,39 @@ run_test() {
       grep -v -E '^\[\[|^ReaderStatus:|^onPageChanged:|^creationParams=' "$logfile" | tee -a "$SUMMARY_LOG"
     fi
     return 1
+  fi
+}
+
+# ── Android TTS setup ─────────────────────────────────────────────────────────
+# The EPUB TTS integration tests query the system TTS engine for voices. On a
+# cold-booted or wiped emulator the default synthesizer is unset
+# (tts_default_synth == null), so TextToSpeech init returns an empty voice list
+# and the TTS tests fail nondeterministically. Pin Google TTS as the default so
+# the engine is configured before the suite runs. Best-effort: never aborts the
+# run, only warns when it can't.
+ensure_android_tts() {
+  local device="$1"
+  local engine="com.google.android.tts"
+
+  if ! "$ADB" -s "$device" shell pm list packages 2>/dev/null | grep -q "$engine"; then
+    log "  ${YELLOW}TTS: $engine not installed on $device — TTS tests may report no voices.${NC}"
+    return 0
+  fi
+
+  local current
+  current=$("$ADB" -s "$device" shell settings get secure tts_default_synth 2>/dev/null | tr -d '\r')
+  if [ "$current" = "$engine" ]; then
+    log "  TTS: default engine already set ($engine)."
+    return 0
+  fi
+
+  "$ADB" -s "$device" shell settings put secure tts_default_synth "$engine" 2>/dev/null || true
+  local after
+  after=$("$ADB" -s "$device" shell settings get secure tts_default_synth 2>/dev/null | tr -d '\r')
+  if [ "$after" = "$engine" ]; then
+    log "  TTS: default engine set to $engine (was '${current:-null}')."
+  else
+    log "  ${YELLOW}TTS: could not set default engine (got '${after:-null}').${NC}"
   fi
 }
 
@@ -353,6 +390,10 @@ fi
 # ── Android ───────────────────────────────────────────────────────────────────
 log "${CYAN}── Android ──────────────────────────────────────────────────────────${NC}"
 if [ "$SKIP_ANDROID" = false ]; then
+  # Pin the default TTS engine so the EPUB TTS tests have a configured
+  # synthesizer (a cold/wiped emulator leaves it unset → empty voice list).
+  ensure_android_tts "$ANDROID_DEVICE"
+
   # Capture native logcat alongside flutter output so we can diagnose hangs.
   # Clear the buffer first so only this run's output is captured.
   "$ADB" -s "$ANDROID_DEVICE" logcat -c 2>/dev/null || true

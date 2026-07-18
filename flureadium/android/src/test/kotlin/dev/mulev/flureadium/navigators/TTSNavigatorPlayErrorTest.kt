@@ -57,7 +57,7 @@ internal class TTSNavigatorPlayErrorTest {
             as TtsNavigator<AndroidTtsSettings, AndroidTtsPreferences, AndroidTtsEngine.Error, AndroidTtsEngine.Voice>
         doThrow(RuntimeException("simulated failure"))
             .`when`(mockFacade)
-            .openSession(any())
+            .openSession(any(), any())
         navigator.setField("mediaServiceFacade", mockFacade)
         navigator.setField("ttsNavigator", mockTtsNavigator)
 

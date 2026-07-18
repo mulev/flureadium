@@ -97,7 +97,7 @@ open class AudiobookNavigator(
                             }
 
                             is AudioNavigator.State.Ended -> {
-                                mediaServiceFacade?.closeSession()
+                                onAudioNavigatorEnded()
                             }
 
                             is AudioNavigator.State.Failure<*> -> {
@@ -112,6 +112,20 @@ open class AudiobookNavigator(
         }.await()
     }
 
+    /**
+     * Handles natural end-of-book. Forwards [TimebasedState.Ended] to the
+     * listener BEFORE teardown, so the un-throttled closeSession()/
+     * navigator.close() can't push a post-Ended state that the stacked
+     * throttleLatest windows coalesce over Ended. Cancels forwarding jobs so
+     * no late tick races the listener after Ended is delivered.
+     */
+    protected open fun onAudioNavigatorEnded() {
+        timebaseListener.onTimebasedPlaybackStateChanged(TimebasedState.Ended)
+        jobs.forEach { it.cancel() }
+        jobs.clear()
+        mediaServiceFacade?.closeSession()
+    }
+
     override suspend fun play(fromLocator: Locator?) {
         mainScope.async {
             if (fromLocator != null) {
@@ -120,7 +134,7 @@ open class AudiobookNavigator(
 
             try {
                 Log.d(TAG, "Opening MediaSession")
-                mediaServiceFacade?.openSession(audioNavigator!!)
+                mediaServiceFacade?.openSession(audioNavigator!!, publication)
             } catch (e: Exception) {
                 Log.e(TAG, "Error opening MediaSession: ${e.message}")
                 mediaServiceFacade?.closeSession()
@@ -146,15 +160,28 @@ open class AudiobookNavigator(
     }
 
     override suspend fun goBack() {
+        val nav = audioNavigator ?: return
         mainScope.async {
-            audioNavigator?.skip((-preferences.seekInterval).seconds)
+            goToTrack(nav, previousTrackIndex(trackHrefs(), nav.currentHref()))
         }.await()
     }
 
     override suspend fun goForward() {
+        val nav = audioNavigator ?: return
         mainScope.async {
-            audioNavigator?.skip((preferences.seekInterval).seconds)
+            goToTrack(nav, nextTrackIndex(trackHrefs(), nav.currentHref()))
         }.await()
+    }
+
+    private fun trackHrefs(): List<String> =
+        publication.readingOrder.map { it.href.toString() }
+
+    private fun AudioNavigator<*, *>.currentHref(): String =
+        currentLocator.value.href.toString()
+
+    private suspend fun goToTrack(nav: AudioNavigator<*, *>, index: Int?) {
+        index ?: return
+        publication.locatorFromLink(publication.readingOrder[index])?.let { nav.go(it) }
     }
 
     override suspend fun goToLocator(locator: Locator) {
