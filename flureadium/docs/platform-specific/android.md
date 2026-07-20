@@ -221,6 +221,33 @@ mid-stream/post-load delivery stays best-effort. Covered by `ReadiumReaderTimeba
 **Files:**
 - `AudiobookNavigator.kt` — `onAudioNavigatorEnded()` and the `State.Ended` branch
 
+### Audiobook Media Session Reuse
+
+`PluginMediaService` holds one live `MediaLibrarySession` per navigator.
+`play(locator)` (the path a table-of-contents chapter tap or a bookmark resume
+drives) routes through `Binder.openSession`, which decides what to do from the
+navigator already backing the live session (`sessionActionFor`):
+
+- **Same navigator**: reuse the open session and seek; do not build a new one.
+- **Different navigator**: release the old session (an audiobook ↔ TTS switch), then open a new one.
+- **None open**: open a fresh session.
+
+media3 requires every live `MediaSession` to have a unique id, and the default id
+is the empty string. An earlier version rebuilt the session on every
+`play(locator)`, so a chapter jump created a second session with the same empty
+id while the first was still live; media3 threw `Session ID must be unique` and
+the error handler tore down the only player, freezing playback at the new
+chapter's `0:00`. Reusing the session removes the collision.
+`PluginMediaServiceFacade` mirrors the check at the bind layer: when it is
+already bound with a live session for the same navigator it skips rebinding, so a
+repeat `play(locator)` does not leak a session collector. Covered by
+`PluginMediaServiceReuseTest` and the `play(locator) to a later chapter while
+playing keeps playback going` integration test.
+
+**Files:**
+- `PluginMediaService.kt` — `Binder.openSession` reuse/replace guard, `sessionActionFor`
+- `PluginMediaServiceFacade.kt` — same-navigator short-circuit before rebinding
+
 ### PDF Support
 
 PDF support is implemented using Readium's Pdfium adapter, which provides native PDF rendering via Android's Pdfium library.

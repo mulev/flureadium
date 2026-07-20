@@ -3,6 +3,7 @@
 ### Bug Fixes
 
 - **iOS/macOS Swift Package Manager resolution**: The SwiftPM library product in `ios/flureadium/Package.swift` was named `flutter-readium`, which does not match the plugin name. Under Flutter 3.44+ (SwiftPM on by default) an app build failed to resolve the plugin: `product 'flureadium' ... not found in package 'flureadium'`. The product is now named `flureadium`, matching the plugin, so SwiftPM integration resolves. No API or behaviour change; CocoaPods builds were unaffected.
+- **Android audiobook chapter-jump freeze**: Jumping to a chapter from the table of contents or resuming from a bookmark no longer freezes playback. `play(locator)` used to rebuild the media session every call, so a jump made while audio was playing created a second `MediaLibrarySession` with the same default (empty) id; media3 rejects duplicate session ids, and the error handler tore down the only player, leaving playback stuck at the new chapter's `0:00`. `play(locator)` now reuses the open session for the same navigator and seeks, releasing the old session only when switching navigators (audiobook to TTS). The transport buttons (`next()`/`previous()`) and the initial `play(null)` are unchanged.
 
 ## 0.13.0
 
