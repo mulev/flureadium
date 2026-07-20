@@ -274,6 +274,22 @@ runs off the main-looper thread without constructing a real ExoPlayer.
 **Files:**
 - `AudiobookNavigator.kt` — `initNavigator()` wraps the build in `withContext(navigatorDispatcher)`; `buildAudioNavigator()` holds the blocking factory + `createNavigator`
 
+### Publication Open Concurrency
+
+`ReadiumReader.openPublication(AbsoluteUrl)` guards its whole body (the
+same-publication fast path, `loadPublication`, the navigator releases, and the
+`_currentPublication`/`currentPublicationUrl` reassignment) with a single
+`openMutex`. The method mutates singleton state, so a URL-keyed dedup alone is
+not enough: different-URL opens could still interleave the state transition, so
+a global mutex serializes every open. Two concurrent opens can never double-load
+a publication or double-release navigators, and a second concurrent open of the
+same publication waits for the first and then reuses its result through the fast
+path. `loadPublicationFromUrl` (used by categorization) calls `loadPublication`
+directly, mutates no navigator state, and stays outside the mutex.
+
+**Files:**
+- `ReadiumReader.kt` — `openPublication(AbsoluteUrl)` body wrapped in `openMutex.withLock { … }`
+
 ### PDF Support
 
 PDF support is implemented using Readium's Pdfium adapter, which provides native PDF rendering via Android's Pdfium library.
