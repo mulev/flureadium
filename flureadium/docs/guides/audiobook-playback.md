@@ -72,6 +72,14 @@ await flureadium.resume();
 await flureadium.stop();
 ```
 
+`play(locator)` doubles as the chapter-jump and bookmark-resume control. Called
+while audio is already playing, it reuses the open media session and seeks to the
+new position instead of tearing playback down and rebuilding it, so jumping to a
+chapter from a table of contents or a saved bookmark continues without a gap. An
+earlier Android version rebuilt the session on every `play(locator)`, which
+collided on the media3 session id and froze playback at the new chapter's start;
+see [platform-specific/android.md](../platform-specific/android.md#audiobook-media-session-reuse).
+
 ### Track Navigation
 
 ```dart

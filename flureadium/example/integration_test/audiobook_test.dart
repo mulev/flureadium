@@ -188,6 +188,55 @@ void main() {
       },
     );
 
+    testWidgets(
+      'play(locator) to a later chapter while playing keeps playback going',
+      (tester) async {
+        // The Table-of-Contents / bookmark jump path: play(fromLocator) must
+        // reuse the already-open media session instead of rebuilding it. On
+        // Android a rebuild hit Media3's "Session ID must be unique" collision
+        // and froze playback at the new chapter's start (flureadium-yc9). Only
+        // play(fromLocator) opens a session — goToLocator ('Ch.1') uses the
+        // separate go path — so drive play() directly with a non-null locator.
+        await showAudiobook(tester);
+        await tester.tap(find.text('Audio Play'));
+        await waitForPlaying(tester);
+
+        final before = currentTrack(tester);
+
+        // Build a locator for a later reading-order track and jump to it via
+        // play(fromLocator). Loading the manifest separately just gets the
+        // reading order, mirroring the end-of-book test above.
+        final path = await _extractAsset('assets/pubs/38533.audiobook');
+        final pub = await Flureadium().loadPublication(path);
+        final target = pub.locatorFromLink(pub.readingOrder[1]);
+        expect(target, isNotNull, reason: 'need a locator for a later track');
+        await Flureadium().play(target);
+
+        // The track changed to the jumped-to chapter and playback stayed active.
+        await pumpUntil(
+          tester,
+          () => currentTrack(tester) != before,
+          timeout: const Duration(seconds: 10),
+        );
+        expect(currentTrack(tester), isNot(before));
+        expect(find.text('Audio Pause'), findsOneWidget);
+
+        // Not frozen: the position keeps advancing after the jump. Pre-fix it
+        // stuck at the new chapter's 0:00 because the session was torn down.
+        final settled = timebasedPosition(tester);
+        final advanced = await pumpUntil(
+          tester,
+          () => timebasedPosition(tester).posMs > settled.posMs,
+          timeout: const Duration(seconds: 10),
+        );
+        expect(
+          advanced,
+          isTrue,
+          reason: 'playback must keep advancing after a play(locator) jump',
+        );
+      },
+    );
+
     testWidgets('untitled chapter audiobook plays and skips without crashing', (
       tester,
     ) async {

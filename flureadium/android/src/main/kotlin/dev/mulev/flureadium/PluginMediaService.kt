@@ -59,6 +59,37 @@ private const val STARTUP_NOTIFICATION_CHANNEL_NAME = "Media playback"
 private const val STARTUP_NOTIFICATION_TITLE = "Flureadium playback"
 private const val STARTUP_NOTIFICATION_TEXT = "Preparing playback"
 
+/**
+ * The lifecycle action to take when opening a media session for [an incoming
+ * navigator] while [a navigator] already owns the live session (or none does).
+ */
+internal enum class SessionAction {
+    /** No live session — build a new one. */
+    FRESH,
+
+    /** The live session already belongs to this navigator — keep it. */
+    REUSE,
+
+    /** A different navigator owns the live session — release it, then build. */
+    REPLACE,
+}
+
+/**
+ * Decides how [PluginMediaService.Binder.openSession] should treat a request for
+ * [incoming] given the [current] navigator of the live session (`null` when none
+ * is open). Reusing the same navigator's session is what keeps `play(locator)`
+ * from rebuilding a duplicate session on a chapter jump.
+ */
+@OptIn(ExperimentalReadiumApi::class)
+internal fun sessionActionFor(
+    current: AnyMediaNavigator?,
+    incoming: AnyMediaNavigator,
+): SessionAction = when {
+    current == null -> SessionAction.FRESH
+    current === incoming -> SessionAction.REUSE
+    else -> SessionAction.REPLACE
+}
+
 @ExperimentalCoroutinesApi
 @OptIn(ExperimentalReadiumApi::class)
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -103,6 +134,15 @@ class PluginMediaService : MediaLibraryService() {
             publication: Publication? = null,
         ) where N : AnyMediaNavigator, N : Media3Adapter {
             Log.d(TAG, "openSession")
+
+            when (sessionActionFor(sessionMutable.value?.navigator, navigator)) {
+                SessionAction.REUSE -> {
+                    Log.d(TAG, "openSession: reusing live session for the same navigator")
+                    return
+                }
+                SessionAction.REPLACE -> closeSession()
+                SessionAction.FRESH -> {}
+            }
 
             val activityIntent = createSessionActivityIntent()
             val player = navigator.asMedia3Player()

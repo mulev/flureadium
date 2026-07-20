@@ -69,6 +69,7 @@ JAVA_HOME_OVERRIDE=""
 IOS_DEVICE=""
 IOS_CLASS=""
 BOOTED_BY_SCRIPT=""   # simulator UDID this script booted (shut down on exit)
+WAS_PREBOOTED=false  # target sim was already booted before this run; re-boot after xcodebuild
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 usage() {
@@ -110,6 +111,15 @@ cleanup() {
   if [ -n "$BOOTED_BY_SCRIPT" ]; then
     log "  Shutting down simulator booted by this script ($BOOTED_BY_SCRIPT)."
     xcrun simctl shutdown "$BOOTED_BY_SCRIPT" 2>/dev/null || true
+  elif [ "$WAS_PREBOOTED" = true ] && [ -n "$IOS_DEVICE" ]; then
+    # xcodebuild tears down its test destination and can shut down a simulator it
+    # did not boot. Re-boot the one we found already running so we leave it as we
+    # found it. simctl boot is a no-op (errors harmlessly) if it is still up.
+    if ! xcrun simctl list devices 2>/dev/null | grep -q "$IOS_DEVICE.*Booted"; then
+      log "  Re-booting simulator xcodebuild shut down ($IOS_DEVICE)."
+      xcrun simctl boot "$IOS_DEVICE" 2>/dev/null || true
+      xcrun simctl bootstatus "$IOS_DEVICE" -b 2>/dev/null || true
+    fi
   fi
 }
 trap cleanup EXIT
@@ -247,13 +257,18 @@ detect_java() {
 # ── iOS simulator detection ───────────────────────────────────────────────────
 # Lists booted simulators; if none, offers to boot one. Sets IOS_DEVICE.
 resolve_ios_simulator() {
-  [ -n "$IOS_DEVICE" ] && return 0
+  if [ -n "$IOS_DEVICE" ]; then
+    # User supplied a device; note if it is already booted so we can restore it.
+    xcrun simctl list devices 2>/dev/null | grep -q "$IOS_DEVICE.*Booted" && WAS_PREBOOTED=true
+    return 0
+  fi
 
   local booted
   booted=$(xcrun simctl list devices available 2>/dev/null \
     | grep 'Booted' | grep -oE '[A-F0-9-]{36}' | head -1)
   if [ -n "$booted" ]; then
     IOS_DEVICE="$booted"
+    WAS_PREBOOTED=true
     log "  Using booted simulator: $IOS_DEVICE"
     return 0
   fi
@@ -392,8 +407,8 @@ if [ $OVERALL_EXIT -eq 0 ]; then
   log "${GREEN}All native unit tests passed.${NC}"
 else
   log "${RED}One or more native unit test runs failed or could not start.${NC}"
-  log "Logs: $LOG_DIR/"
 fi
+log "Logs: $LOG_DIR/"
 log "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
 
 exit $OVERALL_EXIT

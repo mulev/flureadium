@@ -49,6 +49,13 @@ class PluginMediaServiceFacade(
         publication: Publication? = null,
     ) where N : AnyMediaNavigator, N : Media3Adapter {
         coroutineQueue.await {
+            // Already bound with a live session for this navigator — reuse it
+            // instead of rebinding and relaunching a session collector. Read the
+            // binder's own session (set synchronously by openSession), not the
+            // mirrored `sessionMutable` the async collector lags behind.
+            if (sessionActionFor(binder?.session?.value?.navigator, navigator) == SessionAction.REUSE) {
+                return@await
+            }
             PluginMediaService.start(application)
             binder = try {
                 PluginMediaService.bind(application)
