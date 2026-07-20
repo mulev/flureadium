@@ -37,7 +37,7 @@ Gradle skips `:flureadium:testDebugUnitTest` when its inputs haven't changed, re
 
 **Gradle (Android).** Tests run through the example app's Gradle wrapper at `example/android/gradlew`, so no separate Gradle install is needed. The task is `:flureadium:testDebugUnitTest`. Robolectric runs on the JVM, so no device or emulator is involved.
 
-**Simulator (iOS, macOS only).** It uses a booted simulator if one is running, otherwise it lists the installed iPhone simulators and boots the one you pick (and shuts that one down again on exit). It builds the example app for the simulator first — `flutter build ios --simulator --debug` — because XCTest fails silently without a fresh build when test files or dependencies changed. iOS is skipped with a reason on non-macOS hosts.
+**Simulator (iOS, macOS only).** It uses a booted simulator if one is running, otherwise it lists the installed iPhone simulators and boots the one you pick. It builds the example app for the simulator first — `flutter build ios --simulator --debug` — because XCTest fails silently without a fresh build when test files or dependencies changed. iOS is skipped with a reason on non-macOS hosts. The script leaves your simulators as it found them: one it booted itself is shut down on exit, and one that was already running is left running. `xcodebuild test` tears down its own test destination and can shut down a simulator it did not boot, so if it closes an already-running simulator the script re-boots it on exit.
 
 ## Logs
 
