@@ -249,30 +249,26 @@ playing keeps playback going` integration test.
 - `PluginMediaServiceFacade.kt` — same-navigator short-circuit before rebinding
 
 
-### Audiobook Off-Main Duration Resolution
+### Audiobook Navigator Build Thread
 
-`AudiobookNavigator.initNavigator` resolves the Readium audio navigator on an IO
-dispatcher (`navigatorDispatcher`, `Dispatchers.IO` by default) rather than on
-the main scope. Readium's `AudioNavigatorFactory.createNavigator` resolves every
-reading-order track's duration up front, and for a track whose manifest
-`duration` is null it builds a `MetadataRetriever` and reads the remote resource
-synchronously (`readAt` over HTTP). Running that on `Dispatchers.Main.immediate`
-froze the UI thread for tens of seconds whenever a streamed audiobook manifest
-omitted a per-track duration, which tripped an ANR ("Lost connection to
-device"). Building the navigator on `navigatorDispatcher` makes the probe
-non-blocking, matching iOS's asynchronous AVFoundation duration loading.
+`AudiobookNavigator.initNavigator` builds the Readium audio navigator on
+`mainScope` (the main thread). media3 requires an `ExoPlayer` to be created and
+accessed from a single application thread; with no `Looper` passed to the
+builder, that thread is the main thread. Readium's `ExoPlayerEngine` builds the
+player and immediately drives it (`setMediaItems`/`seekTo`/`prepare`), so the
+whole `createNavigator` call must run on the main thread. Building it on a
+background dispatcher throws `IllegalStateException: Player is accessed on the
+wrong thread`.
 
-Only the blocking build moves off-main. The media session, the playback-state
-flow, and `setupNavigatorListeners()` stay on `mainScope`, because Android media
-callbacks must run on the main thread. The `ExoPlayer` created during the build
-still binds the main `Looper` through `Util.getCurrentOrMainLooper()`.
-
-`navigatorDispatcher` and the `buildAudioNavigator()` step are `protected open`
-seams: `AudiobookNavigatorInitDispatchTest` overrides them to assert the build
-runs off the main-looper thread without constructing a real ExoPlayer.
+Readium's `AudioNavigatorFactory.createNavigator` probes each track's duration
+up front and, for a track whose manifest `duration` is null, reads the remote
+resource synchronously. That probe is skipped when the manifest already carries
+per-track durations, so the null-duration ANR seen on streamed Gutenberg
+audiobooks is addressed upstream by the fablum Gutenberg duration mapping, not
+by moving the build off the main thread.
 
 **Files:**
-- `AudiobookNavigator.kt` — `initNavigator()` wraps the build in `withContext(navigatorDispatcher)`; `buildAudioNavigator()` holds the blocking factory + `createNavigator`
+- `AudiobookNavigator.kt` — `initNavigator()` builds the navigator inside `mainScope.async { }`
 
 ### Publication Open Concurrency
 
