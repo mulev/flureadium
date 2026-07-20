@@ -355,6 +355,24 @@ void main() {
       expect(endedSeen(tester), isTrue);
     });
 
+    testWidgets('streamed audiobook opens and plays on the main thread', (
+      tester,
+    ) async {
+      // Regression for the Android wrong-thread crash: building the audio
+      // navigator off the main thread threw IllegalStateException "Player is
+      // accessed on the wrong thread" because media3 pins the ExoPlayer to its
+      // single application thread. Opening a *streamed* audiobook (a remote WAV
+      // over a local server) is the reported repro: Audio Play drives
+      // audioEnable -> initNavigator, which builds and drives the player and so
+      // must run on the main thread. A regression fails this before playback
+      // ever starts. iOS uses AVFoundation and was never affected, but the
+      // positive streamed open-and-play contract holds on both platforms.
+      await showAudiobook(tester, button: 'Open AudioBook Streamed');
+      await tester.tap(find.text('Audio Play'));
+      await waitForPlaying(tester, timeout: const Duration(seconds: 20));
+      expect(find.text('Audio Pause'), findsOneWidget);
+    });
+
     testWidgets('unreachable streamed audio surfaces an error event', (
       tester,
     ) async {
