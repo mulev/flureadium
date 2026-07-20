@@ -8,7 +8,6 @@ import dev.mulev.flureadium.PluginMediaServiceFacade
 import dev.mulev.flureadium.PublicationError
 import dev.mulev.flureadium.ReadiumReader
 import dev.mulev.flureadium.throttleLatest
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -61,26 +60,32 @@ open class AudiobookNavigator(
      */
     protected var mediaServiceFacade: PluginMediaServiceFacade? = null
 
-    /**
-     * Dispatcher for the blocking navigator build. IO by default so Readium's
-     * synchronous per-track duration probing never blocks the main thread; a
-     * test overrides it to assert the build runs off-main.
-     */
-    protected open val navigatorDispatcher: CoroutineDispatcher = Dispatchers.IO
-
     override suspend fun initNavigator() {
-        // Resolve the navigator OFF the main thread. For a streamed audiobook
-        // whose manifest lacks per-track durations, createNavigator probes each
-        // remote track via MediaMetadataRetriever (blocking network readAt); on
-        // Dispatchers.Main.immediate that froze the UI thread (ANR). The
-        // ExoPlayer created inside still binds the main Looper via
-        // Util.getCurrentOrMainLooper(), so only the blocking build moves off-main.
-        val navigator = withContext(navigatorDispatcher) { buildAudioNavigator() }
+        // Create AudioNavigatorFactory
+        val navigatorFactory = ExoPlayerNavigatorFactory(
+            publication,
+            ExoPlayerEngineProvider(ReadiumReader.application, metadataProvider = { pub ->
+                DatabaseMediaMetadataFactory(
+                    publication = publication,
+                    trackCount = pub.readingOrder.size,
+                    controlPanelInfoType = preferences.controlPanelInfoType ?: ControlPanelInfoType.STANDARD
+                )})
+        )
 
-        // Media session, playback-state flow, and listeners MUST stay on the main
-        // scope — Android media callbacks run on the wrong thread otherwise.
+        if (navigatorFactory == null) {
+            // TODO: Better Error handling, if the book isn't an audiobook the factory is null.
+            Log.e(TAG, ":initNavigator - Couldn't create AudioNavigatorFactory")
+            throw Exception("Couldn't create AudioNavigatorFactory")
+        }
+
         mainScope.async {
-            audioNavigator = navigator
+            audioNavigator = navigatorFactory.createNavigator(
+                this@AudiobookNavigator.initialLocator,
+                preferences.toExoPlayerPreferences()
+            ).getOrElse { error ->
+                Log.e(TAG, ":initNavigator - $error")
+                throw Exception(PublicationError.invoke(error).message)
+            }
 
             mediaServiceFacade = PluginMediaServiceFacade(ReadiumReader.application).apply {
                 session
@@ -105,40 +110,6 @@ open class AudiobookNavigator(
 
             setupNavigatorListeners()
         }.await()
-    }
-
-    /**
-     * Builds the Readium audio navigator. Runs on [navigatorDispatcher] (off the
-     * main thread by default): AudioNavigatorFactory.createNavigator resolves
-     * every reading-order track's duration up front, and for a track whose
-     * manifest `duration` is null it reads the remote resource synchronously —
-     * which would block the UI thread. `protected open` so a test can override it
-     * to assert the build runs off-main without constructing a real ExoPlayer.
-     */
-    protected open suspend fun buildAudioNavigator(): AudioNavigator<ExoPlayerSettings, ExoPlayerPreferences> {
-        val navigatorFactory = ExoPlayerNavigatorFactory(
-            publication,
-            ExoPlayerEngineProvider(ReadiumReader.application, metadataProvider = { pub ->
-                DatabaseMediaMetadataFactory(
-                    publication = publication,
-                    trackCount = pub.readingOrder.size,
-                    controlPanelInfoType = preferences.controlPanelInfoType ?: ControlPanelInfoType.STANDARD
-                )})
-        )
-
-        if (navigatorFactory == null) {
-            // The factory is null when the publication isn't an audiobook.
-            Log.e(TAG, ":initNavigator - Couldn't create AudioNavigatorFactory")
-            throw Exception("Couldn't create AudioNavigatorFactory")
-        }
-
-        return navigatorFactory.createNavigator(
-            this@AudiobookNavigator.initialLocator,
-            preferences.toExoPlayerPreferences()
-        ).getOrElse { error ->
-            Log.e(TAG, ":initNavigator - $error")
-            throw Exception(PublicationError.invoke(error).message)
-        }
     }
 
     /**
