@@ -248,6 +248,32 @@ playing keeps playback going` integration test.
 - `PluginMediaService.kt` — `Binder.openSession` reuse/replace guard, `sessionActionFor`
 - `PluginMediaServiceFacade.kt` — same-navigator short-circuit before rebinding
 
+
+### Audiobook Off-Main Duration Resolution
+
+`AudiobookNavigator.initNavigator` resolves the Readium audio navigator on an IO
+dispatcher (`navigatorDispatcher`, `Dispatchers.IO` by default) rather than on
+the main scope. Readium's `AudioNavigatorFactory.createNavigator` resolves every
+reading-order track's duration up front, and for a track whose manifest
+`duration` is null it builds a `MetadataRetriever` and reads the remote resource
+synchronously (`readAt` over HTTP). Running that on `Dispatchers.Main.immediate`
+froze the UI thread for tens of seconds whenever a streamed audiobook manifest
+omitted a per-track duration, which tripped an ANR ("Lost connection to
+device"). Building the navigator on `navigatorDispatcher` makes the probe
+non-blocking, matching iOS's asynchronous AVFoundation duration loading.
+
+Only the blocking build moves off-main. The media session, the playback-state
+flow, and `setupNavigatorListeners()` stay on `mainScope`, because Android media
+callbacks must run on the main thread. The `ExoPlayer` created during the build
+still binds the main `Looper` through `Util.getCurrentOrMainLooper()`.
+
+`navigatorDispatcher` and the `buildAudioNavigator()` step are `protected open`
+seams: `AudiobookNavigatorInitDispatchTest` overrides them to assert the build
+runs off the main-looper thread without constructing a real ExoPlayer.
+
+**Files:**
+- `AudiobookNavigator.kt` — `initNavigator()` wraps the build in `withContext(navigatorDispatcher)`; `buildAudioNavigator()` holds the blocking factory + `createNavigator`
+
 ### PDF Support
 
 PDF support is implemented using Readium's Pdfium adapter, which provides native PDF rendering via Android's Pdfium library.
