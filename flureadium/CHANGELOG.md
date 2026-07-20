@@ -1,3 +1,18 @@
+## 0.13.3
+
+### Bug Fixes
+
+- **Android concurrent publication open**: `ReadiumReader.openPublication` now serializes concurrent opens behind a single mutex. Opening a publication mutates singleton reader state (the current publication, its URL, and the active navigators), so two opens racing — a reader screen opening one book while background categorization opens another — could double-load a publication or double-release navigators. Every open now runs under the lock, and a second open of the same publication waits for the first and reuses its result through the fast path. `loadPublicationFromUrl` (used by categorization) loads without mutating navigator state and stays outside the lock.
+
+### Testing
+
+- Android JVM test `ReadiumReaderOpenConcurrencyTest`: `openPublication` serializes behind the mutex even on the same-publication fast path.
+- Integration test: a streamed audiobook (a remote WAV served over a local range-seekable server) opens and plays. This guards the audio navigator build, which must run on the main thread because media3 pins the ExoPlayer to its single application thread; building it on a background dispatcher throws "Player is accessed on the wrong thread". The build's thread affinity cannot be unit-tested in the JVM — Robolectric cannot construct a real ExoPlayer — so the on-device integration test is the regression gate.
+
+### Documentation
+
+- Android platform notes: `openPublication` concurrency serialization and the audio-navigator main-thread build contract (`docs/platform-specific/android.md`).
+
 ## 0.13.2
 
 ### Bug Fixes
