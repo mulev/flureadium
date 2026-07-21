@@ -248,6 +248,44 @@ playing keeps playback going` integration test.
 - `PluginMediaService.kt` — `Binder.openSession` reuse/replace guard, `sessionActionFor`
 - `PluginMediaServiceFacade.kt` — same-navigator short-circuit before rebinding
 
+
+### Audiobook Navigator Build Thread
+
+`AudiobookNavigator.initNavigator` builds the Readium audio navigator on
+`mainScope` (the main thread). media3 requires an `ExoPlayer` to be created and
+accessed from a single application thread; with no `Looper` passed to the
+builder, that thread is the main thread. Readium's `ExoPlayerEngine` builds the
+player and immediately drives it (`setMediaItems`/`seekTo`/`prepare`), so the
+whole `createNavigator` call must run on the main thread. Building it on a
+background dispatcher throws `IllegalStateException: Player is accessed on the
+wrong thread`.
+
+Readium's `AudioNavigatorFactory.createNavigator` probes each track's duration
+up front and, for a track whose manifest `duration` is null, reads the remote
+resource synchronously. That probe is skipped when the manifest already carries
+per-track durations, so the null-duration ANR seen on streamed Gutenberg
+audiobooks is addressed upstream by the fablum Gutenberg duration mapping, not
+by moving the build off the main thread.
+
+**Files:**
+- `AudiobookNavigator.kt` — `initNavigator()` builds the navigator inside `mainScope.async { }`
+
+### Publication Open Concurrency
+
+`ReadiumReader.openPublication(AbsoluteUrl)` guards its whole body (the
+same-publication fast path, `loadPublication`, the navigator releases, and the
+`_currentPublication`/`currentPublicationUrl` reassignment) with a single
+`openMutex`. The method mutates singleton state, so a URL-keyed dedup alone is
+not enough: different-URL opens could still interleave the state transition, so
+a global mutex serializes every open. Two concurrent opens can never double-load
+a publication or double-release navigators, and a second concurrent open of the
+same publication waits for the first and then reuses its result through the fast
+path. `loadPublicationFromUrl` (used by categorization) calls `loadPublication`
+directly, mutates no navigator state, and stays outside the mutex.
+
+**Files:**
+- `ReadiumReader.kt` — `openPublication(AbsoluteUrl)` body wrapped in `openMutex.withLock { … }`
+
 ### PDF Support
 
 PDF support is implemented using Readium's Pdfium adapter, which provides native PDF rendering via Android's Pdfium library.

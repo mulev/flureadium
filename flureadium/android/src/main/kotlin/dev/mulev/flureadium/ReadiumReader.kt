@@ -37,6 +37,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.readium.navigator.media.tts.android.AndroidTtsEngine
 import org.readium.r2.navigator.Decoration
@@ -469,6 +471,11 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
             state[currentPublicationUrlKey] = value
         }
 
+    // Serializes publication open/switch so concurrent openPublication calls
+    // (e.g. a reader-screen open racing another open on the shared native reader)
+    // cannot double-load or double-release navigators.
+    private val openMutex = Mutex()
+
     /**
      * Sets the headers used in the HTTP requests for fetching publication resources, including
      * resources in already created `Publication` objects.
@@ -575,13 +582,13 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
      */
     suspend fun openPublication(
         pubUrl: AbsoluteUrl
-    ): Try<Publication, PublicationError> {
+    ): Try<Publication, PublicationError> = openMutex.withLock {
         // Fast path: if the same publication is already open, return it.
         _currentPublication?.let { cached ->
-            if (currentPublicationUrl == pubUrl.toString()) return Try.success(cached)
+            if (currentPublicationUrl == pubUrl.toString()) return@withLock Try.success(cached)
         }
 
-        val pub = loadPublication(pubUrl).getOrElse { e -> return failure(e) }
+        val pub = loadPublication(pubUrl).getOrElse { e -> return@withLock failure(e) }
 
         // Release all active navigators before switching publications.
         // Awaits ExoPlayer/TTS/MediaSession cleanup to prevent resource contention.
@@ -605,7 +612,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         _currentPublication = pub
         currentPublicationUrl = pubUrl.toString()
 
-        return Try.success(pub)
+        Try.success(pub)
     }
 
     /**
