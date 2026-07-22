@@ -4,6 +4,7 @@
 //
 //  Created by Daniel Dam Freiling on 28/10/2025.
 //
+import Foundation
 import Combine
 import ReadiumShared
 import MediaPlayer

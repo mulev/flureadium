@@ -7,6 +7,7 @@
 //  by tapping on the left/right edges of the screen.
 //
 
+import Foundation
 import UIKit
 
 /// View that intercepts edge taps for page navigation when Readium's
