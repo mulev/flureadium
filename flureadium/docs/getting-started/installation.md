@@ -7,7 +7,7 @@ This guide covers setting up Flureadium in your Flutter project for all supporte
 - Flutter 3.3.0 or higher
 - Dart SDK 3.8.0 or higher
 
-> **Contributor note:** this release is developed and tested with Flutter 3.38.9 (Dart 3.10.8). The package `pubspec.yaml` constraints above remain the source of truth for supported versions. Contributors may pin the toolchain locally with [fvm](https://fvm.app) (`fvm use 3.38.9`); the fvm files (`.fvmrc`, `.fvm/`) are gitignored and not required to build.
+> **Contributor note:** this release is developed and tested with Flutter 3.44.7 (Dart 3.12.2). The package `pubspec.yaml` constraints above remain the source of truth for supported versions. Contributors may pin the toolchain locally with [fvm](https://fvm.app) (`fvm use 3.44.7`); the fvm files (`.fvmrc`, `.fvm/`) are gitignored and not required to build.
 
 ## Add Dependency
 
@@ -15,7 +15,7 @@ Add Flureadium to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flureadium: ^0.11.0
+  flureadium: ^0.14.0
 ```
 
 Run:
