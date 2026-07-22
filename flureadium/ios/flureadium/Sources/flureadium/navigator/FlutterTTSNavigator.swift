@@ -1,3 +1,4 @@
+import Foundation
 import Combine
 import AVFAudio
 import ReadiumShared

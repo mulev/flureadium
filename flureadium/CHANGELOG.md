@@ -1,3 +1,13 @@
+## 0.14.0
+
+### Bug Fixes
+
+- **iOS/macOS Swift Package Manager compile**: several Swift sources used Foundation types (`TimeInterval`, `JSONSerialization`, `Data`, `NSCoder`, and similar) without importing Foundation, relying on it arriving transitively through CocoaPods. Under Flutter 3.44+ (SwiftPM on by default) SwiftPM compiles each module with strict per-file imports, so those files no longer built: `Cannot find type 'TimeInterval' in scope`. Each such source now imports Foundation explicitly. No API or behaviour change; CocoaPods builds were unaffected.
+
+### Testing
+
+- Validated on Flutter 3.44.7 / Dart 3.12.2: the Dart and widget unit tests, the Android Robolectric JVM unit tests, and the example integration suite (`launch`, `epub`, `epub_tts`, `audiobook`, `cbz`, `divina`, `error_handling`, `webpub`) all pass on Android and iOS.
+
 ## 0.13.3
 
 ### Bug Fixes

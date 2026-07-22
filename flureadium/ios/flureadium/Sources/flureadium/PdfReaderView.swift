@@ -6,6 +6,7 @@
 //  Follows the same pattern as ReadiumReaderView.swift for EPUB.
 //
 
+import Foundation
 import ReadiumNavigator
 import ReadiumShared
 import Flutter

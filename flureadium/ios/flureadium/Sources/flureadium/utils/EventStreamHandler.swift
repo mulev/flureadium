@@ -1,3 +1,4 @@
+import Foundation
 import Flutter
 
 /// A minimal seam over `EventStreamHandler` so event routing (e.g. the plugin's

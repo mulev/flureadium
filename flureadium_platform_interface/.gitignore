@@ -79,3 +79,14 @@ build/
 
 # Freezed
 **/*.freezed.dart
+
+# FVM Version Cache
+.fvm/
+.fvmrc
+
+# Local IDE settings (fvm SDK path, etc.)
+.vscode/settings.json
+
+# direnv (local — not imposed on contributors)
+.envrc
+.direnv/

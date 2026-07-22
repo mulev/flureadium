@@ -90,3 +90,11 @@ CLAUDE.md
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# FVM Version Cache
+.fvm/
+.fvmrc
+
+# direnv (local — not imposed on contributors)
+.envrc
+.direnv/
