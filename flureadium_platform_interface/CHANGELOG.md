@@ -1,3 +1,11 @@
+## 0.8.0
+
+### Changed
+
+- Validated against Flutter 3.44.7 (Dart 3.12.2). No code changes; the public API is identical to 0.7.1. Bumped so it releases alongside the flureadium package's Flutter 3.44 update.
+
+---
+
 ## 0.7.1
 
 ### Bug Fixes

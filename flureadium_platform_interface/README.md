@@ -22,6 +22,10 @@ Strongly prefer non-breaking changes (such as adding a method to the interface) 
 
 See https://flutter.dev/go/platform-interface-breaking-changes for a discussion on why a less-clean interface is preferable to a breaking change.
 
+## Development
+
+Developed and tested with **Flutter 3.44.7 (Dart 3.12.2)**. The package `pubspec.yaml` constraints (`sdk: >=3.8.0 <4.0.0`, `flutter: >=3.3.0`) remain the source of truth for supported versions. Contributors may pin the toolchain locally with [fvm](https://fvm.app) (`fvm use 3.44.7`); the fvm files are gitignored and not required.
+
 ## License
 
 LGPL v3 -- see [LICENSE](LICENSE) for details.
