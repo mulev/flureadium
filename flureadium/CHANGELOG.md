@@ -3,6 +3,7 @@
 ### Bug Fixes
 
 - **Android Auto discovery**: `PluginMediaService` now advertises the legacy `android.media.browse.MediaBrowserService` intent-filter action. Android Auto connects as a platform `MediaBrowser` client and finds media apps by scanning for that action, so without it the app never appeared in the Android Auto app list — even though the media3 `MediaLibraryService` and the `com.google.android.gms.car.application` descriptor were already in place. Also removed a non-standard `android.media.session.MediaSessionService` action that was a `browse`/`session` typo. No API or runtime behaviour change: media3's `MediaLibraryService` already bridges to the legacy browser interface, so this only fixes the manifest advertisement.
+- **Now Playing title race (iOS)**: the lock-screen/CarPlay title could briefly revert from "Book - Chapter" to just "Book" when the cover image finished loading. `NowPlayingInfoUpdater` loads the cover on a background task and wrote the artwork into the shared `NowPlayingInfo.Media` value type off the main thread, so it could overwrite a chapter-title update made on the main thread. Cover updates are now delivered on the main thread, serializing them with the title and chapter writes.
 
 ### Testing
 
