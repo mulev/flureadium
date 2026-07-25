@@ -1,3 +1,13 @@
+## 0.14.1
+
+### Bug Fixes
+
+- **Android Auto discovery**: `PluginMediaService` now advertises the legacy `android.media.browse.MediaBrowserService` intent-filter action. Android Auto connects as a platform `MediaBrowser` client and finds media apps by scanning for that action, so without it the app never appeared in the Android Auto app list — even though the media3 `MediaLibraryService` and the `com.google.android.gms.car.application` descriptor were already in place. Also removed a non-standard `android.media.session.MediaSessionService` action that was a `browse`/`session` typo. No API or runtime behaviour change: media3's `MediaLibraryService` already bridges to the legacy browser interface, so this only fixes the manifest advertisement.
+
+### Testing
+
+- Added `PluginMediaServiceManifestTest` (Android JVM): asserts the shipped source manifest advertises `android.media.browse.MediaBrowserService` and no longer declares the non-standard `android.media.session.MediaSessionService`.
+
 ## 0.14.0
 
 ### Bug Fixes
