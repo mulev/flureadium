@@ -103,7 +103,7 @@ The descriptor it ships at `res/xml/automotive_app_desc.xml`:
 </automotiveApp>
 ```
 
-The plugin also declares `PluginMediaService` with the `MediaLibraryService` intent filter and `foregroundServiceType="mediaPlayback"`, plus the foreground-service permissions from step 4 (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`) — all merge in too. A host only needs to act if it defines its own `automotive_app_desc.xml` or the same meta-data, in which case the standard manifest-merger conflict rules apply.
+The plugin also declares `PluginMediaService` with an intent filter that advertises both the media3 `MediaLibraryService` action and the legacy `android.media.browse.MediaBrowserService` action that Android Auto scans for when it enumerates media apps, along with `foregroundServiceType="mediaPlayback"` and the foreground-service permissions from step 4 (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`); all of these merge in too. A host only needs to act if it defines its own `automotive_app_desc.xml` or the same meta-data, in which case the standard manifest-merger conflict rules apply.
 
 **Testing with the Desktop Head Unit (DHU):**
 
@@ -112,13 +112,13 @@ The plugin also declares `PluginMediaService` with the `MediaLibraryService` int
 3. Start the head-unit server on the device: `adb forward tcp:5277 tcp:5277`, then run the DHU binary from the SDK (`extras/google/auto/desktop-head-unit`).
 4. Open the audiobook in the app so a publication is loaded, then pick your app from the DHU's media launcher. The chapter list should browse and transport controls (play/pause/skip) should drive playback.
 
-> Android Auto validates the media app before showing it. If the app does not appear, check the merged manifest (in the build output) for the `com.google.android.gms.car.application` meta-data and confirm the media service is exported.
+> Android Auto validates the media app before showing it. If the app does not appear, check the merged manifest (in the build output) for the `com.google.android.gms.car.application` meta-data, confirm the media service is exported, and confirm its intent-filter advertises the `android.media.browse.MediaBrowserService` action Android Auto scans for.
 
 ## Implementation Details
 
 ### Android Auto Browse Tree
 
-`PluginMediaService` runs as a media3 `MediaLibraryService` (not just `MediaSessionService`), which is what Android Auto requires to browse content. `AudiobookBrowseTree` builds the tree the head unit requests:
+`PluginMediaService` runs as a media3 `MediaLibraryService` (not just `MediaSessionService`) and advertises the legacy `android.media.browse.MediaBrowserService` action in its intent filter. Android Auto connects as a platform `MediaBrowser` client, so it needs both: the `MediaLibraryService` to browse content and the legacy browse action to discover the app in the first place. `AudiobookBrowseTree` builds the tree the head unit requests:
 
 - The tree is **one level deep**: a browsable root whose children are the open publication's chapters (its `readingOrder` entries).
 - Each chapter is a playable `MediaItem` whose id (`ch_<index>`) round-trips back to a Readium `Locator` the audiobook navigator can seek to. The index matches the audio player's timeline index, so selecting a chapter on the head unit drives a seek on the same navigator the in-app controls use.

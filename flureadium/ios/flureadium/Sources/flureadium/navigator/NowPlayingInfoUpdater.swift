@@ -55,8 +55,13 @@ public class NowPlayingInfoUpdater {
       chapterCount: publication.readingOrder.count
     )
 
-    // Update the artwork once cover is loaded.
+    // Update the artwork once the cover is loaded. Delivery is confined to the
+    // main thread: the cover load runs on a background Task, and `media` is a
+    // value type, so writing `media?.artwork` off-thread would read-modify-write
+    // the whole struct and could clobber a concurrent title/chapter update made
+    // on the main thread. Hopping to main serializes it with the other mutations.
     $cover
+      .receive(on: DispatchQueue.main)
       .sink { cover in
         nowPlaying.media?.artwork = cover
       }

@@ -636,7 +636,7 @@ Play/pause, skip (next/previous chapter), and seek on the head unit drive the sa
 
 The two platforms differ in what the host does. No Dart API call is involved either way:
 
-- **Android Auto** — nothing to add. The plugin declares the `com.google.android.gms.car.application` meta-data and ships the `automotive_app_desc.xml` descriptor, and Android manifest merging brings them into your app. See [Android platform setup](../platform-specific/android.md#6-android-auto-optional).
+- **Android Auto** — nothing to add. The plugin declares the `com.google.android.gms.car.application` meta-data, ships the `automotive_app_desc.xml` descriptor, and advertises the `android.media.browse.MediaBrowserService` action that Android Auto scans for on its media service; Android manifest merging brings them all into your app. See [Android platform setup](../platform-specific/android.md#6-android-auto-optional).
 - **CarPlay** — add a CarPlay scene to the scene manifest and the `com.apple.developer.carplay-audio` entitlement. The entitlement requires an Apple per-app grant (request lead time applies). See [iOS platform setup](../platform-specific/ios.md#4-carplay-optional).
 
 No Flureadium Dart API changes are needed — the browse tree is built natively from the already-open publication.
