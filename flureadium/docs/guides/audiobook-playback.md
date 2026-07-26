@@ -624,7 +624,7 @@ Flureadium exposes the open audiobook to Android Auto and CarPlay head units. Wh
 
 ### What the browse tree exposes
 
-Both platforms build the list from the publication's `readingOrder` — one entry per chapter, in order. The tree is one level deep (a root that lists chapters; no nested folders). Chapter titles come from each reading-order entry, falling back to `Chapter N` when an entry has no title.
+Both platforms build the in-car browse tree from the host's registered `CarContentProvider` (see [car content](../api-reference/car-content.md)): the root lists the provider's tabs (for example Continue / Library / Search), containers open to their children, and playable rows carry progress. On Android Auto, search also runs the provider's `search` (typed and voice from the head unit); CarPlay's own search arrives in a later phase. So the head unit shows the host's whole library, reached over an app-scoped car engine, not just the open book.
 
 Selecting a chapter on the head unit seeks the same audiobook navigator the in-app controls use. There is no second player, so the car and the app always show the same position.
 
@@ -634,12 +634,12 @@ Play/pause, skip (next/previous chapter), and seek on the head unit drive the sa
 
 ### Host-app setup
 
-The two platforms differ in what the host does. No Dart API call is involved either way:
+The host registers a `CarContentProvider` in Dart on both platforms (see [car content](../api-reference/car-content.md)) and stands up an app-scoped car engine for it; each platform then adds its own native wiring:
 
-- **Android Auto** — nothing to add. The plugin declares the `com.google.android.gms.car.application` meta-data, ships the `automotive_app_desc.xml` descriptor, and advertises the `android.media.browse.MediaBrowserService` action that Android Auto scans for on its media service; Android manifest merging brings them all into your app. See [Android platform setup](../platform-specific/android.md#6-android-auto-optional).
+- **Android Auto** — no host manifest changes: the plugin declares the `com.google.android.gms.car.application` meta-data, ships the `automotive_app_desc.xml` descriptor, and advertises the `android.media.browse.MediaBrowserService` action Android Auto scans for; Android manifest merging brings them all into your app. See [Android platform setup](../platform-specific/android.md#6-android-auto-optional).
 - **CarPlay** — add a CarPlay scene to the scene manifest and the `com.apple.developer.carplay-audio` entitlement. The entitlement requires an Apple per-app grant (request lead time applies). See [iOS platform setup](../platform-specific/ios.md#4-carplay-optional).
 
-No Flureadium Dart API changes are needed — the browse tree is built natively from the already-open publication.
+Registering the `CarContentProvider` is the Dart API call in-car support needs — the browse content comes from it, not from the open publication.
 
 ## See Also
 
