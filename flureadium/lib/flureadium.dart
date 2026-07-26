@@ -374,4 +374,18 @@ class Flureadium {
 
     return goByLink(pageLink, pub);
   }
+
+  /// Registers the [CarContentProvider] that answers CarPlay / Android Auto
+  /// browse, search, and playback requests.
+  ///
+  /// [strings] carries the already-localized status copy the car renderers show
+  /// verbatim; flureadium owns none of that text.
+  void registerCarContentProvider(
+    CarContentProvider provider, {
+    required CarContentStrings strings,
+  }) => _platform.registerCarContentProvider(provider, strings: strings);
+
+  /// Removes the registered car content provider, clearing the car surface.
+  void unregisterCarContentProvider() =>
+      _platform.unregisterCarContentProvider();
 }
