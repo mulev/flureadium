@@ -70,7 +70,7 @@ For audiobook background playback, add to `Info.plist`:
 
 ### 4. CarPlay (Optional)
 
-To expose audiobook chapters and transport controls on CarPlay, the host app adds a CarPlay scene and the CarPlay-audio entitlement. Flureadium ships the scene delegate and chapter-list builder; the host wires them into its scene manifest.
+To expose a browsable library and transport controls on CarPlay, the host app adds a CarPlay scene and the CarPlay-audio entitlement. Flureadium ships the renderer that turns the host's library into CarPlay templates; the host supplies that library through a `CarContentProvider` (see [Car content](../api-reference/car-content.md)) and wires the scene into its manifest.
 
 > **External blocker — Apple grant required.** `com.apple.developer.carplay-audio` is a *restricted* entitlement. Apple grants it per app on request (developer.apple.com → CarPlay request form). Until the grant lands, the entitlement cannot be code-signed and CarPlay will not run on device. Plan for this lead time — it gates any consumer (including Fablum) shipping CarPlay.
 
@@ -120,35 +120,41 @@ Set `CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements` in the target's build 
 </dict>
 ```
 
-Adopting the scene lifecycle means `AppDelegate` no longer owns the window. The example app's `AppDelegate` migrates to scene-role routing and registers Flutter plugins against the implicit engine; the `SceneDelegate` owns the Flutter window scene and the `CarPlaySceneDelegate` owns the CarPlay scene. Mirror this split in your host app.
+Adopting the scene lifecycle means `AppDelegate` no longer owns the window. The example app's `AppDelegate` migrates to scene-role routing and registers Flutter plugins against the implicit engine; the `SceneDelegate` owns the Flutter window scene and the `CarPlaySceneDelegate` owns the CarPlay scene. Mirror this split in your host app. The CarPlay scene answers browse/play over its own app-scoped headless `FlutterEngine` (see [CarPlay library browse](#carplay-library-browse) below), separate from the window scene's engine, so it works even when no reader UI is alive.
 
 **Background audio.** CarPlay playback also needs the `audio` background mode from step 3.
 
 **Testing in the simulator:**
 
-1. Run the app on an iOS simulator.
-2. From the simulator menu, choose **I/O → External Displays → CarPlay** to open the CarPlay window.
-3. Open an audiobook in the app so a publication is loaded. The app's chapter list appears in the CarPlay window; selecting a row plays that chapter, and the now-playing transport (play/pause/skip/seek) works.
+1. Fully quit the app, then run it on an iOS simulator.
+2. Enable CarPlay: `defaults write com.apple.iphonesimulator CarPlay -bool YES`, relaunch the simulator, then choose **I/O → External Displays → CarPlay**.
+3. Tap the app's icon on the CarPlay home screen. The library tabs (Continue · Library · Search) appear, populated over the car engine — you do not need to open anything in the phone app first. Selecting a container row pushes its children; selecting a playable row logs a tap round-trip back to Dart. That is the STAGE-1 proof: the cold car engine boots and the channel answers. Real playback and the now-playing transport (play/pause/skip/seek) come with a real host provider in a later phase.
 
-> The simulator does not require the Apple entitlement grant, so it is the fastest way to verify the chapter list and transport wiring before the on-device grant arrives.
+> The simulator does not require the Apple entitlement grant, so it is the fastest way to verify the browse tree and the tap round-trip before the on-device grant arrives. The flureadium example registers a small stub library (`carMain` in `example/lib/car_stub.dart`) so this runs without any real content.
 
 ## Implementation Details
 
-### CarPlay Chapter List
+### CarPlay library browse
 
-The CarPlay scene presents the open audiobook's chapters and routes selections back to the active navigator:
+The CarPlay scene renders a host's library as CarPlay templates and routes selections back to the host over a method channel. The host answers browse, search, and play through a `CarContentProvider`; flureadium owns the rendering, the host owns the content.
 
-- `CarPlayChapterList.chapters(from:)` derives one row per `readingOrder` entry. Titles fall back to a localized `Chapter N` (English, Danish, Swedish, Norwegian, Icelandic) using the publication's language when an entry has no title.
-- `CarPlaySceneDelegate` builds a `CPListTemplate` of those chapters and, on row selection, calls `CarPlayPlaybackBridge.playChapter(at:)` to seek the same audiobook navigator the in-app controls drive.
-- Transport controls and now-playing metadata come for free from the plugin's `NowPlayingInfoUpdater`, which already drives `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` for the lockscreen. CarPlay reuses that state — no separate wiring.
+- `CarTemplateRenderer` turns the node tree into templates: a `CPTabBarTemplate` of the root tabs, a `CPListTemplate` per tab, and child lists pushed on navigation. It sets a status root synchronously and fills each list asynchronously (`updateSections`) as the provider answers, so a cold connect is never blank. When the root has no tabs it shows a status-only empty view built from the host's `CarContentStrings`.
+- `CarListItemFactory` builds one `CPListItem` per node — mapping `progress` → `playbackProgress`, now-playing → `isPlaying`, and cover art → an async-loaded image — and stamps the node id on `userInfo` so a selection can be traced back to its node.
+- `CarPlayContentBridge` is the channel-backed data source on `dev.mulev.flureadium/car`. On a cold connect it briefly retries browse calls until the car engine's Dart handler is installed, so the startup race is not mistaken for an empty library.
+- The host runs a Dart car entrypoint on an app-scoped headless `FlutterEngine` so the channel can answer with no reader UI alive. The example does this in `carMain` + `CarPlayEngine`; a host picks its own engine strategy (a dedicated car engine, or a single shared app engine) without changing the renderer.
 
-`CarPlayChapterList` is a pure function over a `Publication`, so it is unit-testable without a CarPlay scene (see `CarPlayChapterListTests.swift` / `CarPlayPlaybackBridgeTests.swift`).
+The renderer, factory, and bridge are decoupled from the interface controller and the transport behind seams, so they are unit-tested without a live CarPlay scene (`CarTemplateRendererTests` / `CarListItemFactoryTests` / `CarContentModelsTests`). The node→template mapping is Swift, so those assertions live in the iOS XCTest suite; the provider/transport round-trip is covered in Dart.
+
+The earlier single-audiobook chapter list (`CarPlayChapterList` / `CarPlayPlaybackBridge`) still drives the now-playing chapters path and is unchanged here; it folds into the node model in a later phase.
 
 **Files:**
-- `carplay/CarPlayChapterList.swift` — derives chapter rows from the reading order
-- `carplay/CarPlayPlaybackBridge.swift` — bridges row selection to the navigator
-- `example/ios/Runner/CarPlaySceneDelegate.swift` — CarPlay scene: builds the list template
-- `example/ios/Runner/SceneDelegate.swift` — window scene owning the Flutter view
+- `carplay/CarTemplateRenderer.swift` — node tree → CarPlay templates
+- `carplay/CarListItemFactory.swift` — one node → one `CPListItem`
+- `carplay/CarPlayContentBridge.swift` — channel-backed browse/play data source
+- `carplay/CarBrowseNode.swift` — Swift mirror of the Dart car value types
+- `example/lib/car_stub.dart` — example stub `CarContentProvider` (STAGE-1)
+- `example/ios/Runner/CarPlayEngine.swift` — example's headless car engine
+- `example/ios/Runner/CarPlaySceneDelegate.swift` — thin scene adapter → renderer
 - `example/ios/Runner/Runner.entitlements` — CarPlay-audio entitlement (reference template)
 
 ### Plugin Structure
