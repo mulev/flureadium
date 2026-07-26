@@ -2,7 +2,6 @@ package dev.mulev.flureadium
 
 import android.os.Bundle
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
@@ -14,6 +13,9 @@ import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
+import dev.mulev.flureadium.car.CarContentSource
+import dev.mulev.flureadium.car.NodeBrowseTree
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -50,13 +52,19 @@ enum class NotificationPlayerCustomCommandButton(
 /**
  * The [MediaLibrarySession.Callback] for [PluginMediaService]: it registers the
  * notification's rewind/forward buttons, routes their custom commands to the
- * reader, and serves the Android Auto browse tree.
+ * reader, and serves the Android Auto browse tree and search.
  *
- * The browse tree is built lazily from [publicationProvider] so the callback
- * stays decoupled from the service's session state.
+ * Browse and search come from [sourceProvider] — the host's registered
+ * `CarContentProvider`, reached over the car engine — so the tree is the host's
+ * whole library (tabs, containers, books), not just the open publication. Rows
+ * map to media3 items via [NodeBrowseTree]. [publicationProvider] is used only
+ * for the now-playing audiobook: picking one of its chapters seeks the loaded
+ * timeline instead of replacing the playlist.
  */
 @UnstableApi
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class PluginLibrarySessionCallback(
+    private val sourceProvider: () -> CarContentSource?,
     private val publicationProvider: () -> Publication?,
 ) : MediaLibrarySession.Callback {
 
@@ -111,23 +119,14 @@ class PluginLibrarySessionCallback(
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
     }
 
-    /* --- Android Auto browse tree --- */
-
-    /**
-     * The browse tree for the currently open audiobook, or null when nothing
-     * browsable is playing (e.g. a TTS session, or no session at all).
-     */
-    private fun browseTree(): AudiobookBrowseTree? =
-        publicationProvider()?.let { AudiobookBrowseTree(it) }
+    /* --- Android Auto browse tree + search --- */
 
     override fun onGetLibraryRoot(
         session: MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
         params: LibraryParams?
-    ): ListenableFuture<LibraryResult<MediaItem>> {
-        val root = browseTree()?.rootItem() ?: emptyLibraryRoot
-        return Futures.immediateFuture(LibraryResult.ofItem(root, params))
-    }
+    ): ListenableFuture<LibraryResult<MediaItem>> =
+        Futures.immediateFuture(LibraryResult.ofItem(NodeBrowseTree.rootItem(null), params))
 
     override fun onGetChildren(
         session: MediaLibrarySession,
@@ -137,30 +136,87 @@ class PluginLibrarySessionCallback(
         pageSize: Int,
         params: LibraryParams?
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-        val children = if (parentId == AudiobookBrowseTree.ROOT_ID) {
-            browseTree()?.children().orEmpty()
+        val source = sourceProvider() ?: return immediateItemList(emptyList(), params)
+        return if (parentId == NodeBrowseTree.ROOT_ID) {
+            rootChildren(source, params)
         } else {
-            emptyList()
+            Futures.transform(
+                source.children(parentId),
+                { nodes -> itemListResult(NodeBrowseTree.nodeItems(nodes), params) },
+                MoreExecutors.directExecutor(),
+            )
         }
-        return Futures.immediateFuture(
-            LibraryResult.ofItemList(ImmutableList.copyOf(children), params)
-        )
-    }
-
-    override fun onGetItem(
-        session: MediaLibrarySession,
-        browser: MediaSession.ControllerInfo,
-        mediaId: String
-    ): ListenableFuture<LibraryResult<MediaItem>> {
-        val item = browseTree()?.mediaItemForId(mediaId)
-            ?: return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
-        return Futures.immediateFuture(LibraryResult.ofItem(item, null))
     }
 
     /**
-     * A head unit plays a chapter by "setting" its browse item. The audiobook is
-     * already loaded as a single timeline, so instead of replacing the playlist
-     * we keep the current items and seek to the picked chapter's index.
+     * The root's children are the provider's tabs. An empty tree shows a single
+     * non-selectable status row from the host's strings (so the head unit shows
+     * "nothing here" copy, not a blank screen), or nothing when no strings are
+     * registered.
+     */
+    private fun rootChildren(
+        source: CarContentSource,
+        params: LibraryParams?,
+    ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
+        Futures.transformAsync(
+            source.rootTabs(),
+            { tabs ->
+                if (!tabs.isNullOrEmpty()) {
+                    Futures.immediateFuture(itemListResult(NodeBrowseTree.tabItems(tabs), params))
+                } else {
+                    Futures.transform(
+                        source.strings(),
+                        { strings ->
+                            val items = strings?.let {
+                                listOf(NodeBrowseTree.statusItem(it.emptyRootTitle, it.emptyRootSubtitle))
+                            } ?: emptyList()
+                            itemListResult(items, params)
+                        },
+                        MoreExecutors.directExecutor(),
+                    )
+                }
+            },
+            MoreExecutors.directExecutor(),
+        )
+
+    override fun onSearch(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        params: LibraryParams?
+    ): ListenableFuture<LibraryResult<Void>> {
+        val source = sourceProvider() ?: return Futures.immediateFuture(LibraryResult.ofVoid())
+        return Futures.transform(
+            source.search(query),
+            { nodes ->
+                session.notifySearchResultChanged(browser, query, nodes.size, params)
+                LibraryResult.ofVoid()
+            },
+            MoreExecutors.directExecutor(),
+        )
+    }
+
+    override fun onGetSearchResult(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        page: Int,
+        pageSize: Int,
+        params: LibraryParams?
+    ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+        val source = sourceProvider() ?: return immediateItemList(emptyList(), params)
+        return Futures.transform(
+            source.search(query),
+            { nodes -> itemListResult(NodeBrowseTree.nodeItems(nodes), params) },
+            MoreExecutors.directExecutor(),
+        )
+    }
+
+    /**
+     * A head unit "plays" a browse row by setting it as the media items. For a
+     * chapter of the now-playing audiobook, keep the loaded timeline and seek to
+     * its index (the same navigator the in-app controls drive). Any other row is
+     * a library node — forward it to the provider to start playback.
      */
     override fun onSetMediaItems(
         mediaSession: MediaSession,
@@ -169,33 +225,34 @@ class PluginLibrarySessionCallback(
         startIndex: Int,
         startPositionMs: Long
     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-        val tree = browseTree()
-        val chapterIndex = tree?.let {
-            mediaItems.firstNotNullOfOrNull { item -> it.chapterIndexForId(item.mediaId) }
+        val tree = publicationProvider()?.let { AudiobookBrowseTree(it) }
+        val chapterIndex = tree?.let { t ->
+            mediaItems.firstNotNullOfOrNull { t.chapterIndexForId(it.mediaId) }
         }
-        if (chapterIndex == null) {
-            return super.onSetMediaItems(
-                mediaSession, controller, mediaItems, startIndex, startPositionMs
+        if (chapterIndex != null) {
+            val player = mediaSession.player
+            val currentItems = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
+            return Futures.immediateFuture(
+                MediaSession.MediaItemsWithStartPosition(currentItems, chapterIndex, 0L)
             )
         }
-        val player = mediaSession.player
-        val currentItems = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
+        sourceProvider()?.let { source ->
+            mediaItems.firstOrNull()?.let { source.play(it.mediaId) }
+        }
         return Futures.immediateFuture(
-            MediaSession.MediaItemsWithStartPosition(currentItems, chapterIndex, 0L)
+            MediaSession.MediaItemsWithStartPosition(mediaItems, startIndex, startPositionMs)
         )
     }
 
-    /** Fallback browsable root shown when no audiobook is open. */
-    private val emptyLibraryRoot: MediaItem by lazy {
-        MediaItem.Builder()
-            .setMediaId(AudiobookBrowseTree.ROOT_ID)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setIsBrowsable(true)
-                    .setIsPlayable(false)
-                    .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
-                    .build()
-            )
-            .build()
-    }
+    private fun itemListResult(
+        items: List<MediaItem>,
+        params: LibraryParams?,
+    ): LibraryResult<ImmutableList<MediaItem>> =
+        LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
+
+    private fun immediateItemList(
+        items: List<MediaItem>,
+        params: LibraryParams?,
+    ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
+        Futures.immediateFuture(itemListResult(items, params))
 }

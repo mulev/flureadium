@@ -49,6 +49,7 @@ import org.readium.navigator.media.common.Media3Adapter
 import org.readium.navigator.media.common.MediaNavigator
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Publication
+import dev.mulev.flureadium.car.FlureadiumCarEngine
 
 @OptIn(ExperimentalReadiumApi::class)
 typealias AnyMediaNavigator = MediaNavigator<*, *, *>
@@ -104,7 +105,10 @@ class PluginMediaService : MediaLibraryService() {
     }
 
     private val libraryCallback by lazy {
-        PluginLibrarySessionCallback { binder.session.value?.publication }
+        PluginLibrarySessionCallback(
+            sourceProvider = { FlureadiumCarEngine.source },
+            publicationProvider = { binder.session.value?.publication },
+        )
     }
 
     /**
