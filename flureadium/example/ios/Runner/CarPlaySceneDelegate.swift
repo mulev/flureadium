@@ -1,43 +1,41 @@
 import CarPlay
 import flureadium
 
-/// Presents the open audiobook's chapters on a CarPlay head unit and routes
-/// row selections back to the active navigator through `CarPlayPlaybackBridge`.
-///
-/// Transport controls (play/pause/skip/seek) and now-playing metadata come for
-/// free from the plugin's `NowPlayingInfoUpdater`, which already drives
-/// `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` for the lockscreen.
+/// Adapts the CarPlay scene lifecycle to the flureadium renderer. All
+/// template-building lives in the plugin (`CarTemplateRenderer`); this delegate
+/// only starts the car engine, builds the channel-backed bridge, and hands the
+/// interface controller to the renderer.
 @available(iOS 14.0, *)
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
-  private var interfaceController: CPInterfaceController?
+  private var renderer: CarTemplateRenderer?
 
   func templateApplicationScene(
     _ templateApplicationScene: CPTemplateApplicationScene,
     didConnect interfaceController: CPInterfaceController
   ) {
-    self.interfaceController = interfaceController
-    interfaceController.setRootTemplate(makeChapterListTemplate(), animated: false, completion: nil)
+    let bridge = CarPlayContentBridge(binaryMessenger: CarPlayEngine.shared.messenger())
+    let renderer = CarTemplateRenderer(
+      interfaceController: interfaceController,
+      bridge: bridge,
+      fallbackStrings: Self.fallbackStrings)
+    self.renderer = renderer
+    renderer.presentRoot()
   }
 
   func templateApplicationScene(
     _ templateApplicationScene: CPTemplateApplicationScene,
     didDisconnectInterfaceController interfaceController: CPInterfaceController
   ) {
-    self.interfaceController = nil
+    renderer = nil
   }
 
-  private func makeChapterListTemplate() -> CPListTemplate {
-    let bridge = CarPlayPlaybackBridge.shared
-    let items = bridge.chapters.map { chapter -> CPListItem in
-      let item = CPListItem(text: chapter.title, detailText: nil)
-      item.handler = { _, completion in
-        bridge.playChapter(at: chapter.index)
-        completion()
-      }
-      return item
-    }
-    let section = CPListSection(items: items)
-    return CPListTemplate(title: "Chapters", sections: [section])
-  }
+  /// The host's own status copy, shown synchronously before the Dart provider
+  /// answers. The Dart `carMain` registers the same strings for the live path; a
+  /// shipping app supplies its localized copy here.
+  private static let fallbackStrings = CarContentStrings(
+    emptyRootTitle: "Nothing to play yet",
+    emptyRootSubtitle: "Add books to see them here",
+    voiceUnavailable: "This voice is not installed",
+    offline: "This book needs a connection")
 }
