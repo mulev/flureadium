@@ -1,0 +1,82 @@
+# Car content
+
+The car API defines how a native car integration asks a host app for its
+library. It is the data contract between the two sides: the host describes its
+books as plain rows, and the native layer requests and plays them.
+
+The native CarPlay and Android Auto renderers that draw these rows on a head
+unit are built in later phases. This page documents the contract they consume,
+which a host can implement and test today.
+
+flureadium never reaches into the host's data or decides policy. Everything the
+head unit needs arrives through one object the host registers, and all
+user-facing text is passed in already localized. That keeps the plugin free of
+any app-specific or localization concerns.
+
+## Registering a provider
+
+Call `registerCarContentProvider` once during app start, before a car connects:
+
+```dart
+Flureadium().registerCarContentProvider(
+  myProvider,
+  strings: CarContentStrings(
+    emptyRootTitle: 'Nothing to play yet',
+    emptyRootSubtitle: 'Books you add will appear here.',
+    voiceUnavailable: 'This voice is not installed.',
+    offline: 'This book needs a connection.',
+  ),
+);
+```
+
+Call `unregisterCarContentProvider()` to remove it (for example in tests, or
+when tearing down). The channel handler stays installed either way, so a car
+process that launches cold and calls in before registration gets an empty
+result rather than an error.
+
+## `CarContentProvider`
+
+The contract the host implements. Every method is async because the car can ask
+before any UI is alive, so answers usually come from the host's own storage.
+
+| Method | Returns |
+|--------|---------|
+| `rootTabs()` | The top-level tabs, for example Continue, Library, Search. |
+| `children(nodeId)` | The rows nested under a tab or container. |
+| `search(query)` | The rows matching a query across the library. |
+| `play(nodeId)` | Starts playback; the host decides audiobook versus read-aloud. |
+| `nowPlayingChapters()` | The chapters of whatever is playing now. |
+
+## `CarBrowseNode`
+
+One row on the head unit. It is a plain serializable value with no reader or
+host types, so it survives the trip to native code unchanged.
+
+| Field | Meaning |
+|-------|---------|
+| `id` | Opaque host id, for example `book:42`. Required, non-empty. |
+| `title` | Primary text. Required, non-empty. |
+| `subtitle` | Secondary text, such as an author or time left. Optional. |
+| `artworkPath` | Cover path or url the host resolves. Optional. |
+| `kind` | A `CarNodeKind`: `tab`, `container`, `audiobook`, `ttsBook`, `chapter`, or `siri`. |
+| `isPlayable` | Whether selecting the row starts playback instead of opening a child list. |
+| `progress` | Playback progress from 0 to 1, or null. Values outside that range are rejected. |
+| `isNowPlaying` | Whether this row is the current item. |
+
+## `CarTab`
+
+A root tab: an `id`, a `title`, and an optional `iconName` hint that renderers
+map to a native system image where one exists. A blank id or title is rejected.
+
+## `CarContentStrings`
+
+The already-localized status text the renderers show as-is: `emptyRootTitle`,
+`emptyRootSubtitle`, `voiceUnavailable`, and `offline`. Each field is required
+and must be non-empty, so a blank label never reaches the head unit.
+
+## What the host owns
+
+flureadium carries the data across to the car layer. The host decides everything else:
+which books appear, how they sort, what counts as playable, whether a title
+streams or plays offline, and all of the copy. A book is playable in the car
+only if the host marks its node `isPlayable`.
