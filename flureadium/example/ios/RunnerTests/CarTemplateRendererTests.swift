@@ -48,9 +48,9 @@ final class CarTemplateRendererTests: XCTestCase {
     let bridge = StubCarPlayContentBridge()
     bridge.stubStrings = strings()
     bridge.tabs = [
-      CarTab(id: "continue", title: "Continue"),
+      CarTab(id: "continue", title: "Continue", iconName: "play.circle"),
       CarTab(id: "library", title: "Library"),
-      CarTab(id: "search", title: "Search"),
+      CarTab(id: "search", title: "Search", iconName: "magnifyingglass"),
     ]
     var root: CPTemplate?
     let renderer = makeRenderer(bridge: bridge, fallback: strings(), setRoot: { root = $0 })
@@ -59,6 +59,28 @@ final class CarTemplateRendererTests: XCTestCase {
 
     let tabBar = root as? CPTabBarTemplate
     XCTAssertEqual(tabBar?.templates.count, 3)
+    XCTAssertEqual(
+      tabBar?.templates.compactMap { ($0 as? CPListTemplate)?.tabTitle },
+      ["Continue", "Library", "Search"])
+    XCTAssertEqual(
+      tabBar?.templates.compactMap { ($0 as? CPListTemplate)?.tabImage }.count, 3,
+      "every tab gets a tab image (named icon, or a default when missing)")
+  }
+
+  func testEmptyTabShowsStatusPlaceholderFromLiveStrings() {
+    let bridge = StubCarPlayContentBridge()
+    bridge.stubStrings = strings(title: "Live empty", subtitle: "Live subtitle")
+    bridge.tabs = [CarTab(id: "search", title: "Search")]
+    // No children registered for "search" → the tab is empty.
+    var root: CPTemplate?
+    let renderer = makeRenderer(bridge: bridge, fallback: strings(), setRoot: { root = $0 })
+
+    renderer.presentRoot()
+
+    let tabBar = root as? CPTabBarTemplate
+    let searchTab = tabBar?.templates.first as? CPListTemplate
+    XCTAssertEqual(searchTab?.emptyViewTitleVariants, ["Live empty"])
+    XCTAssertEqual(searchTab?.emptyViewSubtitleVariants, ["Live subtitle"])
   }
 
   func testEmptyRootShowsStatusPlaceholderFromLiveStrings() {

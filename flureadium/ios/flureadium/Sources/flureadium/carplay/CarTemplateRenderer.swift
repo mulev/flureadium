@@ -1,4 +1,5 @@
 import CarPlay
+import UIKit
 
 /// Turns `CarBrowseNode` trees into CarPlay's audio-app templates and drives the
 /// interface controller.
@@ -54,12 +55,13 @@ public final class CarTemplateRenderer {
   public func presentRoot() {
     setRoot(Self.emptyRoot(strings: fallbackStrings))
     bridge.strings { strings in
+      let resolved = strings ?? self.fallbackStrings
       self.bridge.rootTabs { tabs in
         if !tabs.isEmpty {
-          let templates = tabs.map { self.listTemplate(for: $0) }
+          let templates = tabs.map { self.listTemplate(for: $0, strings: resolved) }
           self.setRoot(CPTabBarTemplate(templates: templates))
         } else {
-          self.setRoot(Self.emptyRoot(strings: strings ?? self.fallbackStrings))
+          self.setRoot(Self.emptyRoot(strings: resolved))
         }
       }
     }
@@ -68,16 +70,23 @@ public final class CarTemplateRenderer {
   /// Pushes the children of [nodeId] as a list, populated asynchronously.
   public func pushChildren(of nodeId: String) {
     let template = CPListTemplate(title: "", sections: [])
+    Self.applyEmptyView(to: template, strings: fallbackStrings)
     push(template)
     bridge.children(of: nodeId) { nodes in
-      template.updateSections([CPListSection(items: nodes.map { self.item(for: $0) })])
+      template.updateSections(self.sections(for: nodes))
     }
   }
 
-  private func listTemplate(for tab: CarTab) -> CPListTemplate {
+  private func listTemplate(for tab: CarTab, strings: CarContentStrings) -> CPListTemplate {
     let template = CPListTemplate(title: tab.title, sections: [])
+    template.tabTitle = tab.title
+    // Every tab needs an image or CarPlay falls back to the generic "More" tab;
+    // the host's iconName is only a hint, so default when it's missing/unknown.
+    template.tabImage =
+      tab.iconName.flatMap { UIImage(systemName: $0) } ?? UIImage(systemName: "list.bullet")
+    Self.applyEmptyView(to: template, strings: strings)
     bridge.children(of: tab.id) { nodes in
-      template.updateSections([CPListSection(items: nodes.map { self.item(for: $0) })])
+      template.updateSections(self.sections(for: nodes))
     }
     return template
   }
@@ -93,14 +102,26 @@ public final class CarTemplateRenderer {
     }
   }
 
+  /// Builds the list sections for [nodes], or none when empty so the template's
+  /// built-in empty view (host status copy) shows instead of a blank section.
+  private func sections(for nodes: [CarBrowseNode]) -> [CPListSection] {
+    nodes.isEmpty ? [] : [CPListSection(items: nodes.map { self.item(for: $0) })]
+  }
+
+  /// Applies the host's localized status copy to a template's built-in empty
+  /// view, so an empty list shows the status placeholder, never a blank screen.
+  private static func applyEmptyView(to template: CPListTemplate, strings: CarContentStrings) {
+    template.emptyViewTitleVariants = [strings.emptyRootTitle]
+    template.emptyViewSubtitleVariants = [strings.emptyRootSubtitle]
+  }
+
   /// The status-only root shown when there are no tabs: an empty `CPListTemplate`
   /// whose built-in empty view carries the host's localized copy. Using the
   /// template's empty-view variants (not a fake one-item list) gives the
   /// intended non-tappable status presentation, never a blank screen.
   static func emptyRoot(strings: CarContentStrings) -> CPListTemplate {
     let template = CPListTemplate(title: strings.emptyRootTitle, sections: [])
-    template.emptyViewTitleVariants = [strings.emptyRootTitle]
-    template.emptyViewSubtitleVariants = [strings.emptyRootSubtitle]
+    applyEmptyView(to: template, strings: strings)
     return template
   }
 }

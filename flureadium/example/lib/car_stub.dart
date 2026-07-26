@@ -18,9 +18,9 @@ class StubCarContentProvider extends CarContentProvider {
 
   @override
   Future<List<CarTab>> rootTabs() async => [
-    CarTab(id: 'continue', title: 'Continue'),
-    CarTab(id: 'library', title: 'Library'),
-    CarTab(id: 'search', title: 'Search'),
+    CarTab(id: 'continue', title: 'Continue', iconName: 'play.circle'),
+    CarTab(id: 'library', title: 'Library', iconName: 'books.vertical'),
+    CarTab(id: 'search', title: 'Search', iconName: 'magnifyingglass'),
   ];
 
   @override
