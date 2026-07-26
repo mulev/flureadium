@@ -10,8 +10,14 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'method_channel_flureadium.dart';
 import 'src/index.dart';
+import 'src/car/car_content_provider.dart';
+import 'src/car/car_content_strings.dart';
 
 export 'src/index.dart';
+export 'src/car/car_browse_node.dart';
+export 'src/car/car_content_provider.dart';
+export 'src/car/car_content_strings.dart';
+export 'src/car/car_tab.dart';
 
 /// The interface that implementations of Flureadium must implement.
 ///
@@ -225,6 +231,20 @@ abstract class FlureadiumPlatform extends PlatformInterface {
     int maxWidth = 600,
     int maxHeight = 800,
   }) => throw UnimplementedError('renderFirstPage() has not been implemented.');
+
+  /// Registers the host's [CarContentProvider] that answers car head-unit
+  /// browse, search, and playback requests, with already-localized [strings].
+  void registerCarContentProvider(
+    CarContentProvider provider, {
+    required CarContentStrings strings,
+  }) => throw UnimplementedError(
+    'registerCarContentProvider() has not been implemented.',
+  );
+
+  /// Removes the registered car content provider, if any.
+  void unregisterCarContentProvider() => throw UnimplementedError(
+    'unregisterCarContentProvider() has not been implemented.',
+  );
 
   // State stream for reader status changes
   Stream<ReadiumReaderStatus> get onReaderStatusChanged {

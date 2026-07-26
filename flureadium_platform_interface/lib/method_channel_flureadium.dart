@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:meta/meta.dart';
 
 import 'flureadium_platform_interface.dart';
+import 'src/car/car_content_transport.dart';
 
 /// An implementation of [FlureadiumPlatform] that uses method channels.
 class MethodChannelFlureadium extends FlureadiumPlatform {
@@ -300,5 +301,25 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
       [pubUrl, maxWidth, maxHeight],
     );
     return result;
+  }
+
+  /// The transport that routes native car requests to the registered provider.
+  /// Created eagerly so its channel handler is installed before any provider
+  /// registers — a car process can be cold-launched and call in first, and the
+  /// transport answers with typed empty results until a provider is set.
+  @visibleForTesting
+  final CarContentTransport carContentTransport = CarContentTransport();
+
+  @override
+  void registerCarContentProvider(
+    CarContentProvider provider, {
+    required CarContentStrings strings,
+  }) {
+    carContentTransport.register(provider, strings: strings);
+  }
+
+  @override
+  void unregisterCarContentProvider() {
+    carContentTransport.unregister();
   }
 }
