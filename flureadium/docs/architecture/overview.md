@@ -301,6 +301,10 @@ iOS method channel handlers run on a background thread. Publication cleanup (nul
 
 This mirrors the Android pattern where `closePublication()` uses `mainScope.async { ... }.await()` instead of `launch { ... }`.
 
+### Car bridge (CarPlay / Android Auto)
+
+How the native car surfaces (CarPlay scene, Android `MediaLibraryService`) obtain host library data that lives only in Dart, with no Flutter UI alive, is decided in [car-bridge-decision.md](car-bridge-decision.md): an app-scoped headless `FlutterEngine` + `MethodChannel` (variant a), chosen as the implementation default with a functional validation gate on the first runnable build.
+
 ### Readium Integration
 
 Wraps Readium toolkits rather than reimplementing:
