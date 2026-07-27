@@ -8,6 +8,7 @@ import 'cbz_test.dart' as cbz;
 import 'divina_test.dart' as divina;
 import 'epub_test.dart' as epub;
 import 'error_handling_test.dart' as error_handling;
+import 'car_transport_test.dart' as car_transport;
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -17,4 +18,5 @@ void main() {
   divina.main();
   epub.main();
   error_handling.main();
+  car_transport.main();
 }
