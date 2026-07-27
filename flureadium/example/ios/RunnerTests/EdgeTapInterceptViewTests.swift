@@ -23,6 +23,45 @@ final class EdgeTapInterceptViewTests: XCTestCase {
         XCTAssertNil(view.onSwipeRight)
     }
 
+    // MARK: - Property behavior
+
+    func testCustomEdgeThreshold() {
+        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+        view.edgeThresholdPoints = 60.0
+        XCTAssertEqual(view.edgeThresholdPoints, 60.0)
+    }
+
+    func testEdgeThresholdAcceptsAnyValue() {
+        // The view is a dumb component; clamping happens in the reader views, not here.
+        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+        view.edgeThresholdPoints = 20.0
+        XCTAssertEqual(view.edgeThresholdPoints, 20.0)
+        view.edgeThresholdPoints = 200.0
+        XCTAssertEqual(view.edgeThresholdPoints, 200.0)
+    }
+
+    func testEdgeCallbacksAreInvocable() {
+        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+        var left = false
+        var right = false
+        view.onLeftEdgeTap = { left = true }
+        view.onRightEdgeTap = { right = true }
+        view.onLeftEdgeTap?()
+        view.onRightEdgeTap?()
+        XCTAssertTrue(left)
+        XCTAssertTrue(right)
+    }
+
+    func testCallbacksCanBeCleared() {
+        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+        view.onLeftEdgeTap = { }
+        view.onRightEdgeTap = { }
+        view.onLeftEdgeTap = nil
+        view.onRightEdgeTap = nil
+        XCTAssertNil(view.onLeftEdgeTap)
+        XCTAssertNil(view.onRightEdgeTap)
+    }
+
     // MARK: - hitTest with interceptEdgeTaps = true (no subviews)
 
     func testHitTestLeftEdgeWithInterceptReturnsView() {

@@ -52,6 +52,26 @@ final class FlutterTTSNavigatorTests: XCTestCase {
         return (navigator, mock)
     }
 
+    // MARK: - initNavigator() error handling
+
+    func testInitNavigatorWithUnsupportedPublicationThrowsError() async {
+        let navigator = FlutterTTSNavigator(
+            publication: makeUnspeakablePublication(),
+            initialLocator: nil
+        )
+        do {
+            try await navigator.initNavigator()
+            XCTFail("initNavigator() should throw for an unsupported publication")
+        } catch {
+            let nsError = error as NSError
+            XCTAssertEqual(nsError.domain, "Flureadium")
+            XCTAssertTrue(
+                nsError.localizedDescription.contains("does not support TTS"),
+                "Error should mention TTS not supported, got: \(nsError.localizedDescription)"
+            )
+        }
+    }
+
     // MARK: - play() initialLocator consumption
 
     func testPlayConsumesInitialLocator() async {

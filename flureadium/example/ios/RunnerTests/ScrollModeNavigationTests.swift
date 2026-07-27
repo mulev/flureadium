@@ -1,17 +1,16 @@
 //
 //  ScrollModeNavigationTests.swift
-//  flureadiumTests
+//  RunnerTests
 //
-//  Unit tests for scroll mode chapter navigation helpers:
-//  chapterLink(before:in:), chapterLink(after:in:), strippedHref(_:)
+//  Unit tests for the scroll-mode chapter navigation helpers declared in
+//  ReadiumReaderView.swift: strippedHref(_:), chapterLink(before:in:),
+//  chapterLink(after:in:), and isBackwardNavigation(from:to:in:).
+//  These are internal free functions, exposed via @testable import.
 //
 
 import XCTest
 import ReadiumShared
 @testable import flureadium
-
-// MARK: - Helpers under test (free functions declared in ReadiumReaderView.swift)
-// They are internal (no access modifier), so @testable import exposes them.
 
 final class ScrollModeNavigationTests: XCTestCase {
 
@@ -92,7 +91,7 @@ final class ScrollModeNavigationTests: XCTestCase {
             makeLink("ch2.html#body"),
             makeLink("ch3.html#end"),
         ]
-        // Current href: "ch2.html" should match "ch2.html#body" after stripping
+        // Current href "ch2.html" should match "ch2.html#body" after stripping
         let result = chapterLink(before: "ch2.html", in: linksWithFragments)
         XCTAssertEqual(result?.href, "ch1.html#intro")
     }
@@ -143,80 +142,6 @@ final class ScrollModeNavigationTests: XCTestCase {
         ]
         let result = chapterLink(after: "ch2.html", in: linksWithFragments)
         XCTAssertEqual(result?.href, "ch3.html#end")
-    }
-
-    // MARK: - configureEdgeTapHandlers scroll mode: callback presence
-
-    func testScrollMode_tapCallbacksNil_evenWhenEdgeTapEnabled() {
-        // In scroll mode, ALL tap callbacks are unconditionally nil —
-        // even when enableEdgeTapNavigation is true.
-        // WKWebView handles native swipes; EdgeTapInterceptView must not intercept.
-        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 375, height: 667))
-        view.onLeftEdgeTap = nil
-        view.onRightEdgeTap = nil
-
-        XCTAssertNil(view.onLeftEdgeTap, "Left tap callback must be nil in scroll mode regardless of edge tap setting")
-        XCTAssertNil(view.onRightEdgeTap, "Right tap callback must be nil in scroll mode regardless of edge tap setting")
-    }
-
-    func testScrollMode_tapCallbacksNil_whenEdgeTapDisabled() {
-        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 375, height: 667))
-        // Simulate the scroll-mode branch with enableEdgeTapNavigation = false
-        view.onLeftEdgeTap = nil
-        view.onRightEdgeTap = nil
-
-        XCTAssertNil(view.onLeftEdgeTap, "Left tap callback should be nil in scroll mode with edge tap disabled")
-        XCTAssertNil(view.onRightEdgeTap, "Right tap callback should be nil in scroll mode with edge tap disabled")
-    }
-
-    func testScrollMode_swipeCallbacksNil_evenWhenSwipeEnabled() {
-        // In scroll mode, ALL swipe callbacks are unconditionally nil —
-        // even when enableSwipeNavigation is true.
-        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 375, height: 667))
-        view.onSwipeLeft = nil
-        view.onSwipeRight = nil
-
-        XCTAssertNil(view.onSwipeLeft, "Swipe left callback must be nil in scroll mode regardless of swipe setting")
-        XCTAssertNil(view.onSwipeRight, "Swipe right callback must be nil in scroll mode regardless of swipe setting")
-    }
-
-    func testScrollMode_swipeCallbacksNil_whenSwipeDisabled() {
-        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 375, height: 667))
-        view.onSwipeLeft = nil
-        view.onSwipeRight = nil
-
-        XCTAssertNil(view.onSwipeLeft, "Swipe left callback should be nil in scroll mode with swipe disabled")
-        XCTAssertNil(view.onSwipeRight, "Swipe right callback should be nil in scroll mode with swipe disabled")
-    }
-
-    func testPaginatedMode_tapCallbacksUnaffected() {
-        // Paginated mode should assign tap callbacks (existing behaviour must remain)
-        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 375, height: 667))
-        view.onLeftEdgeTap = { }
-        view.onRightEdgeTap = { }
-
-        XCTAssertNotNil(view.onLeftEdgeTap, "Paginated mode left tap must remain non-nil")
-        XCTAssertNotNil(view.onRightEdgeTap, "Paginated mode right tap must remain non-nil")
-    }
-
-    func testScrollMode_interceptEdgeTapsFalse() {
-        // In scroll mode, configureEdgeTapHandlers sets interceptEdgeTaps = false
-        // so WKWebView receives all touches natively.
-        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 375, height: 667))
-        view.interceptEdgeTaps = false  // simulate scroll mode branch
-
-        XCTAssertFalse(view.interceptEdgeTaps,
-            "interceptEdgeTaps must be false in scroll mode")
-    }
-
-    func testPaginatedMode_interceptEdgeTapsTrue() {
-        // In paginated mode, configureEdgeTapHandlers sets interceptEdgeTaps = true
-        // regardless of enableEdgeTapNavigation, to block DirectionalNavigationAdapter.
-        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 375, height: 667))
-        view.interceptEdgeTaps = true  // simulate paginated mode branch
-
-        XCTAssertTrue(view.interceptEdgeTaps,
-            "interceptEdgeTaps must be true in paginated mode")
     }
 
     // MARK: - isBackwardNavigation(from:to:in:)

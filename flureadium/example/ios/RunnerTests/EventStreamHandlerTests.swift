@@ -1,9 +1,8 @@
 //
 //  EventStreamHandlerTests.swift
-//  flureadiumTests
+//  RunnerTests
 //
 //  Unit tests for EventStreamHandler lifecycle behavior.
-//  NOTE: Requires Flutter framework (runs through Xcode/Flutter build, not pure SPM).
 //
 
 import XCTest
