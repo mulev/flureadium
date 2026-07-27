@@ -128,6 +128,10 @@ void main() {
       final result = (await invoke('strings') as Map).cast<String, Object?>();
       expect(result['emptyRootTitle'], 'Nothing to play yet');
     });
+
+    test('an unknown method returns null', () async {
+      expect(await invoke('bogusMethod'), isNull);
+    });
   });
 
   group('with no provider registered (cold app-not-ready)', () {
@@ -145,6 +149,33 @@ void main() {
       final result = await invoke('strings');
       expect(result, isNull);
     });
+
+    test('rootTabs returns an empty list and never throws', () async {
+      expect(await invoke('rootTabs'), isEmpty);
+    });
+
+    test('search returns an empty list and never throws', () async {
+      expect(await invoke('search', {'query': 'x'}), isEmpty);
+    });
+
+    test('nowPlayingChapters returns an empty list and never throws', () async {
+      expect(await invoke('nowPlayingChapters'), isEmpty);
+    });
+  });
+
+  group('after unregister reverts to the cold empty results', () {
+    test(
+      'children and strings return empty once the provider is cleared',
+      () async {
+        transport.register(provider, strings: _strings());
+        expect(await invoke('children', {'nodeId': 'root'}), isNotEmpty);
+
+        transport.unregister();
+
+        expect(await invoke('children', {'nodeId': 'root'}), isEmpty);
+        expect(await invoke('strings'), isNull);
+      },
+    );
   });
 
   group('MethodChannelFlureadium wiring (eager cold-start install)', () {
