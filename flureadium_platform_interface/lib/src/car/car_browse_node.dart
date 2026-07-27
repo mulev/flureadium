@@ -32,9 +32,9 @@ class CarBrowseNode {
   CarBrowseNode({
     required this.id,
     required this.title,
+    required this.kind,
     this.subtitle,
     this.artworkPath,
-    required this.kind,
     this.isPlayable = false,
     this.progress,
     this.isNowPlaying = false,
