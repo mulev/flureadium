@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: flureadium/example
+        working-directory: flureadium/android
     steps:
       - uses: actions/checkout@v4
 
@@ -99,16 +99,13 @@ jobs:
           distribution: 'zulu'
           java-version: '18'
 
-      - uses: subosito/flutter-action@v2
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          channel: 'stable'
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
+          gradle-version: '8.14'
 
       - name: Run Android unit tests (Robolectric)
-        run: cd android && ./gradlew :flureadium:testDebugUnitTest --console=plain
+        run: gradle testDebugUnitTest --console=plain
 
   test-ios-native:
     name: Test iOS Native (XCTest)
