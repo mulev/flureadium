@@ -286,10 +286,33 @@ flutter test integration_test/epub_test.dart -d <device-id>
 
 ## CI
 
-CI runs build verification only (`.github/workflows/build-android.yml`, `build-ios.yml`, `build-web.yml`) on every push and pull request to `main`. These jobs compile the example app but do not run integration tests.
+CI runs the full test matrix on every push and pull request to `main`:
 
-Integration tests are run locally before releases using `scripts/run_integration_tests.sh`. They are not automated in CI because emulator jobs are slow and require connected devices or booted simulators.
+- **`test.yml`** — Dart unit tests for all three packages (`flutter test`), the Android Kotlin/Robolectric suite (`:flureadium:testDebugUnitTest`, JVM — no emulator), and the iOS Swift/XCTest suite (`RunnerTests` via `xcodebuild test` on a simulator).
+- **`integration-test.yml`** — the integration suites on real emulators/simulators: Android (`all_tests_android_ci.dart` on an API-33 emulator), iOS (`all_tests.dart` on a booted simulator), and Web (`all_tests_web.dart` via `flutter drive`). Runs on push and PRs, plus on demand via `workflow_dispatch`.
+- **`build-android.yml` / `build-ios.yml` / `build-web.yml`** — compile-only build verification of the example app.
 
-- **Android CI**: builds a debug APK — does not run `flutter test`
-- **iOS CI**: builds without code-signing — does not run `flutter test`
-- **Web CI**: builds with `flutter build web` — does not run `flutter drive`
+The Android integration bundle (`all_tests_android_ci.dart`) intentionally omits the `@native` audiobook, EPUB-TTS, and WebPub tests because GitHub-hosted emulators lack reliable audio and network; those still run on the iOS leg and locally via `scripts/run_integration_tests.sh`. The web bundle (`all_tests_web.dart`) runs the launch smoke test live and bundles `epub_tts_web_test.dart` with its tests skipped in-file until the web-reader TTS plumbing lands (tracked in [Web Platform](../platform-specific/web.md)).
+
+## In-car testing (CarPlay / Android Auto)
+
+The in-car browse/search/play surface is covered automatically as far as it can be without a head unit, and the rest is a documented, reproducible manual pass.
+
+### Automated (runs in CI)
+
+- **Dart unit** (`flureadium_platform_interface/test/car/`) — the car value types, the `CarContentProvider` contract, and the `CarContentTransport` channel round-trip incl. the cold "app-not-ready" path.
+- **Android Robolectric** (`android/src/test/.../car/` + `PluginLibrarySessionCallbackTest`) — `NodeBrowseTree` node→`MediaItem` mapping, the `MethodChannelCarContentSource` decode + cold-start retry, and the `MediaLibraryService` callback (browse tree, `onSearch`/`notifySearchResultChanged`, chapter-seek vs library-play).
+- **iOS XCTest** (`example/ios/RunnerTests/Car*Tests.swift`) — the `CarTemplateRenderer`, `CarListItemFactory`, model decoders, and `CarPlayContentBridge` cold-start retry/decode.
+- **Integration** (`example/integration_test/car_transport_test.dart`) — a stub `CarContentProvider` driven through the real `dev.mulev.flureadium/car` channel on a device/simulator, asserting the end-to-end transport round-trip. Bundled into `all_tests.dart` and `all_tests_android_ci.dart`, so it runs on the CI Android emulator and iOS simulator.
+
+### Manual device surfaces
+
+These need a head unit and are run by hand; they are not in CI.
+
+- **iOS CarPlay** — run the example on the iOS Simulator, then **I/O ▸ External Displays ▸ CarPlay**. Requires the CarPlay audio entitlement + a development provisioning that grants it. Tap through Continue / Library / Search and confirm the `carMain` round-trip in the device log.
+- **Android Auto** — requires a **physical Android phone** (Android 8+) with the real Android Auto app plus the Desktop Head Unit (DHU). The Android-Auto app shipped on Google Play emulator images is a `-stub` and the Play listing reports it "not compatible", so the emulator is a dead end for Android Auto.
+- **Android Automotive OS (AAOS)** — the AAOS emulator runs media apps directly, but only recognizes an app as a media source if it is built as an **automotive** app (`<meta-data android:name="com.android.automotive">` + `automotive_app_desc`, `<uses-feature android:name="android.hardware.type.automotive">`, `android:appCategory="audio"`, and **no** `MAIN`/`LAUNCHER` activity — a separate build from the Android-Auto one). The example is an Android-Auto build, so on AAOS it appears in the app grid, not the media center. An AAOS automotive build of the example is not provided yet.
+
+### Real device + real car
+
+End-to-end validation on physical phones and real cars is done **downstream in the fablum app**, which consumes this plugin and is tested on real hardware. flureadium's bar is the automated coverage above plus the reproducible manual surfaces; it does not attempt to fake a real head unit in CI.

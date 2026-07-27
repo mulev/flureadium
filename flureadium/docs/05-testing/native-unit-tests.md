@@ -55,3 +55,12 @@ The terminal shows a trimmed view by default — build verdicts, test results, a
 Reach for the script for the common case: run all native tests, or all of one platform. For the fine-grained iOS work — a single test method, deployment-target errors, simulator-runtime selection, registering a new `.swift` file in the Xcode project — see [ios-unit-tests.md](ios-unit-tests.md), which documents the raw `xcodebuild` commands the script wraps.
 
 Android test sources live in `android/src/test/kotlin/`. The script runs the whole `testDebugUnitTest` task; there is no single-class flag on the Android side yet.
+
+## Continuous integration
+
+These native suites also run in CI on every push and pull request (`.github/workflows/test.yml`), so a regression is caught without running them by hand:
+
+- **`test-android-native`** (ubuntu) — `:flureadium:testDebugUnitTest` (Robolectric on the JVM, no emulator).
+- **`test-ios-native`** (macOS) — the `RunnerTests` target via `xcodebuild test` on a booted simulator.
+
+The local script stays the fast path for focused iteration and for targeting a single platform or `--ios-class`.

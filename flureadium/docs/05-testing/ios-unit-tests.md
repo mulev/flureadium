@@ -29,6 +29,8 @@ flureadium/example/ios/RunnerTests/
 
 Total: ~130 tests across 10 test classes.
 
+The car surface adds `CarTemplateRendererTests`, `CarListItemFactoryTests`, `CarContentModelsTests`, `CarPlayPlaybackBridgeTests`, and `CarPlayContentBridgeTests` (the channel bridge's cold-start retry + node decode). All run in CI: the **`test-ios-native`** job in `.github/workflows/test.yml` runs the whole `RunnerTests` target via `xcodebuild test` on every push and PR, so a new `.swift` file registered here is exercised automatically.
+
 All test files go in `flureadium/example/ios/RunnerTests/`. Do NOT put tests in the SPM test target at `ios/flureadium/Tests/flureadiumTests/` — those cannot be executed.
 
 ## Adding a New Test File
