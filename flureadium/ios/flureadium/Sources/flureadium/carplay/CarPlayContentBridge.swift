@@ -17,6 +17,9 @@ public protocol CarPlayContentBridging {
   /// The rows nested under [nodeId] (a tab id or a container node id).
   func children(of nodeId: String, _ completion: @escaping ([CarBrowseNode]) -> Void)
 
+  /// The rows matching [query] across the host's library (→ provider `search`).
+  func search(_ query: String, _ completion: @escaping ([CarBrowseNode]) -> Void)
+
   /// The host's localized status strings, or nil when no provider is registered.
   func strings(_ completion: @escaping (CarContentStrings?) -> Void)
 
@@ -64,6 +67,12 @@ public final class CarPlayContentBridge: CarPlayContentBridging {
 
   public func children(of nodeId: String, _ completion: @escaping ([CarBrowseNode]) -> Void) {
     invokeList("children", arguments: ["nodeId": nodeId]) { list in
+      completion(list.compactMap { ($0 as? [String: Any]).flatMap(CarBrowseNode.init(map:)) })
+    }
+  }
+
+  public func search(_ query: String, _ completion: @escaping ([CarBrowseNode]) -> Void) {
+    invokeList("search", arguments: ["query": query]) { list in
       completion(list.compactMap { ($0 as? [String: Any]).flatMap(CarBrowseNode.init(map:)) })
     }
   }

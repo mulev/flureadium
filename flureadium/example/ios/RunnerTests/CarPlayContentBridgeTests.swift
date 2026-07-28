@@ -105,6 +105,19 @@ final class CarPlayContentBridgeTests: XCTestCase {
     XCTAssertEqual(nodes.map { $0.id }, ["book:ok"])
   }
 
+  func testSearchForwardsQueryAndDecodesNodes() {
+    messenger.reply = { call in
+      call.method == "search" ? [self.nodeMap("book:weir")] : nil
+    }
+    let exp = expectation(description: "search")
+    var nodes: [CarBrowseNode] = []
+    bridge.search("weir") { nodes = $0; exp.fulfill() }
+    wait(for: [exp], timeout: 2)
+    XCTAssertEqual(nodes.map { $0.id }, ["book:weir"])
+    let args = messenger.calls.first?.arguments as? [String: Any]
+    XCTAssertEqual(args?["query"] as? String, "weir")
+  }
+
   func testStringsDecodesFromMapReply() {
     messenger.reply = { call in
       call.method == "strings"

@@ -12,6 +12,7 @@ private final class StubNowPlayingBridge: CarPlayContentBridging {
 
   func rootTabs(_ completion: @escaping ([CarTab]) -> Void) { completion([]) }
   func children(of nodeId: String, _ completion: @escaping ([CarBrowseNode]) -> Void) { completion([]) }
+  func search(_ query: String, _ completion: @escaping ([CarBrowseNode]) -> Void) { completion([]) }
   func strings(_ completion: @escaping (CarContentStrings?) -> Void) { completion(nil) }
   func select(nodeId: String) { selected.append(nodeId) }
   func addBookmark() { bookmarks += 1 }
