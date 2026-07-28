@@ -46,6 +46,15 @@ before any UI is alive, so answers usually come from the host's own storage.
 | `search(query)` | The rows matching a query across the library. |
 | `play(nodeId)` | Starts playback; the host decides audiobook versus read-aloud. |
 | `nowPlayingChapters()` | The chapters of whatever is playing now. |
+| `addBookmark()` | Records a bookmark at the current playback position; the host chooses where. |
+| `cycleSpeed()` | Advances playback speed to the host's next preset and persists it. |
+
+On the Now Playing screen the renderers surface these as buttons: iOS installs a
+bookmark button (audiobook items only), a playback-rate button (`cycleSpeed`),
+and a chapters button that pushes `nowPlayingChapters()`; Android Auto adds a
+bookmark custom command (`addBookmark`) and uses the media session's own rate
+control. Whether the active item is an audiobook is host playback state. The
+host passes that flag when it installs the buttons; the plugin never tracks it.
 
 ## `CarBrowseNode`
 
