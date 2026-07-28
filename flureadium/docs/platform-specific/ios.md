@@ -157,6 +157,22 @@ The earlier single-audiobook chapter list (`CarPlayChapterList` / `CarPlayPlayba
 - `example/ios/Runner/CarPlaySceneDelegate.swift` — thin scene adapter → renderer
 - `example/ios/Runner/Runner.entitlements` — CarPlay-audio entitlement (reference template)
 
+### CarPlay search: Siri assistant cell and typed search
+
+The Search tab offers two ways in, gated by iOS version and by the vehicle.
+
+**Siri assistant cell (iOS 15+).** When the host marks a Search-tab row with `CarNodeKind.siri`, the renderer installs CarPlay's system assistant cell on that tab's list (`CarAssistantCell` builds a `CPAssistantCellConfiguration(position: .top, visibility: .always, assistantAction: .playMedia)`). CarPlay draws and owns the cell; tapping it hands off to Siri, and the app gets no tap callback. The host app must instead ship an **Intents extension** that handles `INPlayMediaIntent`, which Siri invokes with the spoken query. The `CPAssistantCellConfiguration` API ships from iOS 15, so this is the baseline search path up to the iOS 27 typed template. iOS 14 CarPlay has no assistant-cell API and shows no dedicated search row.
+
+**Typed search (iOS 27+, keyboard-capable vehicles).** Audio apps may present the typed `CPSearchTemplate` only from iOS 27, and only when the vehicle allows a keyboard (`CPSessionConfiguration.limitedUserInterfaces` without `.keyboard`, usually off while moving). When both hold, the Search tab adds one row that pushes `CarSearchTemplate`, labeled from the tab's own title since it opens the keyboard rather than Siri. The delegate runs each keystroke through `bridge.search` and maps the results to list items (`CarListItemFactory`, node id stamped on `userInfo`); selecting a result routes that id to `bridge.select`, which calls the provider's `play`. Keyboard availability is re-checked when the row is tapped, so a row built while parked does not present search once the keyboard is disabled. On iOS 15 through pre-27, or without a keyboard, the tab shows only the Siri assistant cell, with no broken typed entry.
+
+The renderer, the search delegate, and the assistant-cell configuration are decoupled from the interface controller and the scene, so they are unit-tested without a live CarPlay scene (`CarTemplateRendererTests` / `CarSearchTemplateTests` / `CarAssistantCellTests`). The example scene delegate supplies keyboard availability from its `CPSessionConfiguration`.
+
+`CarNodeKind.siri` is an iOS-only affordance marker. Android Auto has no browse-row equivalent (voice search there is Google Assistant), so the Android browse mapping drops `siri` nodes rather than showing a dead row.
+
+**Files:**
+- `carplay/CarSearchTemplate.swift` — iOS 27+ typed `CPSearchTemplate` delegate → bridge
+- `carplay/CarAssistantCell.swift` — Siri assistant-cell configuration for the Search tab
+
 ### Plugin Structure
 
 ```
