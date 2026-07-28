@@ -5,7 +5,7 @@ import Flutter
 /// method channel).
 ///
 /// Engine ownership is a host/app concern, so it lives in the example Runner,
-/// not the flureadium plugin — a shipping app (Fablum, Phase 5) provides its own
+/// not the flureadium plugin — a shipping host app provides its own
 /// strategy here (a dedicated car engine like this, or a single shared app
 /// engine) without changing the plugin's renderer or bridge.
 ///

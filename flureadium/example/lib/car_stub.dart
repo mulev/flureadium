@@ -4,8 +4,8 @@ import 'package:flureadium/flureadium.dart';
 /// A fake [CarContentProvider] for the STAGE-1 CarPlay / Android Auto validation
 /// (see the car bridge ADR). It serves a few hand-written nodes — no real
 /// library — so the example can prove the headless car engine boots cold and the
-/// `dev.mulev.flureadium/car` channel round-trips. The real Fablum provider,
-/// backed by `BookRepository`, arrives in Phase 5.
+/// `dev.mulev.flureadium/car` channel round-trips. A real provider, backed by
+/// the host app's own library store, lives in the consuming app.
 class StubCarContentProvider extends CarContentProvider {
   /// The host-owned, already-localized status copy the car renderer shows when
   /// the root is empty. The example is a demo host, so its copy is plain English.
