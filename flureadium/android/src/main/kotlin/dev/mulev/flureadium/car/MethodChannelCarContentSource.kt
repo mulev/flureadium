@@ -58,6 +58,10 @@ class MethodChannelCarContentSource(
         channel.invokeMethod("play", mapOf("nodeId" to nodeId))
     }
 
+    override fun addBookmark() {
+        channel.invokeMethod("addBookmark", null)
+    }
+
     private fun <T> invokeList(
         method: String,
         arguments: Any?,

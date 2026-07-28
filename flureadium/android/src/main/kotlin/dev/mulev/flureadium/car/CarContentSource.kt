@@ -27,4 +27,7 @@ interface CarContentSource {
 
     /** Forwards a playable-row selection to the host (→ provider `play`). */
     fun play(nodeId: String)
+
+    /** Records a bookmark at the current playback position (→ provider `addBookmark`). */
+    fun addBookmark()
 }

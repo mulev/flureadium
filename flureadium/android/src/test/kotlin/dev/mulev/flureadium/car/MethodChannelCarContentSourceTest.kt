@@ -124,6 +124,13 @@ internal class MethodChannelCarContentSourceTest {
     }
 
     @Test
+    fun addBookmark_invokesAddBookmark() {
+        source.addBookmark()
+
+        verify(channel).invokeMethod("addBookmark", null)
+    }
+
+    @Test
     fun list_retriesUntilAnArrayArrives() {
         val calls = AtomicInteger(0)
         doAnswer { invocation ->

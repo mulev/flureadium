@@ -1,12 +1,15 @@
 package dev.mulev.flureadium
 
 import android.os.Build
+import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import dev.mulev.flureadium.car.CarBrowseNode
@@ -69,6 +72,12 @@ internal class PluginLibrarySessionCallbackTest {
         override fun play(nodeId: String) {
             played.add(nodeId)
         }
+
+        var bookmarks = 0
+
+        override fun addBookmark() {
+            bookmarks++
+        }
     }
 
     private fun node(id: String, title: String, kind: CarNodeKind = CarNodeKind.audiobook, playable: Boolean = true) =
@@ -118,8 +127,38 @@ internal class PluginLibrarySessionCallbackTest {
     private val browser = mock(MediaSession.ControllerInfo::class.java)
 
     @Test
-    fun commandButtons_exposeRewindAndForward() {
-        assertEquals(2, callback().commandButtons.size)
+    fun commandButtons_exposeRewindForwardAndBookmark() {
+        assertEquals(3, callback().commandButtons.size)
+    }
+
+    @Test
+    fun onCustomCommand_bookmark_routesToSourceAddBookmark() {
+        val source = StubCarContentSource()
+
+        val result = callback(source).onCustomCommand(
+            session,
+            browser,
+            SessionCommand("BOOKMARK_CUSTOM", Bundle()),
+            Bundle(),
+        ).get()
+
+        assertEquals(SessionResult.RESULT_SUCCESS, result.resultCode)
+        assertEquals(1, source.bookmarks)
+    }
+
+    @Test
+    fun onCustomCommand_unrelatedCommand_doesNotBookmark() {
+        val source = StubCarContentSource()
+
+        val result = callback(source).onCustomCommand(
+            session,
+            browser,
+            SessionCommand("SOMETHING_ELSE", Bundle()),
+            Bundle(),
+        ).get()
+
+        assertEquals(SessionResult.RESULT_SUCCESS, result.resultCode)
+        assertEquals(0, source.bookmarks)
     }
 
     @Test

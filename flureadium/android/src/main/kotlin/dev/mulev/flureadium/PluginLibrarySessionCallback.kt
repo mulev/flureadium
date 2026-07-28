@@ -23,6 +23,7 @@ import org.readium.r2.shared.publication.Publication
 
 private const val CUSTOM_COMMAND_REWIND_ACTION_ID = "REWIND_CUSTOM"
 private const val CUSTOM_COMMAND_FORWARD_ACTION_ID = "FORWARD_CUSTOM"
+private const val CUSTOM_COMMAND_BOOKMARK_ACTION_ID = "BOOKMARK_CUSTOM"
 
 @UnstableApi
 enum class NotificationPlayerCustomCommandButton(
@@ -45,6 +46,15 @@ enum class NotificationPlayerCustomCommandButton(
             .setSlots(CommandButton.SLOT_FORWARD)
             .setSessionCommand(SessionCommand(CUSTOM_COMMAND_FORWARD_ACTION_ID, Bundle()))
             .setCustomIconResId(androidx.media3.session.R.drawable.media3_icon_skip_forward)
+            .build(),
+    ),
+    BOOKMARK(
+        customAction = CUSTOM_COMMAND_BOOKMARK_ACTION_ID,
+        commandButton = CommandButton.Builder(CommandButton.ICON_BOOKMARK_FILLED)
+            .setDisplayName("Bookmark")
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setSessionCommand(SessionCommand(CUSTOM_COMMAND_BOOKMARK_ACTION_ID, Bundle()))
+            .setCustomIconResId(androidx.media3.session.R.drawable.media3_icon_bookmark_filled)
             .build(),
     );
 }
@@ -115,6 +125,9 @@ class PluginLibrarySessionCallback(
             CoroutineScope(Dispatchers.Main).async {
                 ReadiumReader.next()
             }
+        }
+        if (customCommand.customAction == NotificationPlayerCustomCommandButton.BOOKMARK.customAction) {
+            sourceProvider()?.addBookmark()
         }
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
     }
