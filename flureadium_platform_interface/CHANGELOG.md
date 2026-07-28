@@ -1,3 +1,15 @@
+## 0.9.0
+
+### New Features
+
+- **Car content contract**: Add the car-integration types the flureadium plugin's CarPlay and Android Auto renderers consume: `CarContentProvider` (the host-implemented `rootTabs`/`children`/`search`/`play`/`nowPlayingChapters`/`addBookmark`/`cycleSpeed` contract), `CarBrowseNode` with `CarNodeKind`, `CarTab`, `CarContentStrings`, and the `CarContentTransport` method-channel router. `FlureadiumPlatform` gains `registerCarContentProvider`/`unregisterCarContentProvider`. All exported from the package barrel.
+
+### Testing
+
+- Unit tests for the car value types (`CarBrowseNode`/`CarTab`/`CarContentStrings` validation + JSON round-trips), the `CarContentProvider` contract, and `CarContentTransport` method-channel routing.
+
+---
+
 ## 0.8.0
 
 ### Changed
