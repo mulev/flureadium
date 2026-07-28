@@ -8,6 +8,8 @@ import 'package:flureadium/flureadium.dart';
 /// driven end-to-end at the Dart level without a real head unit.
 class _StubProvider extends CarContentProvider {
   final List<String> played = [];
+  int bookmarks = 0;
+  int speedCycles = 0;
 
   @override
   Future<List<CarTab>> rootTabs() async => [
@@ -45,6 +47,12 @@ class _StubProvider extends CarContentProvider {
   Future<List<CarBrowseNode>> nowPlayingChapters() async => [
     CarBrowseNode(id: 'ch:1', title: 'Chapter 1', kind: CarNodeKind.chapter),
   ];
+
+  @override
+  Future<void> addBookmark() async => bookmarks++;
+
+  @override
+  Future<void> cycleSpeed() async => speedCycles++;
 }
 
 void main() {
@@ -106,6 +114,16 @@ void main() {
   testWidgets('play routes the node id to the provider', (tester) async {
     await nativeCall('play', {'nodeId': 'book:42'});
     expect(provider.played, ['book:42']);
+  });
+
+  testWidgets('addBookmark routes to the provider', (tester) async {
+    await nativeCall('addBookmark');
+    expect(provider.bookmarks, 1);
+  });
+
+  testWidgets('cycleSpeed routes to the provider', (tester) async {
+    await nativeCall('cycleSpeed');
+    expect(provider.speedCycles, 1);
   });
 
   testWidgets('strings return the registered localized copy', (tester) async {

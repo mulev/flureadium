@@ -95,4 +95,16 @@ class StubCarContentProvider extends CarContentProvider {
       isPlayable: true,
     ),
   ];
+
+  @override
+  Future<void> addBookmark() async {
+    // STAGE-1 proves the tap→Dart round-trip; real bookmarking is app-side.
+    debugPrint('[carMain] addBookmark round-trip');
+  }
+
+  @override
+  Future<void> cycleSpeed() async {
+    // STAGE-1 proves the tap→Dart round-trip; real speed control is app-side.
+    debugPrint('[carMain] cycleSpeed round-trip');
+  }
 }

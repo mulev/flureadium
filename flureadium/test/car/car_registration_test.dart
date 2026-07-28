@@ -14,6 +14,10 @@ class _NoopProvider extends CarContentProvider {
   Future<void> play(String nodeId) async {}
   @override
   Future<List<CarBrowseNode>> nowPlayingChapters() async => const [];
+  @override
+  Future<void> addBookmark() async {}
+  @override
+  Future<void> cycleSpeed() async {}
 }
 
 void main() {
