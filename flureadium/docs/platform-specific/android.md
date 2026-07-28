@@ -126,7 +126,9 @@ Browse and search content come from the host's registered `CarContentProvider` (
 - `NodeBrowseTree` turns each `CarBrowseNode` into a `MediaItem`: containers are browsable, audiobook/read-aloud rows are playable, `artworkPath` becomes the artwork URI, and `progress` becomes the media3 completion-percentage extra the head unit shows as a progress bar.
 - An empty tree shows a single non-selectable status row carrying the host's `CarContentStrings` (`emptyRootTitle`/`emptyRootSubtitle`), so the head unit shows the host's copy instead of a blank screen.
 - Search is first-class on Android Auto: `onSearch`/`onGetSearchResult` run `search(query)` on the provider and return matching nodes, with no OS-version caveat.
+- A `siri`-kind node (the iOS Siri assistant marker) is dropped from the Android tree. Android Auto has no browse-row voice affordance (voice input there is Google Assistant), so rendering it would leave a dead row.
 - Selecting a playable row forwards it to the provider (`play(nodeId)`). Picking a chapter of the currently open audiobook still seeks the loaded timeline via `AudiobookBrowseTree`, driving the same navigator the in-app controls use.
+- On the Now Playing screen the callback's custom layout adds rewind, forward, and **bookmark** buttons; the bookmark button routes to the provider's `addBookmark()`. Android Auto surfaces no playback-speed control, so `cycleSpeed` is an iOS-only Now Playing button.
 
 On a cold connect the car engine's Dart handler may still be starting, so `MethodChannelCarContentSource` retries a browse call a bounded number of times until it gets an array back, rather than mistaking the startup race for an empty library.
 
@@ -274,7 +276,7 @@ Readium's `AudioNavigatorFactory.createNavigator` probes each track's duration
 up front and, for a track whose manifest `duration` is null, reads the remote
 resource synchronously. That probe is skipped when the manifest already carries
 per-track durations, so the null-duration ANR seen on streamed Gutenberg
-audiobooks is addressed upstream by the fablum Gutenberg duration mapping, not
+audiobooks is addressed upstream by the consuming app's Gutenberg duration mapping, not
 by moving the build off the main thread.
 
 **Files:**

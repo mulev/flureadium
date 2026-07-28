@@ -49,12 +49,14 @@ before any UI is alive, so answers usually come from the host's own storage.
 | `addBookmark()` | Records a bookmark at the current playback position; the host chooses where. |
 | `cycleSpeed()` | Advances playback speed to the host's next preset and persists it. |
 
-On the Now Playing screen the renderers surface these as buttons: iOS installs a
-bookmark button (audiobook items only), a playback-rate button (`cycleSpeed`),
-and a chapters button that pushes `nowPlayingChapters()`; Android Auto adds a
-bookmark custom command (`addBookmark`) and uses the media session's own rate
-control. Whether the active item is an audiobook is host playback state. The
-host passes that flag when it installs the buttons; the plugin never tracks it.
+On the Now Playing screen the renderers surface these as buttons where the
+platform supports them. iOS installs a bookmark button (audiobook items only), a
+playback-rate button (`cycleSpeed`), and a chapters button that pushes
+`nowPlayingChapters()`. Android Auto adds a bookmark custom command
+(`addBookmark`) next to its rewind and forward buttons; it has no playback-rate
+button, so `cycleSpeed` is not surfaced there. Whether the active item is an
+audiobook is host playback state. The host passes that flag when it installs the
+buttons; the plugin never tracks it.
 
 ## `CarBrowseNode`
 
@@ -71,6 +73,8 @@ host types, so it survives the trip to native code unchanged.
 | `isPlayable` | Whether selecting the row starts playback instead of opening a child list. |
 | `progress` | Playback progress from 0 to 1, or null. Values outside that range are rejected. |
 | `isNowPlaying` | Whether this row is the current item. |
+
+The `siri` kind marks the Search tab's voice-assistant entry rather than a normal row. Renderers surface it per platform: iOS installs the system Siri assistant cell, while Android Auto drops it, since its voice input is Google Assistant rather than a browse row. See the [iOS](../platform-specific/ios.md) and [Android](../platform-specific/android.md) platform docs.
 
 ## `CarTab`
 

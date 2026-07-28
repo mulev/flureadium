@@ -72,7 +72,7 @@ For audiobook background playback, add to `Info.plist`:
 
 To expose a browsable library and transport controls on CarPlay, the host app adds a CarPlay scene and the CarPlay-audio entitlement. Flureadium ships the renderer that turns the host's library into CarPlay templates; the host supplies that library through a `CarContentProvider` (see [Car content](../api-reference/car-content.md)) and wires the scene into its manifest.
 
-> **External blocker — Apple grant required.** `com.apple.developer.carplay-audio` is a *restricted* entitlement. Apple grants it per app on request (developer.apple.com → CarPlay request form). Until the grant lands, the entitlement cannot be code-signed and CarPlay will not run on device. Plan for this lead time — it gates any consumer (including Fablum) shipping CarPlay.
+> **External blocker — Apple grant required.** `com.apple.developer.carplay-audio` is a *restricted* entitlement. Apple grants it per app on request (developer.apple.com → CarPlay request form). Until the grant lands, the entitlement cannot be code-signed and CarPlay will not run on device. Plan for this lead time — it gates any consumer shipping CarPlay.
 
 **Entitlement.** Add to `ios/Runner/Runner.entitlements`:
 

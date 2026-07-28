@@ -315,4 +315,4 @@ These need a head unit and are run by hand; they are not in CI.
 
 ### Real device + real car
 
-End-to-end validation on physical phones and real cars is done **downstream in the fablum app**, which consumes this plugin and is tested on real hardware. flureadium's bar is the automated coverage above plus the reproducible manual surfaces; it does not attempt to fake a real head unit in CI.
+End-to-end validation on physical phones and real cars is done **downstream in the consuming app**, which integrates this plugin and is tested on real hardware. flureadium's bar is the automated coverage above plus the reproducible manual surfaces; it does not attempt to fake a real head unit in CI.

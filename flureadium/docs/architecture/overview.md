@@ -303,7 +303,7 @@ This mirrors the Android pattern where `closePublication()` uses `mainScope.asyn
 
 ### Car bridge (CarPlay / Android Auto)
 
-How the native car surfaces (CarPlay scene, Android `MediaLibraryService`) obtain host library data that lives only in Dart, with no Flutter UI alive, is decided in [car-bridge-decision.md](car-bridge-decision.md): an app-scoped headless `FlutterEngine` + `MethodChannel` (variant a), chosen as the implementation default with a functional validation gate on the first runnable build.
+How the native car surfaces (CarPlay scene, Android `MediaLibraryService`) obtain host library data that lives only in Dart, with no Flutter UI alive, is decided in [car-bridge-decision.md](car-bridge-decision.md): an app-scoped headless `FlutterEngine` + `MethodChannel` (variant a). The host registers a `CarContentProvider` (see [car content](../api-reference/car-content.md)) that answers browse, search, and play requests over that channel.
 
 ### Readium Integration
 
