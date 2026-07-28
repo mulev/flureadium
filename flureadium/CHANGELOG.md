@@ -17,6 +17,10 @@
 
 - New `docs/api-reference/car-content.md` (the host contract), CarPlay and Android Auto sections in `docs/platform-specific/{ios,android}.md`, and the car-bridge ADR `docs/architecture/car-bridge-decision.md` linked from the architecture overview.
 
+### Dependencies
+
+- Requires `flureadium_platform_interface` ^0.9.0 for the car content provider types.
+
 ## 0.14.1
 
 ### Bug Fixes
