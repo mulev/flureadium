@@ -9,11 +9,18 @@ private final class StubCarPlayContentBridge: CarPlayContentBridging {
   var childrenByNode: [String: [CarBrowseNode]] = [:]
   var stubStrings: CarContentStrings?
   private(set) var selected: [String] = []
+  var searchResults: [CarBrowseNode] = []
+  private(set) var searched: [String] = []
 
   func rootTabs(_ completion: @escaping ([CarTab]) -> Void) { completion(tabs) }
 
   func children(of nodeId: String, _ completion: @escaping ([CarBrowseNode]) -> Void) {
     completion(childrenByNode[nodeId] ?? [])
+  }
+
+  func search(_ query: String, _ completion: @escaping ([CarBrowseNode]) -> Void) {
+    searched.append(query)
+    completion(searchResults)
   }
 
   func strings(_ completion: @escaping (CarContentStrings?) -> Void) { completion(stubStrings) }
@@ -43,9 +50,12 @@ final class CarTemplateRendererTests: XCTestCase {
     bridge: CarPlayContentBridging,
     fallback: CarContentStrings,
     setRoot: @escaping (CPTemplate) -> Void = { _ in },
-    push: @escaping (CPTemplate) -> Void = { _ in }
+    push: @escaping (CPTemplate) -> Void = { _ in },
+    isKeyboardAvailable: @escaping () -> Bool = { false }
   ) -> CarTemplateRenderer {
-    CarTemplateRenderer(bridge: bridge, fallbackStrings: fallback, setRoot: setRoot, push: push)
+    CarTemplateRenderer(
+      bridge: bridge, fallbackStrings: fallback, setRoot: setRoot, push: push,
+      isKeyboardAvailable: isKeyboardAvailable)
   }
 
   func testRootTabsBuildTabBarWithOneTemplatePerTab() {
@@ -190,6 +200,82 @@ final class CarTemplateRendererTests: XCTestCase {
     XCTAssertEqual(pushedList?.sections.first?.items.count, 1)
     XCTAssertTrue(bridge.selected.isEmpty)
   }
+
+  func testSearchTabWithSiriNodeInstallsAssistantCellButNoTypedRowPreIOS27() {
+    let bridge = StubCarPlayContentBridge()
+    bridge.stubStrings = strings()
+    bridge.tabs = [CarTab(id: "search", title: "Search")]
+    bridge.childrenByNode["search"] = [
+      CarBrowseNode(id: "siri", title: "Ask Siri", kind: .siri)
+    ]
+    var root: CPTemplate?
+    let renderer = makeRenderer(bridge: bridge, fallback: strings(), setRoot: { root = $0 })
+
+    renderer.presentRoot()
+
+    let list = (root as? CPTabBarTemplate)?.templates.first as? CPListTemplate
+    if #available(iOS 15.0, *) {
+      XCTAssertNotNil(
+        list?.assistantCellConfiguration,
+        "a siri node installs the always-present Siri assistant cell")
+      XCTAssertEqual(list?.assistantCellConfiguration?.assistantAction, .playMedia)
+    }
+    if #unavailable(iOS 27.0) {
+      XCTAssertTrue(
+        list?.sections.isEmpty ?? false,
+        "pre-iOS-27 the siri node adds no typed-search row, only the assistant cell")
+    }
+  }
+
+  func testTypedSearchRowAppearsOnlyWithIOS27AndKeyboard() throws {
+    guard #available(iOS 27.0, *) else {
+      throw XCTSkip("Typed CarPlay search is an iOS 27+ enhancement")
+    }
+
+    func searchList(
+      isKeyboardAvailable: @escaping () -> Bool, push: @escaping (CPTemplate) -> Void = { _ in }
+    ) -> CPListTemplate? {
+      let bridge = StubCarPlayContentBridge()
+      bridge.stubStrings = strings()
+      bridge.tabs = [CarTab(id: "search", title: "Search")]
+      bridge.childrenByNode["search"] = [
+        CarBrowseNode(id: "siri", title: "Ask Siri", kind: .siri)
+      ]
+      var root: CPTemplate?
+      let renderer = makeRenderer(
+        bridge: bridge, fallback: strings(), setRoot: { root = $0 }, push: push,
+        isKeyboardAvailable: isKeyboardAvailable)
+      renderer.presentRoot()
+      return (root as? CPTabBarTemplate)?.templates.first as? CPListTemplate
+    }
+
+    // Keyboard unavailable: assistant cell only, no typed-search row.
+    let noKeyboard = searchList(isKeyboardAvailable: { false })
+    XCTAssertNotNil(noKeyboard?.assistantCellConfiguration)
+    XCTAssertTrue(
+      noKeyboard?.sections.isEmpty ?? false,
+      "no typed-search row when the vehicle keyboard is unavailable")
+
+    // Keyboard available: the typed-search row pushes a CPSearchTemplate.
+    var pushed: CPTemplate?
+    let withKeyboard = searchList(isKeyboardAvailable: { true }, push: { pushed = $0 })
+    let row = withKeyboard?.sections.first?.items.first as? CPListItem
+    XCTAssertEqual(row?.text, "Search", "typed-search row is labeled from the tab title")
+    row?.handler?(row!, {})
+    XCTAssertTrue(pushed is CPSearchTemplate, "the typed-search row pushes a CPSearchTemplate")
+
+    // Keyboard disabled after the row was built: the tap must not present search.
+    var keyboardOn = true
+    var pushedAfterDisable: CPTemplate?
+    let dynamic = searchList(isKeyboardAvailable: { keyboardOn }, push: { pushedAfterDisable = $0 })
+    let dynamicRow = dynamic?.sections.first?.items.first as? CPListItem
+    keyboardOn = false
+    dynamicRow?.handler?(dynamicRow!, {})
+    XCTAssertNil(
+      pushedAfterDisable,
+      "a stale typed-search row does not present search once the keyboard is disabled")
+  }
+
 }
 
 /// A bridge that never answers, to prove the synchronous initial root is set
@@ -198,6 +284,7 @@ final class CarTemplateRendererTests: XCTestCase {
 private final class SuspendingBridge: CarPlayContentBridging {
   func rootTabs(_ completion: @escaping ([CarTab]) -> Void) {}
   func children(of nodeId: String, _ completion: @escaping ([CarBrowseNode]) -> Void) {}
+  func search(_ query: String, _ completion: @escaping ([CarBrowseNode]) -> Void) {}
   func strings(_ completion: @escaping (CarContentStrings?) -> Void) {}
   func select(nodeId: String) {}
   func addBookmark() {}

@@ -38,6 +38,11 @@ void main() {
     expect(await provider.children('nope'), isEmpty);
   });
 
+  test('search tab surfaces the Siri assistant marker row', () async {
+    final nodes = await provider.children('search');
+    expect(nodes.single.kind, CarNodeKind.siri);
+  });
+
   test('search returns matches', () async {
     expect(await provider.search('dune'), isNotEmpty);
   });

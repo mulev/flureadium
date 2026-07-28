@@ -22,29 +22,35 @@ public final class CarTemplateRenderer {
   private let fallbackStrings: CarContentStrings
   private let setRoot: (CPTemplate) -> Void
   private let push: (CPTemplate) -> Void
+  private var searchTemplateDelegate: NSObject?
+  private let isKeyboardAvailable: () -> Bool
 
   public convenience init(
     interfaceController: CPInterfaceController,
     bridge: CarPlayContentBridging,
-    fallbackStrings: CarContentStrings
+    fallbackStrings: CarContentStrings,
+    isKeyboardAvailable: @escaping () -> Bool = { false }
   ) {
     self.init(
       bridge: bridge,
       fallbackStrings: fallbackStrings,
       setRoot: { interfaceController.setRootTemplate($0, animated: false, completion: nil) },
-      push: { interfaceController.pushTemplate($0, animated: true, completion: nil) })
+      push: { interfaceController.pushTemplate($0, animated: true, completion: nil) },
+      isKeyboardAvailable: isKeyboardAvailable)
   }
 
   init(
     bridge: CarPlayContentBridging,
     fallbackStrings: CarContentStrings,
     setRoot: @escaping (CPTemplate) -> Void,
-    push: @escaping (CPTemplate) -> Void
+    push: @escaping (CPTemplate) -> Void,
+    isKeyboardAvailable: @escaping () -> Bool = { false }
   ) {
     self.bridge = bridge
     self.fallbackStrings = fallbackStrings
     self.setRoot = setRoot
     self.push = push
+    self.isKeyboardAvailable = isKeyboardAvailable
   }
 
   /// Sets a status-only root immediately (from the injected fallback strings),
@@ -99,7 +105,7 @@ public final class CarTemplateRenderer {
       tab.iconName.flatMap { UIImage(systemName: $0) } ?? UIImage(systemName: "list.bullet")
     Self.applyEmptyView(to: template, strings: strings)
     bridge.children(of: tab.id) { nodes in
-      template.updateSections(self.sections(for: nodes))
+      self.updateTabSections(nodes, for: tab, into: template)
     }
     return template
   }
@@ -116,9 +122,58 @@ public final class CarTemplateRenderer {
   }
 
   /// Builds the list sections for [nodes], or none when empty so the template's
-  /// built-in empty view (host status copy) shows instead of a blank section.
+  /// built-in empty view (host status copy) shows instead of a blank section. A
+  /// `siri` node is a marker for the Siri assistant cell, not an ordinary row,
+  /// so it never appears here.
   private func sections(for nodes: [CarBrowseNode]) -> [CPListSection] {
-    nodes.isEmpty ? [] : [CPListSection(items: nodes.map { self.item(for: $0) })]
+    let rows = nodes.compactMap { self.row(for: $0) }
+    return rows.isEmpty ? [] : [CPListSection(items: rows)]
+  }
+
+  /// One row for [node], or nil when it contributes no ordinary row — a `siri`
+  /// node is the Siri assistant-cell marker, surfaced by `updateTabSections`
+  /// rather than as a list row.
+  private func row(for node: CarBrowseNode) -> CPListItem? {
+    node.kind == .siri ? nil : item(for: node)
+  }
+
+  /// Fills the Search tab's list: a `siri` node installs the Siri assistant cell
+  /// (iOS 15+), and on the iOS 27+ typed-search path a single row — labeled from
+  /// the tab's own title, since it opens the keyboard rather than Siri — is
+  /// appended to push `CarSearchTemplate`. The two paths are independent, so on
+  /// iOS 15 through pre-27 (or without a keyboard) the assistant cell shows with
+  /// no typed row.
+  private func updateTabSections(
+    _ nodes: [CarBrowseNode], for tab: CarTab, into template: CPListTemplate
+  ) {
+    let hasSiri = nodes.contains { $0.kind == .siri }
+    if hasSiri, #available(iOS 15.0, *) {
+      template.assistantCellConfiguration = CarAssistantCell.configuration()
+    }
+    var rows = nodes.compactMap { self.row(for: $0) }
+    if hasSiri, #available(iOS 27.0, *), isKeyboardAvailable() {
+      rows.append(typedSearchRow(title: tab.title))
+    }
+    template.updateSections(rows.isEmpty ? [] : [CPListSection(items: rows)])
+  }
+
+  /// A row that opens CarPlay's typed search (`CarSearchTemplate`) on iOS 27+.
+  /// Retains the search delegate for the renderer's lifetime, since
+  /// `CPSearchTemplate` holds its delegate weakly. Keyboard availability is
+  /// re-checked at tap time: it can change after the row is built (e.g. the car
+  /// disables the keyboard once moving), and a stale row must not present typed
+  /// search then.
+  @available(iOS 27.0, *)
+  private func typedSearchRow(title: String) -> CPListItem {
+    let searchRow = CPListItem(text: title, detailText: nil)
+    searchRow.handler = { [weak self] _, completion in
+      guard let self = self, self.isKeyboardAvailable() else { return completion() }
+      let search = CarSearchTemplate(bridge: self.bridge)
+      self.searchTemplateDelegate = search
+      self.push(search.makeTemplate())
+      completion()
+    }
+    return searchRow
   }
 
   /// Applies the host's localized status copy to a template's built-in empty

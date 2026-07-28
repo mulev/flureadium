@@ -34,6 +34,8 @@
 		CA90AC1234567890ABCDEF72 /* CarListItemFactoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA90AC1234567890ABCDEF71 /* CarListItemFactoryTests.swift */; };
 		CA90AC1234567890ABCDEF82 /* CarTemplateRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA90AC1234567890ABCDEF81 /* CarTemplateRendererTests.swift */; };
 		CA90AC1234567890ABCDEF92 /* CarNowPlayingButtonsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA90AC1234567890ABCDEF91 /* CarNowPlayingButtonsTests.swift */; };
+		CA90AC1234567890ABCDEFA2 /* CarSearchTemplateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA90AC1234567890ABCDEFA1 /* CarSearchTemplateTests.swift */; };
+		CA90AC1234567890ABCDEFB2 /* CarAssistantCellTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA90AC1234567890ABCDEFB1 /* CarAssistantCellTests.swift */; };
 		DDBBCC0011223344AABBCC02 /* CarPlayContentBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC01 /* CarPlayContentBridgeTests.swift */; };
 		DDBBCC0011223344AABBCC04 /* ScrollModeNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC03 /* ScrollModeNavigationTests.swift */; };
 		DDBBCC0011223344AABBCC06 /* EventStreamHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC05 /* EventStreamHandlerTests.swift */; };
@@ -97,6 +99,8 @@
 		CA90AC1234567890ABCDEF71 /* CarListItemFactoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarListItemFactoryTests.swift; sourceTree = "<group>"; };
 		CA90AC1234567890ABCDEF81 /* CarTemplateRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarTemplateRendererTests.swift; sourceTree = "<group>"; };
 		CA90AC1234567890ABCDEF91 /* CarNowPlayingButtonsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarNowPlayingButtonsTests.swift; sourceTree = "<group>"; };
+		CA90AC1234567890ABCDEFA1 /* CarSearchTemplateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarSearchTemplateTests.swift; sourceTree = "<group>"; };
+		CA90AC1234567890ABCDEFB1 /* CarAssistantCellTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarAssistantCellTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC01 /* CarPlayContentBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayContentBridgeTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC03 /* ScrollModeNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollModeNavigationTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC05 /* EventStreamHandlerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStreamHandlerTests.swift; sourceTree = "<group>"; };
@@ -187,6 +191,8 @@
 				CA90AC1234567890ABCDEF71 /* CarListItemFactoryTests.swift */,
 				CA90AC1234567890ABCDEF81 /* CarTemplateRendererTests.swift */,
 				CA90AC1234567890ABCDEF91 /* CarNowPlayingButtonsTests.swift */,
+				CA90AC1234567890ABCDEFA1 /* CarSearchTemplateTests.swift */,
+				CA90AC1234567890ABCDEFB1 /* CarAssistantCellTests.swift */,
 				DDBBCC0011223344AABBCC01 /* CarPlayContentBridgeTests.swift */,
 				DDBBCC0011223344AABBCC03 /* ScrollModeNavigationTests.swift */,
 				DDBBCC0011223344AABBCC05 /* EventStreamHandlerTests.swift */,
@@ -493,6 +499,8 @@
 				CA90AC1234567890ABCDEF72 /* CarListItemFactoryTests.swift in Sources */,
 				CA90AC1234567890ABCDEF82 /* CarTemplateRendererTests.swift in Sources */,
 				CA90AC1234567890ABCDEF92 /* CarNowPlayingButtonsTests.swift in Sources */,
+				CA90AC1234567890ABCDEFA2 /* CarSearchTemplateTests.swift in Sources */,
+				CA90AC1234567890ABCDEFB2 /* CarAssistantCellTests.swift in Sources */,
 				DDBBCC0011223344AABBCC02 /* CarPlayContentBridgeTests.swift in Sources */,
 				DDBBCC0011223344AABBCC04 /* ScrollModeNavigationTests.swift in Sources */,
 				DDBBCC0011223344AABBCC06 /* EventStreamHandlerTests.swift in Sources */,

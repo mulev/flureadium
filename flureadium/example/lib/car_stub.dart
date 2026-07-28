@@ -64,6 +64,14 @@ class StubCarContentProvider extends CarContentProvider {
             progress: 0.62,
           ),
         ];
+      case 'search':
+        return [
+          CarBrowseNode(
+            id: 'siri',
+            title: 'Search with Siri',
+            kind: CarNodeKind.siri,
+          ),
+        ];
       default:
         return const [];
     }
