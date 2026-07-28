@@ -28,9 +28,14 @@ object NodeBrowseTree {
     fun tabItems(tabs: List<CarTab>): List<MediaItem> =
         tabs.map { browsableItem(mediaId = it.id, title = it.title, subtitle = null) }
 
-    /** One row per provider node, playable or browsable per its kind. */
+    /**
+     * One row per provider node, playable or browsable per its kind. A `siri`
+     * node is an iOS CarPlay assistant-cell marker with no Android Auto browse
+     * equivalent (voice search is Google Assistant, not a browse row), so it is
+     * dropped rather than shown as a dead row.
+     */
     fun nodeItems(nodes: List<CarBrowseNode>): List<MediaItem> =
-        nodes.map(::nodeItem)
+        nodes.filter { it.kind != CarNodeKind.siri }.map(::nodeItem)
 
     /** A non-selectable status row shown when the tree is empty. */
     fun statusItem(title: String, subtitle: String?): MediaItem =

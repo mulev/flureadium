@@ -89,6 +89,18 @@ internal class NodeBrowseTreeTest {
     }
 
     @Test
+    fun nodeItems_siriMarker_isDroppedFromBrowseTree() {
+        val items = NodeBrowseTree.nodeItems(
+            listOf(
+                node(id = "siri", title = "Search with Siri", subtitle = null, kind = CarNodeKind.siri, isPlayable = false),
+                node(id = "book:1"),
+            ),
+        )
+
+        assertEquals(listOf("book:1"), items.map { it.mediaId })
+    }
+
+    @Test
     fun nodeItems_withArtworkPath_setsArtworkUri() {
         val item = NodeBrowseTree.nodeItems(
             listOf(node(artworkPath = "file:///covers/hail-mary.jpg")),
