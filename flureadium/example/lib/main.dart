@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flureadium/flureadium.dart';
 import 'audio_stream_fixtures.dart';
+import 'car_stub.dart';
 
 const _defaultInitialAsset = String.fromEnvironment(
   'FLUREADIUM_INITIAL_ASSET',
@@ -17,6 +18,19 @@ const _defaultInitialAsset = String.fromEnvironment(
 void main({String initialAsset = _defaultInitialAsset}) {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(ExampleApp(initialAsset: initialAsset));
+}
+
+/// Dedicated entrypoint for the app-scoped headless car engine (car bridge ADR,
+/// STAGE-1). CarPlay boots this instead of the reader UI: it registers the stub
+/// car provider so the `dev.mulev.flureadium/car` channel answers browse and
+/// play from a cold, UI-less process.
+@pragma('vm:entry-point')
+void carMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+  Flureadium().registerCarContentProvider(
+    StubCarContentProvider(),
+    strings: StubCarContentProvider.strings,
+  );
 }
 
 class ExampleApp extends StatelessWidget {

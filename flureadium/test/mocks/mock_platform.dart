@@ -348,6 +348,31 @@ class MockFlureadiumPlatform
   @override
   Stream<ReadiumError> get onErrorEvent => _errorController.stream;
 
+  // Car content provider registration
+
+  /// The provider passed to the last [registerCarContentProvider], or null.
+  CarContentProvider? registeredCarProvider;
+
+  /// The strings passed to the last [registerCarContentProvider], or null.
+  CarContentStrings? registeredCarStrings;
+
+  @override
+  void registerCarContentProvider(
+    CarContentProvider provider, {
+    required CarContentStrings strings,
+  }) {
+    registeredCarProvider = provider;
+    registeredCarStrings = strings;
+    calls.add(MockMethodCall('registerCarContentProvider'));
+  }
+
+  @override
+  void unregisterCarContentProvider() {
+    registeredCarProvider = null;
+    registeredCarStrings = null;
+    calls.add(MockMethodCall('unregisterCarContentProvider'));
+  }
+
   // Verification helpers
 
   /// Returns true if a method with the given name was called.

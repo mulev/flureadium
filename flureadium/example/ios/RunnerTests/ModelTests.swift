@@ -83,6 +83,24 @@ final class FlutterNavigationConfigTests: XCTestCase {
         XCTAssertNil(config.enableSwipeNavigation)
         XCTAssertNil(config.edgeTapAreaPoints)
     }
+
+    func testBooleansAreTypedNotStrings() {
+        // Values arrive from Dart as Bool, not String
+        let map: [String: Any] = [
+            "enableEdgeTapNavigation": true,
+            "disableDoubleTapZoom": false,
+        ]
+        let config = FlutterNavigationConfig(fromMap: map)
+        XCTAssertEqual(config.enableEdgeTapNavigation, true)
+        XCTAssertEqual(config.disableDoubleTapZoom, false)
+    }
+
+    func testStringValuesNotParsedAsBools() {
+        // String "true" must not be coerced to Bool true (as? Bool -> nil)
+        let map: [String: Any] = ["enableEdgeTapNavigation": "true"]
+        let config = FlutterNavigationConfig(fromMap: map)
+        XCTAssertNil(config.enableEdgeTapNavigation)
+    }
 }
 
 final class ImageReaderNavigationStateTests: XCTestCase {
@@ -466,5 +484,20 @@ final class FlutterPdfPreferencesTests: XCTestCase {
         let prefs = FlutterPdfPreferences()
         let map = prefs.toMap()
         XCTAssertTrue(map.isEmpty)
+    }
+
+    func testPdfPreferencesFromMapWithInvalidValues() {
+        let map: [String: Any] = [
+            "fit": "invalid",
+            "scrollMode": 123,
+            "pageLayout": true,
+            "offsetFirstPage": "notabool",
+        ]
+        let prefs = FlutterPdfPreferences(fromMap: map)
+        // Invalid enum strings and wrong-typed bools decode to nil
+        XCTAssertNil(prefs.fit)
+        XCTAssertNil(prefs.scrollMode)
+        XCTAssertNil(prefs.pageLayout)
+        XCTAssertNil(prefs.offsetFirstPage)
     }
 }

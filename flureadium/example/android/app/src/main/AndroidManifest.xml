@@ -5,6 +5,7 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
   <application
+    android:name="com.example.flureadium_example.CarStubApplication"
     android:icon="@mipmap/ic_launcher"
     android:label="flureadium_example">
     <activity

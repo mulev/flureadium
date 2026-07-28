@@ -83,7 +83,7 @@ If using ProGuard/R8, add to `android/app/proguard-rules.pro`:
 
 ### 6. Android Auto (Optional)
 
-Audiobook chapters and transport controls work on Android Auto with no host manifest changes. The plugin's manifest already declares Auto media support and its media service, and Android manifest merging brings both into the host app — the example app adds nothing Auto-specific and still exposes the browse tree.
+The plugin's manifest already declares Android Auto media support and its media service, and Android manifest merging brings both into the host app with **no host manifest changes**. What the browse tree *shows*, though, comes from a `CarContentProvider` the host registers in Dart (see [car content](../api-reference/car-content.md)) and reaches over an app-scoped car engine — so the host's whole library appears, not just the open book. The example app wires this for the demo in `CarStubApplication`, which boots a headless engine running the `carMain` entrypoint and serves stub nodes.
 
 For reference, this is what the plugin declares and merges into your app. The `<application>` meta-data points at the automotive descriptor:
 
@@ -110,7 +110,7 @@ The plugin also declares `PluginMediaService` with an intent filter that adverti
 1. Install the Desktop Head Unit from the SDK Manager (SDK Tools → Android Auto Desktop Head Unit emulator).
 2. On the device or emulator, enable Android Auto developer mode (tap the Android Auto app version 10 times) and turn on **Unknown sources**.
 3. Start the head-unit server on the device: `adb forward tcp:5277 tcp:5277`, then run the DHU binary from the SDK (`extras/google/auto/desktop-head-unit`).
-4. Open the audiobook in the app so a publication is loaded, then pick your app from the DHU's media launcher. The chapter list should browse and transport controls (play/pause/skip) should drive playback.
+4. Pick your app from the DHU's media launcher. The browse tree lists the registered `CarContentProvider`'s nodes — the example serves stub tabs and books via `CarStubApplication`, so it browses without opening anything in the phone app first — and search works from the head unit. Selecting a playable row forwards it to the provider; selecting a chapter of the currently open audiobook seeks the same navigator the in-app controls use, and transport (play/pause/skip) stays in sync.
 
 > Android Auto validates the media app before showing it. If the app does not appear, check the merged manifest (in the build output) for the `com.google.android.gms.car.application` meta-data, confirm the media service is exported, and confirm its intent-filter advertises the `android.media.browse.MediaBrowserService` action Android Auto scans for.
 
@@ -118,17 +118,29 @@ The plugin also declares `PluginMediaService` with an intent filter that adverti
 
 ### Android Auto Browse Tree
 
-`PluginMediaService` runs as a media3 `MediaLibraryService` (not just `MediaSessionService`) and advertises the legacy `android.media.browse.MediaBrowserService` action in its intent filter. Android Auto connects as a platform `MediaBrowser` client, so it needs both: the `MediaLibraryService` to browse content and the legacy browse action to discover the app in the first place. `AudiobookBrowseTree` builds the tree the head unit requests:
+`PluginMediaService` runs as a media3 `MediaLibraryService` (not just `MediaSessionService`) and advertises the legacy `android.media.browse.MediaBrowserService` action in its intent filter. Android Auto connects as a platform `MediaBrowser` client, so it needs both: the `MediaLibraryService` to browse content and the legacy browse action to discover the app in the first place.
 
-- The tree is **one level deep**: a browsable root whose children are the open publication's chapters (its `readingOrder` entries).
-- Each chapter is a playable `MediaItem` whose id (`ch_<index>`) round-trips back to a Readium `Locator` the audiobook navigator can seek to. The index matches the audio player's timeline index, so selecting a chapter on the head unit drives a seek on the same navigator the in-app controls use.
-- Chapter titles fall back to `Chapter N` when a reading-order entry has no title; the root falls back to `Audiobook` when the publication has no title.
+Browse and search content come from the host's registered `CarContentProvider` (see [car content](../api-reference/car-content.md)), reached over the car engine through a `MethodChannel`, so the tree is the host's whole library — not just the open publication:
 
-The browse tree is kept free of Android Auto and service state so it is JVM-unit-testable with a stubbed `Publication` (see `AudiobookBrowseTreeTest.kt`).
+- `onGetLibraryRoot`'s children are the provider's root tabs (for example Continue / Library / Search). Selecting a tab or container calls `children(nodeId)` for the next level.
+- `NodeBrowseTree` turns each `CarBrowseNode` into a `MediaItem`: containers are browsable, audiobook/read-aloud rows are playable, `artworkPath` becomes the artwork URI, and `progress` becomes the media3 completion-percentage extra the head unit shows as a progress bar.
+- An empty tree shows a single non-selectable status row carrying the host's `CarContentStrings` (`emptyRootTitle`/`emptyRootSubtitle`), so the head unit shows the host's copy instead of a blank screen.
+- Search is first-class on Android Auto: `onSearch`/`onGetSearchResult` run `search(query)` on the provider and return matching nodes, with no OS-version caveat.
+- A `siri`-kind node (the iOS Siri assistant marker) is dropped from the Android tree. Android Auto has no browse-row voice affordance (voice input there is Google Assistant), so rendering it would leave a dead row.
+- Selecting a playable row forwards it to the provider (`play(nodeId)`). Picking a chapter of the currently open audiobook still seeks the loaded timeline via `AudiobookBrowseTree`, driving the same navigator the in-app controls use.
+- On the Now Playing screen the callback's custom layout adds rewind, forward, and **bookmark** buttons; the bookmark button routes to the provider's `addBookmark()`. Android Auto surfaces no playback-speed control, so `cycleSpeed` is an iOS-only Now Playing button.
+
+On a cold connect the car engine's Dart handler may still be starting, so `MethodChannelCarContentSource` retries a browse call a bounded number of times until it gets an array back, rather than mistaking the startup race for an empty library.
+
+The mapping and the source are kept free of Android Auto and service state so they are JVM-unit-testable — `NodeBrowseTree` and the car value types with plain values, and the callback with a stub `CarContentSource` (see `NodeBrowseTreeTest.kt`, `PluginLibrarySessionCallbackTest.kt`, `MethodChannelCarContentSourceTest.kt`).
 
 **Files:**
-- `AudiobookBrowseTree.kt` — builds the root + chapter `MediaItem`s, maps ids to locators
-- `PluginLibrarySessionCallback.kt` — `MediaLibrarySession.Callback` serving the tree to Auto
+- `car/CarBrowseNode.kt`, `car/CarTab.kt`, `car/CarContentStrings.kt` — value types decoded from the car channel
+- `car/CarContentSource.kt` + `car/MethodChannelCarContentSource.kt` — the browse/search/play seam and its method-channel adapter
+- `car/NodeBrowseTree.kt` — maps car nodes/tabs to media3 `MediaItem`s
+- `car/FlureadiumCarEngine.kt` — app-scoped holder the host publishes its car source into
+- `AudiobookBrowseTree.kt` — maps the open audiobook's chapters to timeline indices for the chapter-pick seek
+- `PluginLibrarySessionCallback.kt` — `MediaLibrarySession.Callback` serving browse, search, and the seek
 - `PluginMediaService.kt` — hosts the `MediaLibrarySession`
 - `res/xml/automotive_app_desc.xml` — Android Auto media descriptor
 
@@ -264,7 +276,7 @@ Readium's `AudioNavigatorFactory.createNavigator` probes each track's duration
 up front and, for a track whose manifest `duration` is null, reads the remote
 resource synchronously. That probe is skipped when the manifest already carries
 per-track durations, so the null-duration ANR seen on streamed Gutenberg
-audiobooks is addressed upstream by the fablum Gutenberg duration mapping, not
+audiobooks is addressed upstream by the consuming app's Gutenberg duration mapping, not
 by moving the build off the main thread.
 
 **Files:**

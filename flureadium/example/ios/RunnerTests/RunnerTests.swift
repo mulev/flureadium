@@ -1,5 +1,6 @@
 import XCTest
 import Flutter
+import ReadiumShared
 @testable import flureadium
 
 class RunnerTests: XCTestCase {
@@ -14,6 +15,24 @@ class RunnerTests: XCTestCase {
     plugin.handle(call) { response in
       XCTAssertEqual(response as? Bool, false,
                      "ttsCanSpeak should return false when no publication is loaded")
+      expectation.fulfill()
+    }
+
+    wait(for: [expectation], timeout: 1.0)
+  }
+
+  // MARK: - ttsCanSpeak with an unspeakable publication
+
+  func testTtsCanSpeakReturnsFalseForUnspeakablePublication() {
+    currentPublication = Publication(manifest: Manifest(metadata: Metadata(title: "NoTTS")))
+
+    let plugin = FlureadiumPlugin()
+    let expectation = expectation(description: "result called")
+
+    let call = FlutterMethodCall(methodName: "ttsCanSpeak", arguments: nil)
+    plugin.handle(call) { response in
+      XCTAssertEqual(response as? Bool, false,
+                     "ttsCanSpeak should return false for a publication without ContentService")
       expectation.fulfill()
     }
 

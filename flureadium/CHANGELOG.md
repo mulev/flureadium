@@ -1,3 +1,26 @@
+## 0.15.0
+
+### New Features
+
+- **Car content provider (CarPlay + Android Auto)**: A host app now drives the whole in-car browse experience through one registered object, rather than the car surfaces deriving content from the single open publication. `Flureadium().registerCarContentProvider(provider, strings:)` takes a `CarContentProvider` the host implements (`rootTabs`, `children`, `search`, `play`, `nowPlayingChapters`, `addBookmark`, `cycleSpeed`), and the CarPlay scene and the Android Auto media service answer browse/search/play from it over an app-scoped car engine, so the head unit shows the host's whole library rather than just the open book. Content crosses as plain `CarBrowseNode`/`CarTab` values with host-supplied, already-localized `CarContentStrings`; the plugin holds no host data and makes no library policy. See `docs/api-reference/car-content.md`.
+- **CarPlay tab templates + Siri search**: The iOS renderer builds the provider's root tabs as CarPlay list templates and populates them asynchronously on cold connect, so a status-only root shows first and the screen is never blank. A `siri`-kind node on the Search tab installs CarPlay's system Siri assistant cell (iOS 15+, with an `INPlayMediaIntent` hand-off), and on iOS 27+ keyboard-capable vehicles the Search tab also offers a typed `CPSearchTemplate`. See `docs/platform-specific/ios.md`.
+- **Android Auto library browse + search**: The Android media service serves the provider's tabs and rows as a media3 browse tree with first-class search, container/playable/now-playing states, artwork, and a progress-bar completion extra. `siri` marker nodes are dropped, since Android voice input is Google Assistant rather than a browse row. See `docs/platform-specific/android.md`.
+- **Now Playing actions**: CarPlay installs bookmark (audiobook items), playback-rate (`cycleSpeed`), and chapters buttons on the Now Playing template; Android Auto adds a bookmark custom command next to its rewind and forward buttons and has no playback-speed control, so `cycleSpeed` is iOS-only. The bookmark action routes back to the provider.
+
+### Testing
+
+- Dart: platform-interface transport routing and provider-contract tests; the `flureadium` barrel re-exports the car types.
+- iOS XCTest: tab and list rendering, the async cold-connect update, the Siri assistant cell, and the iOS 27 typed-search delegate (renderer, bridge, factory, and template suites).
+- Android JVM (Robolectric): the browse-tree mapping (including the `siri` drop), the method-channel content source with cold-start retry, and the library-session callback browse/search/bookmark paths.
+
+### Documentation
+
+- New `docs/api-reference/car-content.md` (the host contract), CarPlay and Android Auto sections in `docs/platform-specific/{ios,android}.md`, and the car-bridge ADR `docs/architecture/car-bridge-decision.md` linked from the architecture overview.
+
+### Dependencies
+
+- Requires `flureadium_platform_interface` ^0.9.0 for the car content provider types.
+
 ## 0.14.1
 
 ### Bug Fixes

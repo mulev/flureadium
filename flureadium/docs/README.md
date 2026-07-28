@@ -38,6 +38,7 @@ Flureadium is a Flutter plugin that wraps the Readium toolkits for reading EPUB 
 - **[Preferences](api-reference/preferences.md)** - EPUB, TTS, and Audio preferences
 - **[Decorations](api-reference/decorations.md)** - Highlights and bookmarks
 - **[Streams & Events](api-reference/streams-events.md)** - Real-time updates
+- **[Car content](api-reference/car-content.md)** - CarPlay / Android Auto browse and playback contract
 
 ## Architecture
 

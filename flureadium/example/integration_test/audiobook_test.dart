@@ -300,7 +300,7 @@ void main() {
 
     testWidgets('audiobook reaches ended state at end of book', (tester) async {
       // Playing the last track to its natural end must surface
-      // TimebasedState.ended — the signal fablum turns into its completion
+      // TimebasedState.ended — the signal the host app turns into its completion
       // popup. Guards the iOS (shouldPlayNextResource) and Android (forward
       // Ended before teardown) fixes end-to-end.
       //

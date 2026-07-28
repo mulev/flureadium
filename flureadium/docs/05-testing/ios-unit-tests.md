@@ -15,21 +15,25 @@ Instead, tests live in the **example app's RunnerTests target** and run via `xco
 
 ```
 flureadium/example/ios/RunnerTests/
-├── RunnerTests.swift                  # Plugin handler dispatch tests (~11 tests)
-├── FlutterTTSNavigatorTests.swift     # TTS navigator lifecycle, play/suppression, dispose (~18 tests)
-├── UtilityTests.swift                 # clamp, firstMap, asyncCompactMap (~8 tests)
-├── ModelTests.swift                   # ControlPanelInfoType, NavigationConfig, TTS/Audio/PDF preferences (~30 tests)
-├── StateSerializationTests.swift      # ReadiumTimebasedState toJson, toJsonString, Equatable (~8 tests)
-├── ReadiumExtensionsTests.swift       # Locator extensions, state mappings, EPUB/PDF preferences fromMap (~16 tests)
-├── FlutterMediaOverlayTests.swift     # FlutterMediaOverlayItem parsing/matching/locators (~14 tests)
-├── ReadiumErrorTests.swift            # ReadiumError/FlureadiumError to FlutterError conversions (~9 tests)
-├── EdgeTapInterceptViewTests.swift   # hitTest geometry, edge interception, subview bypass (~8 tests)
-└── NowPlayingInfoUpdaterTests.swift  # Chapter formatting for all ControlPanelInfoType variants (~8 tests)
+├── RunnerTests.swift                  # Plugin handler dispatch
+├── FlutterTTSNavigatorTests.swift     # TTS navigator lifecycle, play/suppression, dispose, initNavigator errors
+├── UtilityTests.swift                 # clamp, firstMap, asyncCompactMap
+├── ModelTests.swift                   # ControlPanelInfoType, NavigationConfig, TTS/Audio/PDF preferences
+├── StateSerializationTests.swift      # ReadiumTimebasedState toJson, toJsonString, Equatable
+├── ReadiumExtensionsTests.swift       # Locator extensions, state mappings, EPUB/PDF preferences fromMap
+├── FlutterMediaOverlayTests.swift     # FlutterMediaOverlayItem parsing/matching/locators
+├── ReadiumErrorTests.swift            # ReadiumError/FlureadiumError to FlutterError conversions
+├── EdgeTapInterceptViewTests.swift   # hitTest geometry, edge interception, subview bypass, property behavior
+├── NowPlayingInfoUpdaterTests.swift  # Chapter formatting for all ControlPanelInfoType variants
+├── ScrollModeNavigationTests.swift   # strippedHref, chapterLink before/after, isBackwardNavigation
+└── EventStreamHandlerTests.swift     # EventStreamHandler listen/cancel/dispose lifecycle
 ```
 
-Total: ~130 tests across 10 test classes.
+The files above are the main suites. Other tests (car surface, plugin navigation, audio, image cache, thumbnails) live in the same `RunnerTests` target and run together via `xcodebuild test`.
 
-All test files go in `flureadium/example/ios/RunnerTests/`. Do NOT put tests in the SPM test target at `ios/flureadium/Tests/flureadiumTests/` — those cannot be executed.
+The car surface adds `CarTemplateRendererTests`, `CarListItemFactoryTests`, `CarContentModelsTests`, `CarPlayPlaybackBridgeTests`, and `CarPlayContentBridgeTests` (the channel bridge's cold-start retry + node decode). All run in CI: the **`test-ios-native`** job in `.github/workflows/test.yml` runs the whole `RunnerTests` target via `xcodebuild test` on every push and PR, so a new `.swift` file registered here is exercised automatically.
+
+All test files go in `flureadium/example/ios/RunnerTests/`. The plugin's SPM manifest (`ios/flureadium/Package.swift`) deliberately declares no test target: SPM can't run these tests (see [How It Works](#how-it-works)), so any test added there would never execute. Add tests to RunnerTests instead.
 
 ## Adding a New Test File
 
