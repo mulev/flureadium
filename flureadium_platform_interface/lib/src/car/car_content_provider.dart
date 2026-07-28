@@ -23,4 +23,11 @@ abstract class CarContentProvider {
 
   /// The chapters of the currently playing publication, if any.
   Future<List<CarBrowseNode>> nowPlayingChapters();
+
+  /// Records a bookmark at the current playback position; the host decides
+  /// where it is stored and may no-op when the active content isn't bookmarkable.
+  Future<void> addBookmark();
+
+  /// Advances playback speed to the host's next preset and persists the choice.
+  Future<void> cycleSpeed();
 }

@@ -9,6 +9,8 @@ class _RecordingProvider extends CarContentProvider {
   final List<String> childrenOf = [];
   final List<String> searched = [];
   final List<String> played = [];
+  int bookmarks = 0;
+  int speedCycles = 0;
 
   @override
   Future<List<CarTab>> rootTabs() async => [
@@ -47,6 +49,12 @@ class _RecordingProvider extends CarContentProvider {
   Future<List<CarBrowseNode>> nowPlayingChapters() async => [
     CarBrowseNode(id: 'ch:1', title: 'Chapter 1', kind: CarNodeKind.chapter),
   ];
+
+  @override
+  Future<void> addBookmark() async => bookmarks++;
+
+  @override
+  Future<void> cycleSpeed() async => speedCycles++;
 }
 
 CarContentStrings _strings() => CarContentStrings(
@@ -124,6 +132,18 @@ void main() {
       expect((result.single as Map)['kind'], 'chapter');
     });
 
+    test('addBookmark reaches the provider', () async {
+      final result = await invoke('addBookmark');
+      expect(provider.bookmarks, 1);
+      expect(result, isNull);
+    });
+
+    test('cycleSpeed reaches the provider', () async {
+      final result = await invoke('cycleSpeed');
+      expect(provider.speedCycles, 1);
+      expect(result, isNull);
+    });
+
     test('strings returns the registered localized copy', () async {
       final result = (await invoke('strings') as Map).cast<String, Object?>();
       expect(result['emptyRootTitle'], 'Nothing to play yet');
@@ -160,6 +180,14 @@ void main() {
 
     test('nowPlayingChapters returns an empty list and never throws', () async {
       expect(await invoke('nowPlayingChapters'), isEmpty);
+    });
+
+    test('addBookmark returns null and never throws', () async {
+      expect(await invoke('addBookmark'), isNull);
+    });
+
+    test('cycleSpeed returns null and never throws', () async {
+      expect(await invoke('cycleSpeed'), isNull);
     });
   });
 

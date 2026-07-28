@@ -61,6 +61,14 @@ class CarContentTransport {
         if (provider == null) return null;
         await provider.play(_stringArg(call, 'nodeId'));
         return null;
+      case 'addBookmark':
+        if (provider == null) return null;
+        await provider.addBookmark();
+        return null;
+      case 'cycleSpeed':
+        if (provider == null) return null;
+        await provider.cycleSpeed();
+        return null;
       case 'strings':
         return _strings?.toMap();
       default:

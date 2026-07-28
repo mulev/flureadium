@@ -4,6 +4,8 @@ import 'package:flureadium_platform_interface/flureadium_platform_interface.dart
 /// A minimal in-memory provider exercising the abstract contract in isolation.
 class _FakeProvider extends CarContentProvider {
   final List<String> played = [];
+  int bookmarks = 0;
+  int speedCycles = 0;
 
   @override
   Future<List<CarTab>> rootTabs() async => [
@@ -39,6 +41,12 @@ class _FakeProvider extends CarContentProvider {
   Future<List<CarBrowseNode>> nowPlayingChapters() async => [
     CarBrowseNode(id: 'ch:1', title: 'Chapter 1', kind: CarNodeKind.chapter),
   ];
+
+  @override
+  Future<void> addBookmark() async => bookmarks++;
+
+  @override
+  Future<void> cycleSpeed() async => speedCycles++;
 }
 
 void main() {
@@ -71,6 +79,16 @@ void main() {
     test('nowPlayingChapters returns chapter nodes', () async {
       final chapters = await provider.nowPlayingChapters();
       expect(chapters.single.kind, CarNodeKind.chapter);
+    });
+
+    test('addBookmark reaches the provider', () async {
+      await provider.addBookmark();
+      expect(provider.bookmarks, 1);
+    });
+
+    test('cycleSpeed reaches the provider', () async {
+      await provider.cycleSpeed();
+      expect(provider.speedCycles, 1);
     });
   });
 }
