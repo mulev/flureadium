@@ -22,6 +22,15 @@ public protocol CarPlayContentBridging {
 
   /// Forwards a playable-row selection to the host (→ provider `play`).
   func select(nodeId: String)
+
+  /// Records a bookmark at the current playback position (→ provider `addBookmark`).
+  func addBookmark()
+
+  /// Advances playback speed through the host's presets (→ provider `cycleSpeed`).
+  func cycleSpeed()
+
+  /// The chapters of the now-playing publication (→ provider `nowPlayingChapters`).
+  func nowPlayingChapters(_ completion: @escaping ([CarBrowseNode]) -> Void)
 }
 
 /// The `CarPlayContentBridging` backed by the `dev.mulev.flureadium/car` method
@@ -67,6 +76,20 @@ public final class CarPlayContentBridge: CarPlayContentBridging {
 
   public func select(nodeId: String) {
     channel.invokeMethod("play", arguments: ["nodeId": nodeId])
+  }
+
+  public func addBookmark() {
+    channel.invokeMethod("addBookmark", arguments: nil)
+  }
+
+  public func cycleSpeed() {
+    channel.invokeMethod("cycleSpeed", arguments: nil)
+  }
+
+  public func nowPlayingChapters(_ completion: @escaping ([CarBrowseNode]) -> Void) {
+    invokeList("nowPlayingChapters", arguments: nil) { list in
+      completion(list.compactMap { ($0 as? [String: Any]).flatMap(CarBrowseNode.init(map:)) })
+    }
   }
 
   /// Invokes a list-returning method, retrying while the reply is not yet an

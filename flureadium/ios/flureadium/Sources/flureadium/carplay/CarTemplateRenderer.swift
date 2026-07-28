@@ -77,6 +77,19 @@ public final class CarTemplateRenderer {
     }
   }
 
+  /// Installs the Now Playing action buttons (Bookmark, Speed, Chapters) on the
+  /// shared Now Playing template, routing taps through this renderer's bridge and
+  /// pushing the chapters list with its interface-controller push. The caller
+  /// supplies whether the active item is an audiobook (app playback state), so a
+  /// read-aloud item omits the audiobook-only bookmark button.
+  public func installNowPlayingButtons(isAudiobook: Bool) {
+    CarNowPlayingButtons.install(
+      on: CPNowPlayingTemplate.shared,
+      bridge: bridge,
+      isAudiobook: isAudiobook,
+      push: push)
+  }
+
   private func listTemplate(for tab: CarTab, strings: CarContentStrings) -> CPListTemplate {
     let template = CPListTemplate(title: tab.title, sections: [])
     template.tabTitle = tab.title

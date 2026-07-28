@@ -21,6 +21,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       fallbackStrings: Self.fallbackStrings)
     self.renderer = renderer
     renderer.presentRoot()
+    // STAGE-1 stub's now-playing item is an audiobook, so the full button set
+    // (Bookmark + Speed + Chapters) installs and round-trips over the channel.
+    renderer.installNowPlayingButtons(isAudiobook: true)
   }
 
   func templateApplicationScene(

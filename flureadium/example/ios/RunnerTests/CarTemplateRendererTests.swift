@@ -19,6 +19,10 @@ private final class StubCarPlayContentBridge: CarPlayContentBridging {
   func strings(_ completion: @escaping (CarContentStrings?) -> Void) { completion(stubStrings) }
 
   func select(nodeId: String) { selected.append(nodeId) }
+
+  func addBookmark() {}
+  func cycleSpeed() {}
+  func nowPlayingChapters(_ completion: @escaping ([CarBrowseNode]) -> Void) { completion([]) }
 }
 
 @available(iOS 14.0, *)
@@ -196,4 +200,7 @@ private final class SuspendingBridge: CarPlayContentBridging {
   func children(of nodeId: String, _ completion: @escaping ([CarBrowseNode]) -> Void) {}
   func strings(_ completion: @escaping (CarContentStrings?) -> Void) {}
   func select(nodeId: String) {}
+  func addBookmark() {}
+  func cycleSpeed() {}
+  func nowPlayingChapters(_ completion: @escaping ([CarBrowseNode]) -> Void) {}
 }
