@@ -36,15 +36,11 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.sample
 import org.readium.navigator.media.common.Media3Adapter
 import org.readium.navigator.media.common.MediaNavigator
 import org.readium.r2.shared.ExperimentalReadiumApi
@@ -132,7 +128,6 @@ class PluginMediaService : MediaLibraryService() {
             }
         }
 
-        @OptIn(FlowPreview::class)
         fun <N> openSession(
             navigator: N,
             publication: Publication? = null,
@@ -172,17 +167,6 @@ class PluginMediaService : MediaLibraryService() {
 
             sessionMutable.value = session
 
-            /*
-             * Launch a job for saving progression even when playback is going on in the background
-             * with no ReaderActivity opened.
-             */
-            navigator.currentLocator
-                .sample(5000)
-                .onEach { locator ->
-                    Log.d(TAG, "Progression update: $locator")
-                    // TODO: Submit on the plugin audio-locator stream?
-                    //app.bookRepository.saveProgression(locator, bookId)
-                }.launchIn(session.coroutineScope)
         }
 
         private fun createSessionActivityIntent(): PendingIntent {
