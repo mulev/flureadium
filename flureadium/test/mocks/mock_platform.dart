@@ -373,6 +373,11 @@ class MockFlureadiumPlatform
     calls.add(MockMethodCall('unregisterCarContentProvider'));
   }
 
+  @override
+  void refreshCarContent() {
+    calls.add(MockMethodCall('refreshCarContent'));
+  }
+
   // Verification helpers
 
   /// Returns true if a method with the given name was called.
