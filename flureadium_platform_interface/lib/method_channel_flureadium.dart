@@ -322,4 +322,9 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
   void unregisterCarContentProvider() {
     carContentTransport.unregister();
   }
+
+  @override
+  void refreshCarContent() {
+    unawaited(methodChannel.invokeMethod<void>('refreshCarContent'));
+  }
 }

@@ -246,6 +246,15 @@ abstract class FlureadiumPlatform extends PlatformInterface {
     'unregisterCarContentProvider() has not been implemented.',
   );
 
+  /// Triggers a re-fetch of the car browse tree on the connected head unit.
+  ///
+  /// The car transport is otherwise pull-based (native asks, Dart answers);
+  /// this is the single outbound signal. Call it after any change to the
+  /// browsable library so a live CarPlay / Android Auto session repaints.
+  /// It is a no-op when no car surface is connected.
+  void refreshCarContent() =>
+      throw UnimplementedError('refreshCarContent() has not been implemented.');
+
   // State stream for reader status changes
   Stream<ReadiumReaderStatus> get onReaderStatusChanged {
     throw UnimplementedError('onReaderStatus stream has not been implemented.');
