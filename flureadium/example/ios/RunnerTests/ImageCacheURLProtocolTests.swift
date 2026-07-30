@@ -9,6 +9,7 @@ final class ImageCacheURLProtocolTests: XCTestCase {
     }
 
     override func tearDown() {
+        URLProtocol.unregisterClass(StubForwardURLProtocol.self)
         ImageCacheURLProtocol.disable()
         super.tearDown()
     }
@@ -94,23 +95,28 @@ final class ImageCacheURLProtocolTests: XCTestCase {
         XCTAssertFalse(ImageCacheURLProtocol.hasCachedResponse(for: url))
     }
 
-    // MARK: - Cache miss with real network
+    // MARK: - Cache miss (stubbed downstream)
 
     func testCacheMissForwardsRequestAndCachesResponse() {
-        let expectation = self.expectation(description: "Cache miss forwards")
-        let url = URL(string: "http://localhost:19999/nonexistent.jpg")!
+        let expectation = self.expectation(description: "Cache miss forwards and caches")
+        let url = StubForwardURLProtocol.stubbedURL
 
         ImageCacheURLProtocol.enable()
+        URLProtocol.registerClass(StubForwardURLProtocol.self)
 
-        // Connection refused is expected — no server on port 19999.
-        // Verifies the protocol forwarded the request instead of looping.
-        let task = URLSession.shared.dataTask(with: url) { _, _, error in
-            XCTAssertNotNil(error)
+        // Cache miss: ImageCacheURLProtocol forwards the tagged request to the
+        // stub, which returns a canned response. The protocol must deliver that
+        // response and cache it for next time -- no real network involved, so
+        // the outcome does not depend on connection timing.
+        let task = URLSession.shared.dataTask(with: url) { data, _, error in
+            XCTAssertNil(error)
+            XCTAssertEqual(data, StubForwardURLProtocol.stubbedData)
             expectation.fulfill()
         }
         task.resume()
 
         waitForExpectations(timeout: 5)
+        XCTAssertTrue(ImageCacheURLProtocol.hasCachedResponse(for: url))
     }
 
     // MARK: - Prefetch store
@@ -207,4 +213,36 @@ final class ImageCacheURLProtocolTests: XCTestCase {
 
         waitForExpectations(timeout: 5)
     }
+}
+
+/// Test-only downstream protocol that answers the request
+/// `ImageCacheURLProtocol` forwards on a cache miss (the one tagged with
+/// `handledKey`). Serving the forwarded request in-process removes the real
+/// network connection, so the cache-miss path is exercised deterministically.
+private final class StubForwardURLProtocol: URLProtocol {
+    static let stubbedURL = URL(string: "http://localhost:19999/nonexistent.jpg")!
+    static let stubbedData = Data([0xFF, 0xD8, 0xFF, 0xE1])
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        URLProtocol.property(forKey: ImageCacheURLProtocol.handledKey, in: request) != nil
+            && request.url == stubbedURL
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        let response = HTTPURLResponse(
+            url: Self.stubbedURL,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "image/jpeg"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Self.stubbedData)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
