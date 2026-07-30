@@ -388,4 +388,11 @@ class Flureadium {
   /// Removes the registered car content provider, clearing the car surface.
   void unregisterCarContentProvider() =>
       _platform.unregisterCarContentProvider();
+
+  /// Triggers a re-fetch of the car browse tree on the connected head unit so a
+  /// live CarPlay / Android Auto session repaints after the library changes.
+  ///
+  /// Fire-and-forget and a no-op when no car surface is connected — safe to call
+  /// on every browsable-set mutation.
+  void refreshCarContent() => _platform.refreshCarContent();
 }
