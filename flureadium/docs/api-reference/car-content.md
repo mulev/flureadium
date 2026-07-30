@@ -49,8 +49,8 @@ completed, or renamed. It is fire-and-forget and a no-op when no car surface is
 connected, so it is safe to call unconditionally; coalesce bursts on the host
 side so a bulk import collapses to one refresh. On iOS it repaints the retained
 root-tab list templates in place, leaving pushed detail lists to re-fetch on the
-next navigation. On Android, the equivalent step is notifying the subscribed
-browse parents, and it ships in a later phase.
+next navigation. On Android it re-notifies each subscribed browse parent
+(`notifyChildrenChanged`), so Android Auto re-queries and repaints those rows.
 
 ## `CarContentProvider`
 
