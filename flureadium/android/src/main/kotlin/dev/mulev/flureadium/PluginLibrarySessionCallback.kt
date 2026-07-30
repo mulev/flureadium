@@ -11,6 +11,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.FutureCallback
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
@@ -223,6 +224,95 @@ class PluginLibrarySessionCallback(
             { nodes -> itemListResult(NodeBrowseTree.nodeItems(nodes), params) },
             MoreExecutors.directExecutor(),
         )
+    }
+
+    /* --- Browse refresh: track subscribers, re-notify on refreshCarContent --- */
+
+    private data class Subscription(
+        val controller: MediaSession.ControllerInfo,
+        val parentId: String,
+        val params: LibraryParams?,
+    )
+
+    private val subscriptionsLock = Any()
+    private val subscriptions = mutableSetOf<Subscription>()
+
+    override fun onSubscribe(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        parentId: String,
+        params: LibraryParams?,
+    ): ListenableFuture<LibraryResult<Void>> {
+        synchronized(subscriptionsLock) {
+            // Last write wins per (controller, parentId): a re-subscribe replaces
+            // its params instead of accumulating a duplicate record.
+            subscriptions.removeAll { it.controller == browser && it.parentId == parentId }
+            subscriptions.add(Subscription(browser, parentId, params))
+        }
+        return super.onSubscribe(session, browser, parentId, params)
+    }
+
+    override fun onUnsubscribe(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        parentId: String,
+    ): ListenableFuture<LibraryResult<Void>> {
+        synchronized(subscriptionsLock) {
+            subscriptions.removeAll { it.controller == browser && it.parentId == parentId }
+        }
+        return super.onUnsubscribe(session, browser, parentId)
+    }
+
+    override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
+        // A controller can drop without unsubscribing — drop its records so a
+        // later refresh neither leaks nor notifies a gone controller.
+        synchronized(subscriptionsLock) {
+            subscriptions.removeAll { it.controller == controller }
+        }
+        super.onDisconnected(session, controller)
+    }
+
+    /**
+     * Re-notifies each subscribed controller so Android Auto re-queries its
+     * parent. Invoked on `refreshCarContent`. The child count is taken from
+     * [onGetChildren] itself, so the notified count matches exactly what a
+     * re-query returns — including the empty-state status row and the dropped
+     * `siri` nodes. Each subscription is notified when its own count resolves,
+     * via the per-controller `notifyChildrenChanged` overload so every
+     * subscriber keeps its own [LibraryParams]. [isActive] is re-checked when each
+     * deferred count resolves, so a session released mid-refresh is not notified.
+     * Must run on the session's application (main) looper;
+     * [PluginMediaService.refreshBrowse] posts it there.
+     */
+    fun notifySubscribedParents(session: MediaLibrarySession, isActive: () -> Boolean) {
+        if (sourceProvider() == null) return
+        val current = synchronized(subscriptionsLock) { subscriptions.toList() }
+        current.forEach { sub ->
+            val countFuture: ListenableFuture<Int> =
+                Futures.transform(
+                    onGetChildren(session, sub.controller, sub.parentId, 0, Int.MAX_VALUE, sub.params),
+                    { it?.value?.size ?: 0 },
+                    MoreExecutors.directExecutor(),
+                )
+            Futures.addCallback(
+                countFuture,
+                object : FutureCallback<Int> {
+                    override fun onSuccess(result: Int) {
+                        // The count fetch is async; if the session was released while it
+                        // was in flight, isActive() is false, so skip rather than touch a
+                        // dead session. Both run on the main looper, so this is race-free.
+                        if (isActive()) {
+                            session.notifyChildrenChanged(sub.controller, sub.parentId, result, sub.params)
+                        }
+                    }
+
+                    override fun onFailure(t: Throwable) {
+                        // Skip this parent when its children can't be fetched.
+                    }
+                },
+                MoreExecutors.directExecutor(),
+            )
+        }
     }
 
     /**

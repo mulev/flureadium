@@ -21,6 +21,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
@@ -100,7 +101,7 @@ class PluginMediaService : MediaLibraryService() {
         val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     }
 
-    private val libraryCallback by lazy {
+    internal val libraryCallback by lazy {
         PluginLibrarySessionCallback(
             sourceProvider = { FlureadiumCarEngine.source },
             publicationProvider = { binder.session.value?.publication },
@@ -108,6 +109,8 @@ class PluginMediaService : MediaLibraryService() {
     }
 
     private lateinit var browsePlayer: IdleBrowsePlayer
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     /**
      * The single, persistent [MediaLibrarySession] handed to every connecting
@@ -120,6 +123,7 @@ class PluginMediaService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         browsePlayer = IdleBrowsePlayer(Looper.getMainLooper())
         librarySession = MediaLibrarySession.Builder(this, browsePlayer, libraryCallback)
             .setSessionActivity(createSessionActivityIntent())
@@ -271,6 +275,26 @@ class PluginMediaService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession =
         librarySession
 
+    /**
+     * Re-notifies subscribed Android Auto browse parents so they re-query the
+     * host library. Invoked by the `/main` `refreshCarContent` route when the
+     * library changes. Posts onto the main looper because the browse
+     * [dev.mulev.flureadium.car.CarContentSource] is method-channel-backed and
+     * the [MediaLibrarySession] must be touched on its application thread, while
+     * the route can arrive on any thread. No-op until the persistent session
+     * exists.
+     */
+    fun refreshBrowse() {
+        if (!::librarySession.isInitialized) return
+        mainHandler.post {
+            // Re-check on the main looper: a refresh queued just before onDestroy
+            // must not touch a released session (instance is cleared on destroy).
+            if (instance === this@PluginMediaService) {
+                libraryCallback.notifySubscribedParents(librarySession) { instance === this@PluginMediaService }
+            }
+        }
+    }
+
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
         Log.d(TAG, "Task removed. Stopping session and service.")
@@ -279,6 +303,9 @@ class PluginMediaService : MediaLibraryService() {
 
     override fun onDestroy() {
         Log.d(TAG, "Destroying MediaService.")
+        // Clear only if this is still the live instance; a late destroy from a
+        // previous service must not wipe a newer one.
+        if (instance === this) instance = null
         binder.closeSession()
         if (::librarySession.isInitialized) {
             librarySession.release()
@@ -293,6 +320,14 @@ class PluginMediaService : MediaLibraryService() {
     companion object {
 
         const val SERVICE_INTERFACE = "dev.mulev.flureadium.MediaService"
+
+        /**
+         * The media service running in this process, or null when none is bound.
+         * The `/main` `refreshCarContent` route reaches [refreshBrowse] through
+         * it — the app-scoped static seam the car engine already uses for source.
+         */
+        @Volatile
+        internal var instance: PluginMediaService? = null
 
         fun start(application: Application) {
             val intent = intent(application)
