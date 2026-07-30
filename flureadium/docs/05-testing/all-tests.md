@@ -66,6 +66,15 @@ Drop what you can't run with `--skip-android` / `--skip-ios` / `--skip-web`, or 
 
 By default the Android native tests do a clean rebuild for a guaranteed real result; pass `--no-rerun` to reuse the Gradle build cache and finish faster.
 
+## Lockfile safety
+
+The runner never lets `flutter test` silently rewrite a `pubspec.lock`. Left to itself, `flutter test` runs an implicit `pub get` that downgrades a committed lock whenever the resolving SDK differs — for example, an unmaterialized FVM pin falling back to the global SDK. For each Dart package the runner instead:
+
+- resolves strictly to a **version-controlled** lock with `flutter pub get --enforce-lockfile`, failing the row loudly if the lock would change rather than rewriting it; then
+- runs the tests with `flutter test --no-pub`, so nothing can mutate the lock.
+
+A package whose lock is gitignored (the plugin itself) needs its dependencies resolved beforehand. If they aren't, that row fails and asks you to resolve them first and commit any lock changes intentionally — the runner won't re-resolve for you, because resolving a plugin can also update the example app's committed lock.
+
 ## Logs
 
 Each run writes to `test_logs/all_tests/run_<timestamp>/` (gitignored):
