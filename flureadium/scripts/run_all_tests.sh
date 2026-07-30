@@ -156,11 +156,28 @@ STOP=false   # set true once a suite fails under --fail-fast
 
 record() { RESULTS+=("$1|$2|$3|$4"); }
 
-# Runs `flutter test` inside a package directory (unit/widget suite). Passed to
+# Runs `flutter test` without any implicit `pub get` that could rewrite a
+# committed pubspec.lock. If the lock is version-controlled, resolve strictly to
+# it (fail loud on drift — never silently downgrade, e.g. under a wrong SDK).
+# If the lock is gitignored (library packages), do NOT run `pub get`: it can
+# cascade to sibling packages (a plugin's example) and rewrite THEIR tracked
+# locks — require deps already resolved and fail loud otherwise. Then run with
+# --no-pub so nothing can mutate any lock. Args are forwarded to `flutter test`.
+flutter_test_locked() {
+  if git ls-files --error-unmatch pubspec.lock >/dev/null 2>&1; then
+    flutter pub get --enforce-lockfile || return $?
+  elif [ ! -f .dart_tool/package_config.json ]; then
+    echo "flutter_test_locked: dependencies not resolved in $(pwd) — resolve them the usual way for this project, then review and commit any lock changes intentionally (resolving can also update sibling package locks)" >&2
+    return 1
+  fi
+  flutter test --no-pub "$@"
+}
+
+# Runs the locked unit/widget suite inside a package directory. Passed to
 # run_suite as the command so each package is timed and recorded on its own row.
 # $1 = package directory
 pkg_flutter_test() {
-  ( cd "$1" && flutter test )
+  ( cd "$1" && flutter_test_locked )
 }
 
 # Runs a suite command, tees full output to its log, times it, and records the

@@ -387,6 +387,23 @@ else
   FLUTTER_REPORTER=(--reporter expanded)
 fi
 
+# Runs `flutter test` without any implicit `pub get` that could rewrite a
+# committed pubspec.lock. If the lock is version-controlled, resolve strictly to
+# it (fail loud on drift — never silently downgrade, e.g. under a wrong SDK).
+# If the lock is gitignored (library packages), do NOT run `pub get`: it can
+# cascade to sibling packages (a plugin's example) and rewrite THEIR tracked
+# locks — require deps already resolved and fail loud otherwise. Then run with
+# --no-pub so nothing can mutate any lock. Args are forwarded to `flutter test`.
+flutter_test_locked() {
+  if git ls-files --error-unmatch pubspec.lock >/dev/null 2>&1; then
+    flutter pub get --enforce-lockfile || return $?
+  elif [ ! -f .dart_tool/package_config.json ]; then
+    echo "flutter_test_locked: dependencies not resolved in $(pwd) — resolve them the usual way for this project, then review and commit any lock changes intentionally (resolving can also update sibling package locks)" >&2
+    return 1
+  fi
+  flutter test --no-pub "$@"
+}
+
 # ── Android ───────────────────────────────────────────────────────────────────
 log "${CYAN}── Android ──────────────────────────────────────────────────────────${NC}"
 if [ "$SKIP_ANDROID" = false ]; then
@@ -404,7 +421,7 @@ if [ "$SKIP_ANDROID" = false ]; then
   if ! run_test \
       "Android — flutter test integration_test/all_tests.dart" \
       "$LOG_DIR/android.log" \
-      flutter test integration_test/all_tests.dart \
+      flutter_test_locked integration_test/all_tests.dart \
         -d "$ANDROID_DEVICE" "${FLUTTER_VERBOSE[@]}" "${FLUTTER_REPORTER[@]}"; then
     OVERALL_EXIT=1
   fi
@@ -424,7 +441,7 @@ if [ "$SKIP_IOS" = false ]; then
   if ! run_test \
       "iOS — flutter test integration_test/all_tests.dart (includes @native audiobook)" \
       "$LOG_DIR/ios.log" \
-      flutter test integration_test/all_tests.dart \
+      flutter_test_locked integration_test/all_tests.dart \
         -d "$IOS_DEVICE" "${FLUTTER_VERBOSE[@]}" "${FLUTTER_REPORTER[@]}"; then
     OVERALL_EXIT=1
   fi
