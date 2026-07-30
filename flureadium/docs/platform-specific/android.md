@@ -277,6 +277,40 @@ integration test.
 - `IdleBrowsePlayer.kt` — idle placeholder player backing the browse-only session
 - `PluginMediaServiceFacade.kt` — same-navigator short-circuit before rebinding
 
+### Android Auto refresh on library change
+
+The browse tree is pull-based: Android Auto reads it through `onGetChildren`, so a
+live browse never learns the host library changed on its own. `refreshCarContent`
+is the one outbound nudge that closes that gap.
+
+Dart `Flureadium.refreshCarContent()` invokes the `/main` method channel; the
+`refreshCarContent` case in `PublicationMethodCallHandler` reaches the running
+service through `PluginMediaService.instance` (a process-scoped handle set in
+`onCreate` and cleared on destroy, the same app-scoped static seam the car engine
+uses for its source) and calls `refreshBrowse()`.
+
+`refreshBrowse()` posts onto the main looper (the route arrives on a background
+dispatcher, while the method-channel `CarContentSource` and the `MediaLibrarySession`
+must be touched on the application thread), then calls
+`PluginLibrarySessionCallback.notifySubscribedParents`. The callback tracks every
+`(controller, parentId, params)` subscription (`onSubscribe`/`onUnsubscribe`, plus
+`onDisconnected` so a controller that drops without unsubscribing is not left
+behind) and re-notifies each one with the per-controller
+`notifyChildrenChanged(controller, parentId, count, params)` overload, so a browser
+keeps its own `LibraryParams`. The count comes from `onGetChildren` itself, so it
+matches what a re-query returns: the empty-state status row is counted, and `siri`
+markers (which have no Android Auto row) are not. Android Auto then re-queries only
+the parents it is actually browsing and repaints them.
+
+The refresh is safe to fire at any time: a nudge queued just as the service is
+destroyed is dropped by an instance-identity check, and a nudge with no car surface
+connected notifies no one.
+
+**Files:**
+- `PublicationChannel.kt` — the `/main` `refreshCarContent` route to `PluginMediaService.instance?.refreshBrowse()`
+- `PluginMediaService.kt` — `refreshBrowse()` (main-looper post) and the `instance` handle
+- `PluginLibrarySessionCallback.kt` — subscription tracking and `notifySubscribedParents`
+
 
 ### Audiobook Navigator Build Thread
 
