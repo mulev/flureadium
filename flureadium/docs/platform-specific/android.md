@@ -141,7 +141,7 @@ The mapping and the source are kept free of Android Auto and service state so th
 - `car/FlureadiumCarEngine.kt` — app-scoped holder the host publishes its car source into
 - `AudiobookBrowseTree.kt` — maps the open audiobook's chapters to timeline indices for the chapter-pick seek
 - `PluginLibrarySessionCallback.kt` — `MediaLibrarySession.Callback` serving browse, search, and the seek
-- `PluginMediaService.kt` — hosts the `MediaLibrarySession`
+- `PluginMediaService.kt` — hosts the persistent, browse-capable `MediaLibrarySession`
 - `res/xml/automotive_app_desc.xml` — Android Auto media descriptor
 
 ### Plugin Structure
@@ -233,31 +233,48 @@ mid-stream/post-load delivery stays best-effort. Covered by `ReadiumReaderTimeba
 **Files:**
 - `AudiobookNavigator.kt` — `onAudioNavigatorEnded()` and the `State.Ended` branch
 
-### Audiobook Media Session Reuse
+### Session Lifecycle: one session for browse and playback
 
-`PluginMediaService` holds one live `MediaLibrarySession` per navigator.
-`play(locator)` (the path a table-of-contents chapter tap or a bookmark resume
-drives) routes through `Binder.openSession`, which decides what to do from the
-navigator already backing the live session (`sessionActionFor`):
+`PluginMediaService` owns a single, persistent `MediaLibrarySession` for the
+life of the service. It is built in `onCreate` with an idle placeholder player
+(`IdleBrowsePlayer`) and the shared `libraryCallback`, so `onGetSession` returns
+a browse-capable session even before anything plays. Android Auto can connect
+and browse the host library from a cold, UI-less process; the idle player
+reports `STATE_IDLE` with no media, so the head unit shows no phantom "now
+playing". The placeholder advertises just the set/change media items, prepare,
+and play commands a head-unit row tap needs to reach `onSetMediaItems`; it starts no
+playback itself, because real playback is driven by `source.play` and the player
+swap below.
 
-- **Same navigator**: reuse the open session and seek; do not build a new one.
-- **Different navigator**: release the old session (an audiobook ↔ TTS switch), then open a new one.
-- **None open**: open a fresh session.
+`play(locator)` (a table-of-contents chapter tap or a bookmark resume) routes
+through `Binder.openSession`, which decides what to do from the navigator
+already backing the live session (`sessionActionFor`):
 
-media3 requires every live `MediaSession` to have a unique id, and the default id
-is the empty string. An earlier version rebuilt the session on every
+- **Same navigator**: reuse the session and seek; do not swap the player.
+- **Different navigator**: swap in the new navigator's player (an audiobook to TTS switch, or the reverse).
+- **None open**: swap the idle placeholder for the navigator's player.
+
+Instead of building a new session per playback, `openSession` sets the
+navigator-backed player on the one persistent session, and `closeSession` sets
+the idle placeholder back so the browse surface survives playback teardown. The
+session is released only when the service is destroyed.
+
+media3 requires every live `MediaSession` to have a unique id, and the default
+id is the empty string. An earlier version rebuilt the session on every
 `play(locator)`, so a chapter jump created a second session with the same empty
 id while the first was still live; media3 threw `Session ID must be unique` and
 the error handler tore down the only player, freezing playback at the new
-chapter's `0:00`. Reusing the session removes the collision.
-`PluginMediaServiceFacade` mirrors the check at the bind layer: when it is
-already bound with a live session for the same navigator it skips rebinding, so a
-repeat `play(locator)` does not leak a session collector. Covered by
-`PluginMediaServiceReuseTest` and the `play(locator) to a later chapter while
-playing keeps playback going` integration test.
+chapter's `0:00`. One persistent session removes the collision by construction.
+`PluginMediaServiceFacade` mirrors the same-navigator check at the bind layer, so
+a repeat `play(locator)` does not leak a session collector. Covered by
+`PluginMediaServiceLibraryTest` (browse session before playback),
+`IdleBrowsePlayerTest` (idle placeholder), `PluginMediaServiceReuseTest`, and the
+`play(locator) to a later chapter while playing keeps playback going`
+integration test.
 
 **Files:**
-- `PluginMediaService.kt` — `Binder.openSession` reuse/replace guard, `sessionActionFor`
+- `PluginMediaService.kt` — persistent session, `onGetSession`, `Binder.openSession`/`closeSession` player swap, `sessionActionFor`
+- `IdleBrowsePlayer.kt` — idle placeholder player backing the browse-only session
 - `PluginMediaServiceFacade.kt` — same-navigator short-circuit before rebinding
 
 
