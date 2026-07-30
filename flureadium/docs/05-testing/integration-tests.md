@@ -219,6 +219,8 @@ This is applied to all four group test files (`audiobook`, `cbz`, `divina`,
 
 `scripts/run_integration_tests.sh` runs all three platforms sequentially from a single command. It continues after failures and writes logs to a gitignored `test_logs/` directory.
 
+> To run this suite together with the Dart unit and native suites in one command, use the [God-Tier Test Runner](all-tests.md).
+
 ```bash
 # Run all platforms (prompts for device IDs interactively)
 ./scripts/run_integration_tests.sh

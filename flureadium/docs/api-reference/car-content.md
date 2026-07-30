@@ -34,6 +34,24 @@ when tearing down). The channel handler stays installed either way, so a car
 process that launches cold and calls in before registration gets an empty
 result rather than an error.
 
+## Refreshing a live car surface
+
+The car transport is otherwise one-directional: native asks, the host answers.
+`refreshCarContent()` is the one outbound signal, telling a connected head unit
+to re-ask for its browse tree after the library changes:
+
+```dart
+Flureadium().refreshCarContent();
+```
+
+Call it on every browsable-set mutation: a book added, deleted, categorized,
+completed, or renamed. It is fire-and-forget and a no-op when no car surface is
+connected, so it is safe to call unconditionally; coalesce bursts on the host
+side so a bulk import collapses to one refresh. On iOS it repaints the retained
+root-tab list templates in place, leaving pushed detail lists to re-fetch on the
+next navigation. On Android it re-notifies each subscribed browse parent
+(`notifyChildrenChanged`), so Android Auto re-queries and repaints those rows.
+
 ## `CarContentProvider`
 
 The contract the host implements. Every method is async because the car can ask

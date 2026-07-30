@@ -11,6 +11,7 @@ Flureadium is a Flutter plugin that wraps the Readium toolkits for reading EPUB 
 | [API Reference](api-reference/) | Complete API documentation |
 | [Architecture](architecture/) | Technical design and implementation details |
 | [Platform-Specific](platform-specific/) | Platform setup and native details |
+| [Testing](05-testing/all-tests.md) | Running the unit, native, and integration test suites |
 | [Troubleshooting](troubleshooting.md) | Common issues and solutions |
 
 ## Getting Started
@@ -51,6 +52,13 @@ Flureadium is a Flutter plugin that wraps the Readium toolkits for reading EPUB 
 - **[macOS](platform-specific/macos.md)** - macOS-specific setup
 - **[Web](platform-specific/web.md)** - Web-specific setup
 
+## Testing
+
+- **[God-Tier Test Runner](05-testing/all-tests.md)** - Run the unit, native, and integration suites in one command
+- **[Native Unit Tests](05-testing/native-unit-tests.md)** - Android (Robolectric) and iOS (XCTest)
+- **[iOS Unit Tests](05-testing/ios-unit-tests.md)** - Raw xcodebuild commands for focused iOS work
+- **[Integration Tests](05-testing/integration-tests.md)** - Example-app flows on Android, iOS, and Web
+
 ## Supported Formats
 
 | Format | Visual Reading | TTS | Audio | Media Overlays |
@@ -80,4 +88,4 @@ PDF, CBZ, and DIVINA are native-reader features on Android and iOS. Web support 
 
 ---
 
-*Last updated: 2026-04-29*
+*Last updated: 2026-07-29*

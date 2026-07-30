@@ -6,7 +6,7 @@ import Foundation
 /// is safe and eliminates redundant ZIP extraction + HTTP round-trips
 /// on every page turn.
 final class ImageCacheURLProtocol: URLProtocol {
-    private static let handledKey = "ImageCacheURLProtocol.handled"
+    static let handledKey = "ImageCacheURLProtocol.handled"
     private static let cache: NSCache<NSURL, CachedResponse> = {
         let c = NSCache<NSURL, CachedResponse>()
         c.totalCostLimit = 100 * 1024 * 1024 // 100 MB

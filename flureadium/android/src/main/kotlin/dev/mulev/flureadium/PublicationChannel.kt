@@ -58,7 +58,9 @@ internal suspend fun MethodChannel.Result.dispatchGuarded(
 internal const val publicationChannelName = "dev.mulev.flureadium/main"
 
 @ExperimentalCoroutinesApi
-internal class PublicationMethodCallHandler() :
+internal class PublicationMethodCallHandler(
+    private val refreshCarContent: () -> Unit = { PluginMediaService.instance?.refreshBrowse() },
+) :
     MethodChannel.MethodCallHandler {
 
     @OptIn(InternalReadiumApi::class, ExperimentalReadiumApi::class)
@@ -73,7 +75,7 @@ internal class PublicationMethodCallHandler() :
     /**
      * This function can be used to handle method calls sequentially if needed.
      */
-    private suspend fun handleMethodCallsQueue(
+    internal suspend fun handleMethodCallsQueue(
         method: String,
         arguments: Any?
     ): Try<Any?, PublicationError> {
@@ -84,6 +86,11 @@ internal class PublicationMethodCallHandler() :
                 val httpHeaders = args["httpHeaders"] ?: emptyMap()
 
                 ReadiumReader.setDefaultHttpHeaders(httpHeaders)
+                return Try.success(null)
+            }
+
+            "refreshCarContent" -> {
+                refreshCarContent()
                 return Try.success(null)
             }
 

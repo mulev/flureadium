@@ -21,7 +21,9 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -94,17 +96,53 @@ class PluginMediaService : MediaLibraryService() {
 
     class Session(
         val navigator: AnyMediaNavigator,
-        val mediaSession: MediaLibrarySession,
         val publication: Publication?,
     ) {
         val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     }
 
-    private val libraryCallback by lazy {
+    internal val libraryCallback by lazy {
         PluginLibrarySessionCallback(
             sourceProvider = { FlureadiumCarEngine.source },
             publicationProvider = { binder.session.value?.publication },
         )
+    }
+
+    private lateinit var browsePlayer: IdleBrowsePlayer
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * The single, persistent [MediaLibrarySession] handed to every connecting
+     * controller. It is built with an idle placeholder player so Android Auto can
+     * browse the host library before playback; [Binder.openSession] swaps in the
+     * real navigator-backed player when a book starts, and [Binder.closeSession]
+     * swaps the placeholder back so the browse surface survives playback teardown.
+     */
+    private lateinit var librarySession: MediaLibrarySession
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+        browsePlayer = IdleBrowsePlayer(Looper.getMainLooper())
+        librarySession = MediaLibrarySession.Builder(this, browsePlayer, libraryCallback)
+            .setSessionActivity(createSessionActivityIntent())
+            .setCustomLayout(libraryCallback.commandButtons)
+            .build()
+    }
+
+    private fun createSessionActivityIntent(): PendingIntent {
+        // Triggered when the media notification is tapped.
+        var flags = PendingIntent.FLAG_UPDATE_CURRENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags = flags or PendingIntent.FLAG_IMMUTABLE
+        }
+
+        val intent = application.packageManager.getLaunchIntentForPackage(
+            application.packageName
+        )
+
+        return PendingIntent.getActivity(applicationContext, 0, intent, flags)
     }
 
     /**
@@ -121,7 +159,9 @@ class PluginMediaService : MediaLibraryService() {
         fun closeSession() {
             Log.d(TAG, "closeSession")
             session.value?.let { session ->
-                session.mediaSession.release()
+                // Swap the browse placeholder back in before tearing down the
+                // navigator, so the persistent session survives playback teardown.
+                librarySession.player = browsePlayer
                 session.coroutineScope.cancel()
                 session.navigator.close()
                 sessionMutable.value = null
@@ -143,44 +183,15 @@ class PluginMediaService : MediaLibraryService() {
                 SessionAction.FRESH -> {}
             }
 
-            val activityIntent = createSessionActivityIntent()
             val player = navigator.asMedia3Player()
-            // Create our SimpleBasePlayer override to override some media-button mapping.
+            // Wrap in our SimpleBasePlayer override to remap some media buttons.
             val pluginForwardingPlayer = PluginSimpleBasePlayer(player, ReadiumReader.audioPreferences)
 
-            val mediaSession = MediaLibrarySession.Builder(
-                this@PluginMediaService,
-                pluginForwardingPlayer,
-                libraryCallback
-            )
-                .setSessionActivity(activityIntent)
-                .setCustomLayout(libraryCallback.commandButtons)
-                .build()
+            // One persistent session: swap the real player in instead of building a
+            // new session, so the browse surface (onGetSession) is never replaced.
+            librarySession.player = pluginForwardingPlayer
 
-            addSession(mediaSession)
-
-            val session = Session(
-                navigator,
-                mediaSession,
-                publication
-            )
-
-            sessionMutable.value = session
-
-        }
-
-        private fun createSessionActivityIntent(): PendingIntent {
-            // This intent will be triggered when the notification is clicked.
-            var flags = PendingIntent.FLAG_UPDATE_CURRENT
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                flags = flags or PendingIntent.FLAG_IMMUTABLE
-            }
-
-            val intent = application.packageManager.getLaunchIntentForPackage(
-                application.packageName
-            )
-
-            return PendingIntent.getActivity(applicationContext, 0, intent, flags)
+            sessionMutable.value = Session(navigator, publication)
         }
 
         fun stop() {
@@ -261,21 +272,45 @@ class PluginMediaService : MediaLibraryService() {
         notificationManager.createNotificationChannel(channel)
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
-        return binder.session.value?.mediaSession
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession =
+        librarySession
+
+    /**
+     * Re-notifies subscribed Android Auto browse parents so they re-query the
+     * host library. Invoked by the `/main` `refreshCarContent` route when the
+     * library changes. Posts onto the main looper because the browse
+     * [dev.mulev.flureadium.car.CarContentSource] is method-channel-backed and
+     * the [MediaLibrarySession] must be touched on its application thread, while
+     * the route can arrive on any thread. No-op until the persistent session
+     * exists.
+     */
+    fun refreshBrowse() {
+        if (!::librarySession.isInitialized) return
+        mainHandler.post {
+            // Re-check on the main looper: a refresh queued just before onDestroy
+            // must not touch a released session (instance is cleared on destroy).
+            if (instance === this@PluginMediaService) {
+                libraryCallback.notifySubscribedParents(librarySession) { instance === this@PluginMediaService }
+            }
+        }
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
         Log.d(TAG, "Task removed. Stopping session and service.")
-        // Close the session to allow the service to be stopped.
-        binder.closeSession()
         binder.stop()
     }
 
     override fun onDestroy() {
         Log.d(TAG, "Destroying MediaService.")
+        // Clear only if this is still the live instance; a late destroy from a
+        // previous service must not wipe a newer one.
+        if (instance === this) instance = null
         binder.closeSession()
+        if (::librarySession.isInitialized) {
+            librarySession.release()
+            browsePlayer.release()
+        }
         // Ensure one more time that all notifications are gone and,
         // hopefully, pending intents cancelled.
         NotificationManagerCompat.from(this).cancelAll()
@@ -285,6 +320,14 @@ class PluginMediaService : MediaLibraryService() {
     companion object {
 
         const val SERVICE_INTERFACE = "dev.mulev.flureadium.MediaService"
+
+        /**
+         * The media service running in this process, or null when none is bound.
+         * The `/main` `refreshCarContent` route reaches [refreshBrowse] through
+         * it — the app-scoped static seam the car engine already uses for source.
+         */
+        @Volatile
+        internal var instance: PluginMediaService? = null
 
         fun start(application: Application) {
             val intent = intent(application)

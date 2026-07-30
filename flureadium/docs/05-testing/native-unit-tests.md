@@ -4,6 +4,8 @@
 
 The script exists so you don't have to remember two different toolchains and their setup. It finds the tools each platform needs, and when it can't find one it asks you for a path instead of failing — so a fresh checkout works on someone else's machine, not just the original author's.
 
+> To run these native suites together with the Dart unit and integration suites in one command, use the [God-Tier Test Runner](all-tests.md).
+
 ## Usage
 
 ```bash

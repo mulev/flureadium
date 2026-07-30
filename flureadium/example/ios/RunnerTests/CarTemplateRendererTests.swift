@@ -11,10 +11,12 @@ private final class StubCarPlayContentBridge: CarPlayContentBridging {
   private(set) var selected: [String] = []
   var searchResults: [CarBrowseNode] = []
   private(set) var searched: [String] = []
+  private(set) var requestedChildren: [String] = []
 
   func rootTabs(_ completion: @escaping ([CarTab]) -> Void) { completion(tabs) }
 
   func children(of nodeId: String, _ completion: @escaping ([CarBrowseNode]) -> Void) {
+    requestedChildren.append(nodeId)
     completion(childrenByNode[nodeId] ?? [])
   }
 
@@ -274,6 +276,77 @@ final class CarTemplateRendererTests: XCTestCase {
     XCTAssertNil(
       pushedAfterDisable,
       "a stale typed-search row does not present search once the keyboard is disabled")
+  }
+
+  func testRefreshRefetchesRetainedTabTemplateFromNewChildren() {
+    let bridge = StubCarPlayContentBridge()
+    bridge.stubStrings = strings()
+    bridge.tabs = [CarTab(id: "library", title: "Library")]
+    bridge.childrenByNode["library"] = [
+      CarBrowseNode(id: "b1", title: "Book 1", kind: .audiobook, isPlayable: true)
+    ]
+    var root: CPTemplate?
+    let renderer = makeRenderer(bridge: bridge, fallback: strings(), setRoot: { root = $0 })
+
+    renderer.presentRoot()
+    let libraryTab = (root as? CPTabBarTemplate)?.templates.first as? CPListTemplate
+    XCTAssertEqual(libraryTab?.sections.first?.items.count, 1)
+
+    // The library changes: a second book is added.
+    bridge.childrenByNode["library"] = [
+      CarBrowseNode(id: "b1", title: "Book 1", kind: .audiobook, isPlayable: true),
+      CarBrowseNode(id: "b2", title: "Book 2", kind: .audiobook, isPlayable: true),
+    ]
+    renderer.refresh()
+
+    XCTAssertEqual(
+      libraryTab?.sections.first?.items.count, 2,
+      "refresh repaints the retained tab template from the re-fetched children")
+    XCTAssertEqual(
+      (libraryTab?.sections.first?.items.last as? CPListItem)?.text, "Book 2")
+  }
+
+  func testRefreshBeforePresentRootIsANoOp() {
+    let bridge = StubCarPlayContentBridge()
+    bridge.tabs = [CarTab(id: "library", title: "Library")]
+    bridge.childrenByNode["library"] = [
+      CarBrowseNode(id: "b1", title: "Book 1", kind: .audiobook, isPlayable: true)
+    ]
+    let renderer = makeRenderer(bridge: bridge, fallback: strings())
+
+    // No presentRoot(): nothing is retained, so refresh fetches nothing and does not crash.
+    renderer.refresh()
+
+    XCTAssertTrue(
+      bridge.requestedChildren.isEmpty,
+      "refresh is a no-op before the root tab templates are built")
+  }
+
+  func testRefreshClearsStaleSiriAssistantCellWhenSiriNodeGone() {
+    let bridge = StubCarPlayContentBridge()
+    bridge.stubStrings = strings()
+    bridge.tabs = [CarTab(id: "search", title: "Search")]
+    bridge.childrenByNode["search"] = [
+      CarBrowseNode(id: "siri", title: "Ask Siri", kind: .siri)
+    ]
+    var root: CPTemplate?
+    let renderer = makeRenderer(bridge: bridge, fallback: strings(), setRoot: { root = $0 })
+
+    renderer.presentRoot()
+    let searchTab = (root as? CPTabBarTemplate)?.templates.first as? CPListTemplate
+    if #available(iOS 15.0, *) {
+      XCTAssertNotNil(searchTab?.assistantCellConfiguration)
+    }
+
+    // The provider stops offering the Siri cell on the next fetch.
+    bridge.childrenByNode["search"] = []
+    renderer.refresh()
+
+    if #available(iOS 15.0, *) {
+      XCTAssertNil(
+        searchTab?.assistantCellConfiguration,
+        "refresh clears the assistant cell when the refreshed children drop the siri node")
+    }
   }
 
 }

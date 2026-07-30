@@ -1,3 +1,15 @@
+## 0.10.0
+
+### New Features
+
+- **Car content refresh**: Add `FlureadiumPlatform.refreshCarContent()` (with a throwing default) and its method-channel implementation, so the host can tell a connected CarPlay / Android Auto surface that the browsable library changed and it should re-query.
+
+### Testing
+
+- Default-throws and method-channel invocation tests for `refreshCarContent()`.
+
+---
+
 ## 0.9.0
 
 ### New Features

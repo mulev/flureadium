@@ -1,3 +1,19 @@
+## 0.16.0
+
+### New Features
+
+- **Live car library refresh**: `Flureadium().refreshCarContent()` tells a connected CarPlay or Android Auto surface that the browsable library changed, so it re-queries and repaints without a reconnect. On iOS the CarPlay scene re-fetches each retained tab's children and updates its list templates in place; on Android the media service re-notifies each subscribed browse parent, taking the child count from the same browse query so the empty-state status row and dropped `siri` markers stay consistent. See `docs/architecture/car-bridge-decision.md`.
+- **Android Auto browse before playback**: `PluginMediaService` now holds one persistent, browse-capable `MediaLibrarySession` built with an idle placeholder player, so Android Auto browses the host library from a cold, UI-less process before anything plays; starting a book swaps the real player into the same session instead of rebuilding it. See `docs/platform-specific/android.md`.
+
+### Testing
+
+- iOS XCTest: the CarPlay refresh path (notification to renderer refresh to template update).
+- Android JVM (Robolectric): the browse-capable session and player swap, the idle placeholder, and the subscription-tracked refresh (per-controller notify, status-row and `siri` count, released-session safety).
+
+### Dependencies
+
+- Requires `flureadium_platform_interface` ^0.10.0 for `refreshCarContent()`.
+
 ## 0.15.0
 
 ### New Features
