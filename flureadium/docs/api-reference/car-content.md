@@ -48,8 +48,9 @@ Call it on every browsable-set mutation: a book added, deleted, categorized,
 completed, or renamed. It is fire-and-forget and a no-op when no car surface is
 connected, so it is safe to call unconditionally; coalesce bursts on the host
 side so a bulk import collapses to one refresh. On iOS it repaints the retained
-list templates; on Android it notifies the subscribed browse parents. The
-renderers that perform those repaints ship in later phases.
+root-tab list templates in place, leaving pushed detail lists to re-fetch on the
+next navigation. On Android, the equivalent step is notifying the subscribed
+browse parents, and it ships in a later phase.
 
 ## `CarContentProvider`
 
