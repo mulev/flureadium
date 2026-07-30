@@ -19,6 +19,13 @@ func getCurrentPublication() -> Publication? {
   return currentPublication
 }
 
+public extension Notification.Name {
+  /// Posted when Dart calls `refreshCarContent`. The CarPlay scene observes this
+  /// to re-fetch and repaint the browse tree on a live connection.
+  static let flureadiumCarContentShouldRefresh =
+    Notification.Name("dev.mulev.flureadium.carContentShouldRefresh")
+}
+
 public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLogger, TimebasedListener {
 
   static var registrar: FlutterPluginRegistrar? = nil
@@ -552,6 +559,10 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
           }
         }
       }
+
+    case "refreshCarContent":
+      NotificationCenter.default.post(name: .flureadiumCarContentShouldRefresh, object: nil)
+      result(nil)
 
     default:
       result(FlutterMethodNotImplemented)

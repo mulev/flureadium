@@ -24,6 +24,7 @@ public final class CarTemplateRenderer {
   private let push: (CPTemplate) -> Void
   private var searchTemplateDelegate: NSObject?
   private let isKeyboardAvailable: () -> Bool
+  private var tabTemplates: [(tab: CarTab, template: CPListTemplate)] = []
 
   public convenience init(
     interfaceController: CPInterfaceController,
@@ -64,11 +65,28 @@ public final class CarTemplateRenderer {
       let resolved = strings ?? self.fallbackStrings
       self.bridge.rootTabs { tabs in
         if !tabs.isEmpty {
-          let templates = tabs.map { self.listTemplate(for: $0, strings: resolved) }
-          self.setRoot(CPTabBarTemplate(templates: templates))
+          let pairs = tabs.map {
+            (tab: $0, template: self.listTemplate(for: $0, strings: resolved))
+          }
+          self.tabTemplates = pairs
+          self.setRoot(CPTabBarTemplate(templates: pairs.map { $0.template }))
         } else {
+          self.tabTemplates = []
           self.setRoot(Self.emptyRoot(strings: resolved))
         }
+      }
+    }
+  }
+
+  /// Re-fetches each root tab's children and repaints its retained list template
+  /// so a live connection reflects a library mutation without a reconnect. A
+  /// no-op until `presentRoot()` has built the tab templates. Call on the main
+  /// thread (the CarPlay scene observer dispatches to main). Pushed detail lists
+  /// are not touched — they re-fetch on next navigation.
+  public func refresh() {
+    for (tab, template) in tabTemplates {
+      bridge.children(of: tab.id) { nodes in
+        self.updateTabSections(nodes, for: tab, into: template)
       }
     }
   }
@@ -147,8 +165,10 @@ public final class CarTemplateRenderer {
     _ nodes: [CarBrowseNode], for tab: CarTab, into template: CPListTemplate
   ) {
     let hasSiri = nodes.contains { $0.kind == .siri }
-    if hasSiri, #available(iOS 15.0, *) {
-      template.assistantCellConfiguration = CarAssistantCell.configuration()
+    if #available(iOS 15.0, *) {
+      // Owned fully here so refresh() is idempotent: a repaint whose re-fetched
+      // children dropped the siri node must also drop a stale assistant cell.
+      template.assistantCellConfiguration = hasSiri ? CarAssistantCell.configuration() : nil
     }
     var rows = nodes.compactMap { self.row(for: $0) }
     if hasSiri, #available(iOS 27.0, *), isKeyboardAvailable() {
