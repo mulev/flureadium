@@ -613,6 +613,57 @@ Moves to the previous sentence (TTS) or track (audiobook).
 Future<void> previous()
 ```
 
+## Car Content
+
+Registers the host's library with the CarPlay / Android Auto browse surface and
+keeps a live surface current. The full data contract (`CarContentProvider`,
+`CarBrowseNode`, `CarTab`, `CarContentStrings`) lives in
+[Car content](car-content.md).
+
+### registerCarContentProvider
+
+Registers the [CarContentProvider](car-content.md#carcontentprovider) that
+answers car browse, search, and playback requests. Call once during app start,
+before a car connects.
+
+```dart
+void registerCarContentProvider(
+  CarContentProvider provider, {
+  required CarContentStrings strings,
+})
+```
+
+**Parameters:**
+- `provider` - The host's car content source
+- `strings` - Already-localized status copy the renderers show verbatim
+
+### unregisterCarContentProvider
+
+Removes the registered provider, clearing the car surface. The channel handler
+stays installed, so a car process that calls in before registration gets an
+empty result rather than an error.
+
+```dart
+void unregisterCarContentProvider()
+```
+
+### refreshCarContent
+
+Tells a connected head unit to re-fetch its browse tree after the library
+changes. Fire-and-forget and a no-op when no car surface is connected, so it is
+safe to call on every browsable-set mutation (a book added, deleted,
+categorized, completed, or renamed).
+
+```dart
+void refreshCarContent()
+```
+
+**Example:**
+```dart
+// After mutating the library, repaint any live car surface.
+Flureadium().refreshCarContent();
+```
+
 ## Event Streams
 
 ### onReaderStatusChanged
