@@ -469,7 +469,10 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     // Safe getter — returns applicationContext or throws if not available.
     val application: Application
         get() = appRef?.get()
-            ?: throw IllegalStateException("Application not initialized. Call ReadiumReader.attach(...) first.")
+            ?: throw IllegalStateException(
+                "Application not initialized. FlureadiumPlugin seeds it in onAttachedToEngine; " +
+                    "call ReadiumReader.attachApplication(context) when driving the reader directly."
+            )
 
     var currentReaderWidget: ReadiumReaderWidget?
         get() = readerViewRef?.get()
