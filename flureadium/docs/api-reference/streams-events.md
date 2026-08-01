@@ -111,7 +111,7 @@ enum TtsErrorType {
 }
 ```
 
-Platform-specific values are documented in Phase 2 (Android), where the native TTS engine provides granular error codes.
+These values come from the native TTS engine, which reports granular error codes on Android. See [Android platform docs](../platform-specific/android.md#event-channels) for how native events reach Dart.
 
 ### TimebasedState Enum
 

@@ -310,7 +310,7 @@ Future<bool> ttsCanSpeak()
 
 **Returns:** `true` if TTS can handle the publication's language, `false` otherwise
 
-Call this after opening a publication and before enabling TTS to verify language support. Platform-specific behavior is documented in Phase 1 (iOS), Phase 2 (Android), and Phase 3 (Web).
+Call this after opening a publication and before enabling TTS to verify language support. The Web implementation runs an extra pre-check, described in [Text-to-Speech on Web](../platform-specific/web.md#text-to-speech).
 
 **Example:**
 ```dart
@@ -329,7 +329,7 @@ Requests the system to install missing TTS voice data for the current publicatio
 Future<void> ttsRequestInstallVoice()
 ```
 
-On Android, this opens the system TTS voice data installation dialog. On iOS, this is a no-op since voice downloads are managed through system settings. Platform-specific behavior is documented in Phase 2 (Android).
+On Android, this opens the system TTS voice data installation dialog. On iOS, this is a no-op since voice downloads are managed through system settings.
 
 **Example:**
 ```dart
