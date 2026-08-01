@@ -95,10 +95,10 @@ class RunnerTests: XCTestCase {
 
     let call = FlutterMethodCall(methodName: "ttsGetAvailableVoices", arguments: nil)
     plugin.handle(call) { response in
-      XCTAssertNotNil(response as? FlutterError,
-                      "ttsGetAvailableVoices without TTS navigator should return error")
-      let error = response as! FlutterError
-      XCTAssertEqual(error.code, "TTSError")
+      XCTAssertNil(response as? FlutterError,
+                   "a voice query with no TTS session is not an error - Android returns an empty list")
+      XCTAssertEqual(response as? [String], [],
+                     "ttsGetAvailableVoices without a TTS navigator should return an empty list")
       expectation.fulfill()
     }
 
