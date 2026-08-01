@@ -1,3 +1,15 @@
+## 0.16.1
+
+### Bug Fixes
+
+- **iOS TTS voice query no longer throws without a session**: `ttsGetAvailableVoices()` returned a `TTSError` on iOS when no TTS session was installed, while Android returned an empty list and Web queried the browser directly. A voice query that raced a TTS teardown therefore crashed on iOS only. iOS now returns an empty list, matching Android. `ttsSetVoice()` and `ttsSetPreferences()` still fail without a session, since they mutate one.
+- **Voice query contract documented**: the platform interface, the public facade, and the API reference now state the same thing about when a voice query throws. The guides source voice identifiers with `ttsGetSystemVoices()` wherever the snippet runs before `ttsEnable()`.
+
+### Testing
+
+- iOS XCTest: `ttsGetAvailableVoices` with no TTS navigator returns an empty list rather than an error.
+- Dart: the method-channel decode path surfaces an empty native voice response as an empty list.
+
 ## 0.16.0
 
 ### New Features
