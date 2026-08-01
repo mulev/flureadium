@@ -74,7 +74,7 @@ await flureadium.play(null);
 
 `ttsGetSystemVoices()` vs `ttsGetAvailableVoices()`:
 - `ttsGetSystemVoices()` queries the OS directly — works anytime, no navigator needed.
-- `ttsGetAvailableVoices()` queries voices through the TTS navigator — requires `ttsEnable()` first.
+- `ttsGetAvailableVoices()` reports what the TTS session has. It does not throw merely because TTS is off: on Android and iOS it returns an empty list, and on Web it queries the browser and may return voices either way.
 
 Both return the same `ReaderTTSVoice` model. Use `ttsGetSystemVoices()` when you need voices before playback starts.
 
@@ -101,8 +101,8 @@ await flureadium.ttsEnable(TTSPreferences(
 ### With Voice Selection
 
 ```dart
-// Get available voices
-final voices = await flureadium.ttsGetAvailableVoices();
+// Get the device's voices — no TTS session needed yet
+final voices = await flureadium.ttsGetSystemVoices();
 
 // Select a voice
 final englishVoice = voices.firstWhere(

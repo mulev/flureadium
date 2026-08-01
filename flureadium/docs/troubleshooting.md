@@ -207,11 +207,19 @@ await flureadium.goRight();
    await flureadium.play(null);
    ```
 
-2. Check available voices:
+2. Check voices. These two calls answer different questions, and comparing them tells you which cause you have. The device's own voices, independent of any TTS session:
+   ```dart
+   final systemVoices = await flureadium.ttsGetSystemVoices();
+   print('Device voices: ${systemVoices.length}');
+   ```
+
+   And what the TTS session reports — an empty list on Android and iOS when TTS is not enabled:
    ```dart
    final voices = await flureadium.ttsGetAvailableVoices();
-   print('Available voices: ${voices.length}');
+   print('Session voices: ${voices.length}');
    ```
+
+   An empty session list beside a populated device list points at cause 1, not cause 2.
 
 3. On Android, ensure TTS engine is installed
 
@@ -327,13 +335,27 @@ The audio delegate callbacks read `_audioNavigator?.playbackInfo` synchronously.
 **Fix (applied):**
 `FlutterAudioNavigator` now caches the `MediaPlaybackInfo` that Readium delivers off-lock to `playbackDidChange`, and the last `Locator` from `locationDidChange`. The two transition callbacks serve their state from those cached values instead of reading back into the live navigator, so nothing re-enters the AVPlayer lock.
 
+### iOS: "TTS Navigator not initialized" From a Voice Query After TTS Stops
+
+**Symptom:**
+```
+PlatformException(TTSError, TTS Navigator not initialized, null, null)
+```
+Thrown from `ttsGetAvailableVoices()`, often after the exception has already escaped the call that started it, so the stack points at whatever code was running when it surfaced. Distinct from the stop-then-re-enable case below, where `ttsEnable()` itself fails.
+
+**Cause:**
+iOS raised for a voice query with no TTS session installed, while Android returned an empty list and Web queried the browser directly. Any caller whose voice query outlived its session — a user tapping stop while an enable sequence was still resolving, for instance — got a fatal error on iOS only.
+
+**Fix (applied):**
+`ttsGetAvailableVoices` now answers an empty list when no `FlutterTTSNavigator` is installed, so a voice query for a session that has gone away is benign on Android, iOS, and Web. `ttsSetVoice` and `ttsSetPreferences` still fail without a session: they mutate one.
+
 ### iOS: "TTS Navigator not initialized" After Stop Then Re-enable
 
 **Symptom:**
 ```
 PlatformException(..., TTS Navigator not initialized)
 ```
-Enabling TTS (or opening another audio session) right after stopping playback fails, even though the new navigator was just created.
+Enabling TTS (or opening another audio session) right after stopping playback fails, even though the new navigator was just created. Distinct from the voice-query case above, which carries the same message but comes from `ttsGetAvailableVoices()`.
 
 **Cause:**
 `stop` disposes the timebased navigator on a detached main-actor task, so teardown runs after the call returns. If a newer session installs its own navigator before that straggler teardown runs, the late teardown nils it out and leaves the shared slot empty.

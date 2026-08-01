@@ -209,7 +209,7 @@ pitch: 1.2  // Higher pitch
 
 **Type:** `String?`
 
-Platform-specific voice identifier. Get available voices with `ttsGetAvailableVoices()`.
+Platform-specific voice identifier. Get available voices with `ttsGetSystemVoices()`, which works before TTS is enabled — you need the identifier in hand to build the `TTSPreferences` you pass to `ttsEnable()`.
 
 ```dart
 voiceIdentifier: 'com.apple.voice.compact.en-US.Samantha'  // iOS
