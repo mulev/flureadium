@@ -18,6 +18,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 /**
  * The plugin attaches to an Activity only when a Flutter UI exists. A headless
@@ -65,7 +66,10 @@ internal class FlureadiumPluginEngineAttachTest {
 
     @Test
     fun application_beforeAnyAttach_throws() {
-        assertFailsWith<IllegalStateException> { ReadiumReader.application }
+        val error = assertFailsWith<IllegalStateException> { ReadiumReader.application }
+
+        // The message has to name the call that actually seeds the reference.
+        assertTrue(error.message!!.contains("attachApplication"))
     }
 
     @Test
@@ -73,6 +77,17 @@ internal class FlureadiumPluginEngineAttachTest {
         ReadiumReader.attachApplication(mock(Activity::class.java))
 
         assertFailsWith<IllegalStateException> { ReadiumReader.application }
+    }
+
+    @Test
+    fun attachApplication_withActivityWithoutApplication_keepsSeededApplication() {
+        ReadiumReader.attachApplication(RuntimeEnvironment.getApplication())
+
+        // Every engine attach calls this, so an unresolvable context must not
+        // wipe the reference an earlier engine seeded.
+        ReadiumReader.attachApplication(mock(Activity::class.java))
+
+        assertNotNull(ReadiumReader.application.applicationContext)
     }
 
     private fun engineBinding(): FlutterPluginBinding =
