@@ -91,7 +91,8 @@ private const val pdfEnabledKey = "pdfEnabled"
 private const val pdfNavigatorStateKey = "pdfState"
 private const val decorationStyleKey = "decorationStyle"
 
-// TODO: Support custom headers and authentication header for content files.
+// Content files are fetched with defaultHttpHeaders only; per-publication
+// authentication headers are not supported.
 
 @ExperimentalCoroutinesApi
 @OptIn(ExperimentalReadiumApi::class)
@@ -325,7 +326,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         mainScope.launch {
             val pub = openPublication(pubUrl).getOrElse {
                 Log.d(TAG, ":restoreState - failed to restore publication")
-                // TODO: Handle this somehow
+                // Restore is best-effort: the reader stays closed and Dart is not notified.
                 return@launch
             }
 
@@ -555,7 +556,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     ): Try<Publication, PublicationError> {
         return withContext(Dispatchers.IO) {
             try {
-                // TODO: should client provide mediaType to assetRetriever?
+                // No media type hint is passed; the retriever sniffs the asset.
                 val asset: Asset = assetRetriever.retrieve(pubUrl)
                     .getOrElse { error: AssetRetriever.RetrieveUrlError ->
                         Log.e(TAG, "Error retrieving asset: $error from url:$pubUrl")
