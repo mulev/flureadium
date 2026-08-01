@@ -35,6 +35,11 @@ class FlureadiumPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
         Log.d(TAG, "onAttachedToEngine")
         binaryMessenger = flutterPluginBinding.binaryMessenger
 
+        // The binding's application context exists with no Activity attached,
+        // so a headless engine — the Android Auto car engine, a background
+        // isolate — can reach application-only Readium APIs.
+        ReadiumReader.attachApplication(flutterPluginBinding.applicationContext)
+
         // Register reader view factory
         flutterPluginBinding.platformViewRegistry.registerViewFactory(
             viewTypeChannelName,

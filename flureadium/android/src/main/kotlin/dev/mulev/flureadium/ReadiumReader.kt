@@ -231,9 +231,21 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
             return _publicationOpener!!
         }
 
-    // Initialize from plugin or anywhere you have an Application or Context.
+    /**
+     * Seeds the process-wide [Application] reference.
+     *
+     * Called at engine attach, so a UI-less engine — the Android Auto car
+     * engine, a background isolate — reaches application-only APIs without an
+     * Activity. [attach] still covers everything the reader widget needs from
+     * an Activity.
+     */
+    fun attachApplication(context: Context) {
+        unwrapToApplication(context)?.let { appRef = WeakReference(it) }
+    }
+
+    // Initialize the reader session from the host Activity; a headless engine uses attachApplication.
     fun attach(activity: Activity, messenger: BinaryMessenger) {
-        unwrapToApplication(activity)?.let { appRef = WeakReference(it) }
+        attachApplication(activity)
 
         timedBasedStateEventChannel?.dispose()
         timedBasedStateEventChannel = TimedBasedStateEventChannel(messenger)
@@ -400,13 +412,18 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         }
     }
 
+    /**
+     * Tears down the reader session.
+     *
+     * The [Application] reference deliberately survives: it is process-scoped,
+     * this object is shared by every engine in the process (a host can run a
+     * UI engine and a car engine side by side), and clearing it on one
+     * teardown would break the other.
+     */
     fun detach() {
         mainScope.launch {
             closePublication()
         }
-
-        appRef?.clear()
-        appRef = null
 
         savedStateRef?.clear()
         savedStateRef = null
