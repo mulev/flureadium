@@ -310,7 +310,7 @@ Future<bool> ttsCanSpeak()
 
 **Returns:** `true` if TTS can handle the publication's language, `false` otherwise
 
-Call this after opening a publication and before enabling TTS to verify language support. The Web implementation runs an extra pre-check, described in [Text-to-Speech on Web](../platform-specific/web.md#text-to-speech).
+Call this after opening a publication and before enabling TTS to verify language support. Web answers a different question — whether the Web Speech API is available and the navigator is ready — described in [Text-to-Speech on Web](../platform-specific/web.md#text-to-speech).
 
 **Example:**
 ```dart
