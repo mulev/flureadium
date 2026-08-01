@@ -351,13 +351,15 @@ Future<void> ttsSetPreferences(TTSPreferences preferences)
 
 ### ttsGetAvailableVoices
 
-Gets the list of available TTS voices. Requires `ttsEnable()` to have been called first.
+Gets the list of available TTS voices on the platform.
+
+On the platforms that implement TTS — Android, iOS, Web — `ttsGetAvailableVoices()` does not throw merely because TTS is not enabled. Android and iOS return an empty list. Web queries the browser's speech synthesis directly and may return voices whether or not TTS is enabled. To populate a voice picker before enabling TTS, use `ttsGetSystemVoices()`.
 
 ```dart
 Future<List<ReaderTTSVoice>> ttsGetAvailableVoices()
 ```
 
-**Returns:** List of available platform voices
+**Returns:** List of available voices, or an empty list on Android and iOS when TTS is not enabled
 
 **Example:**
 ```dart
@@ -369,7 +371,9 @@ for (final voice in voices) {
 
 ### ttsGetSystemVoices
 
-Gets available TTS voices from the OS without requiring TTS to be enabled. Unlike `ttsGetAvailableVoices()`, this does not need a TTS navigator — call it anytime to populate a voice picker before the user starts reading aloud.
+Gets available TTS voices from the OS.
+
+On the platforms that implement TTS — Android, iOS, Web — this is independent of the TTS session and reports the device's voices whether or not TTS is enabled. Prefer this for voice pickers shown before reading aloud starts; see `ttsGetAvailableVoices()` for its per-platform behavior.
 
 ```dart
 Future<List<ReaderTTSVoice>> ttsGetSystemVoices()
