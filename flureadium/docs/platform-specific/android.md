@@ -174,9 +174,11 @@ plugin binding's application context. That context exists even when no Activity
 does, so an engine running without a UI (the car engine behind Android Auto, a
 background isolate) can still make application-only calls such as the TTS
 system-voice query or navigator construction. The reference is process-scoped
-and never cleared. `Application` outlives every engine, and a host may run a UI
-engine and a car engine at once, so one teardown must not strip state the other
-still needs.
+and never cleared, because `Application` outlives every engine. A host can run a
+UI engine and a car engine at once, and both keep resolving it after either one
+detaches. The rest of `ReadiumReader`'s state is not engine-safe: `detach()`
+runs on both Activity and engine detach, and it clears everything else,
+including the channels below.
 
 `onAttachedToActivity` handles the parts that need an Activity: the reader
 widget, saved-state restore, and the event channels below. A headless engine

@@ -416,10 +416,11 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     /**
      * Tears down the reader session.
      *
-     * The [Application] reference deliberately survives: it is process-scoped,
-     * this object is shared by every engine in the process (a host can run a
-     * UI engine and a car engine side by side), and clearing it on one
-     * teardown would break the other.
+     * The [Application] reference deliberately survives this: it is
+     * process-scoped and outlives every engine, so a second engine in the same
+     * process (a host can run a UI engine and a car engine side by side) keeps
+     * resolving it after this one tears down. Everything else here is still
+     * shared across engines and still cleared.
      */
     fun detach() {
         mainScope.launch {
