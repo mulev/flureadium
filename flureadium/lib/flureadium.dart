@@ -233,15 +233,23 @@ class Flureadium {
     ReaderDecorationStyle? rangeDecoration,
   ) => _platform.setDecorationStyle(utteranceDecoration, rangeDecoration);
 
-  /// Gets the list of available TTS voices.
+  /// Gets the list of available TTS voices on the platform.
   ///
-  /// Returns platform-specific voice options for TTS playback.
+  /// On the platforms that implement TTS — Android, iOS, Web — this does not
+  /// throw merely because TTS is not enabled. Android and iOS return an empty
+  /// list. Web queries the browser's speech synthesis directly and may return
+  /// voices whether or not TTS is enabled. To populate a voice picker before
+  /// enabling TTS, use [ttsGetSystemVoices].
   Future<List<ReaderTTSVoice>> ttsGetAvailableVoices() =>
       _platform.ttsGetAvailableVoices();
 
-  /// Gets available TTS voices from the OS without requiring TTS to be
-  /// enabled. Unlike [ttsGetAvailableVoices], this does not need a TTS
-  /// navigator.
+  /// Gets available TTS voices from the OS.
+  ///
+  /// On the platforms that implement TTS — Android, iOS, Web — this is
+  /// independent of the TTS session and reports the device's voices whether
+  /// or not TTS is enabled. Prefer this for voice pickers shown before
+  /// reading aloud starts; see [ttsGetAvailableVoices] for its per-platform
+  /// behavior.
   Future<List<ReaderTTSVoice>> ttsGetSystemVoices() =>
       _platform.ttsGetSystemVoices();
 
