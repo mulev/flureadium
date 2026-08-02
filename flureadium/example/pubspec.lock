@@ -191,14 +191,14 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.16.0"
+    version: "0.16.1"
   flureadium_platform_interface:
     dependency: "direct overridden"
     description:
       path: "../../flureadium_platform_interface"
       relative: true
     source: path
-    version: "0.10.0"
+    version: "0.10.1"
   flutter:
     dependency: "direct main"
     description: flutter
