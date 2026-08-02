@@ -9,16 +9,12 @@ import 'package:flureadium/flureadium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
+import 'helpers/audiobook_track.dart';
 import 'helpers/ensure_app_showing.dart';
 import 'helpers/pump_until.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-
-  // Reads the keyed current-track indicator the example surfaces from the
-  // audiobook timebased state. The text is 'track: <position> <href>'.
-  String currentTrack(WidgetTester tester) =>
-      tester.widget<Text>(find.byKey(const Key('current-track'))).data ?? '';
 
   // Reads the keyed end-of-book latch. The example sets this once it has ever
   // seen TimebasedState.ended, because the player can settle to `paused`
@@ -87,6 +83,18 @@ void main() {
   );
 
   group('Audiobook', () {
+    // The book under test, loaded once. Anchoring a baseline to a known href
+    // keeps a previous test's retained track from being mistaken for this
+    // one's starting point.
+    late final Publication audiobookPub;
+    late final String firstTrack;
+
+    setUpAll(() async {
+      final path = await _extractAsset('assets/pubs/38533.audiobook');
+      audiobookPub = await Flureadium().loadPublication(path);
+      firstTrack = audiobookPub.readingOrder.first.href;
+    });
+
     tearDown(() async {
       // Stop playback but leave the publication open. The next test's
       // ensureAppShowing switches publications via the Open button, exactly as a
@@ -201,24 +209,18 @@ void main() {
         await tester.tap(find.text('Audio Play'));
         await waitForPlaying(tester);
 
-        final before = currentTrack(tester);
+        final before = await awaitTrackHref(tester, expected: firstTrack);
 
         // Build a locator for a later reading-order track and jump to it via
-        // play(fromLocator). Loading the manifest separately just gets the
-        // reading order, mirroring the end-of-book test above.
-        final path = await _extractAsset('assets/pubs/38533.audiobook');
-        final pub = await Flureadium().loadPublication(path);
-        final target = pub.locatorFromLink(pub.readingOrder[1]);
+        // play(fromLocator).
+        final target = audiobookPub.locatorFromLink(
+          audiobookPub.readingOrder[1],
+        );
         expect(target, isNotNull, reason: 'need a locator for a later track');
         await Flureadium().play(target);
 
         // The track changed to the jumped-to chapter and playback stayed active.
-        await pumpUntil(
-          tester,
-          () => currentTrack(tester) != before,
-          timeout: const Duration(seconds: 10),
-        );
-        expect(currentTrack(tester), isNot(before));
+        await awaitTrackHrefChange(tester, before);
         expect(find.text('Audio Pause'), findsOneWidget);
 
         // Not frozen: the position keeps advancing after the jump. Pre-fix it
@@ -262,17 +264,12 @@ void main() {
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
 
-      final before = currentTrack(tester);
+      final before = await awaitTrackHref(tester, expected: firstTrack);
 
       await tester.tap(find.text('Audio Next Chapter'));
-      await pumpUntil(
-        tester,
-        () => currentTrack(tester) != before,
-        timeout: const Duration(seconds: 10),
-      );
 
       // The displayed track changed and playback is still active.
-      expect(currentTrack(tester), isNot(before));
+      await awaitTrackHrefChange(tester, before);
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
@@ -284,7 +281,7 @@ void main() {
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
 
-      final before = currentTrack(tester);
+      final before = await awaitTrackHref(tester, expected: firstTrack);
 
       await tester.tap(find.text('Audio Prev Chapter'));
       // Fixed settle wait: there is no state change to poll for — assert the
@@ -294,7 +291,7 @@ void main() {
       }
 
       // Still on the first track; no crash.
-      expect(currentTrack(tester), before);
+      expect(currentTrackHref(tester), before);
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
