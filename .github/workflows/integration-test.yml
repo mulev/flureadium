@@ -94,12 +94,20 @@ jobs:
           echo "$!" > "$RUNNER_TEMP/diag/logstream.pid"
 
       # The watchdog samples while the hang is still live. Waiting for a later
-      # if: failure() step is too late: the 20m step timeout kills the process
+      # if: failure() step is too late: the step timeout kills the process
       # group, so Runner is gone and the spindump comes back empty. Two samples
       # four minutes apart distinguish a deadlock (identical stacks) from slow
       # progress (stacks move).
+      #
+      # It no longer fires for a stuck suite load, which dart_test.yaml now cuts
+      # off at 10m with a clear error. It stays for hangs that are still
+      # unbounded, such as a deadlock inside a test body.
+      #
+      # The cap covers two attempts: a load bounded at 10m, then a full healthy
+      # run, which takes about 10m.
       - name: Run integration tests
-        timeout-minutes: 20
+        id: run-tests
+        timeout-minutes: 25
         run: |
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/diag"
@@ -119,24 +127,55 @@ jobs:
               fi
             } >> "$RUNNER_TEMP/diag/watchdog.log" 2>&1
           }
-          ( sleep 720; capture t12m; sleep 240; capture t16m ) &
-          WATCHDOG=$!
 
-          # bash -e is on by default, so the pipeline failing would exit the
-          # script before STATUS is read. pipefail makes $? flutter's status,
-          # not tee's.
-          set +e
-          # --file-reporter gives a per-test event stream: a hang leaves a
-          # testStart with no testDone, and zero testStart events means the
-          # suite never started at all.
-          flutter test integration_test/all_tests.dart -d "$IOS_UDID" \
-            --reporter expanded --verbose \
-            --file-reporter "json:$RUNNER_TEMP/diag/test-events.json" 2>&1 \
-            | tee "$RUNNER_TEMP/diag/flutter-test.log"
-          STATUS=$?
-          set -e
-          kill "$WATCHDOG" 2>/dev/null || true
-          exit "$STATUS"
+          attempts=2
+          for attempt in $(seq 1 "$attempts"); do
+            events="$RUNNER_TEMP/diag/test-events-$attempt.json"
+
+            # Killing the subshell orphans whichever `sleep` it is sitting in,
+            # and an orphan that inherited the step's stdout keeps the runner
+            # waiting for EOF long after the tests finished. Point the whole
+            # subshell at /dev/null; capture() writes to watchdog.log directly,
+            # so no diagnostics are lost.
+            ( sleep 720; capture "a$attempt-t12m"; sleep 240; capture "a$attempt-t16m" ) \
+              >/dev/null 2>&1 &
+            WATCHDOG=$!
+
+            # bash -e is on by default, so the pipeline failing would exit the
+            # script before STATUS is read. pipefail keeps flutter's non-zero
+            # status from being masked by tee's success.
+            set +e
+            # --file-reporter gives a per-test event stream, which is how the
+            # retry check below tells a lost VM service URL apart from a real
+            # test failure.
+            flutter test integration_test/all_tests.dart -d "$IOS_UDID" \
+              --reporter expanded --verbose \
+              --file-reporter "json:$events" 2>&1 \
+              | tee "$RUNNER_TEMP/diag/flutter-test-$attempt.log"
+            STATUS=$?
+            set -e
+            kill "$WATCHDOG" 2>/dev/null || true
+
+            if [ "$STATUS" -eq 0 ]; then
+              exit 0
+            fi
+
+            # Retry only when the suite never loaded. Build, compile and
+            # assertion failures are deterministic, and a second run of those
+            # just burns ten minutes of macOS runner time.
+            if [ "$attempt" -lt "$attempts" ] \
+               && "$GITHUB_WORKSPACE/.github/scripts/ios_suite_load_timed_out.sh" "$events"; then
+              echo "::warning::Attempt $attempt never loaded the suite: the Dart VM service URL never reached the tool. Retrying."
+              # The root cause is upstream and still open, so a run that
+              # recovered is the one carrying fresh evidence. Flag it, or the
+              # failure()-gated upload below throws the artifacts away.
+              echo "retried=true" >> "$GITHUB_OUTPUT"
+              pkill -f 'Runner.app/Runner' 2>/dev/null || true
+              continue
+            fi
+
+            exit "$STATUS"
+          done
 
       # Post-hoc only: crash reports and logs survive process death, so these
       # are safe to collect after the test step has been killed.
@@ -153,7 +192,7 @@ jobs:
           echo "=== last 40 lines of simulator log ==="; tail -40 simulator.log 2>/dev/null || true
 
       - name: Upload hang diagnostics
-        if: failure()
+        if: failure() || steps.run-tests.outputs.retried == 'true'
         timeout-minutes: 5
         uses: actions/upload-artifact@v4
         with:

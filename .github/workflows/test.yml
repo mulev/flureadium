@@ -88,6 +88,14 @@ jobs:
       - name: Run widget tests
         run: flutter test test/
 
+      # The predicate fails closed: every internal error reads as "not the
+      # hang", which quietly disables the iOS retry. Run its fixtures here so a
+      # regression shows up as a red check rather than as a retry that stopped
+      # happening.
+      - name: Check the iOS suite-load predicate
+        working-directory: .
+        run: .github/scripts/ios_suite_load_timed_out_test.sh
+
   test-android-native:
     name: Test Android Native (Robolectric)
     runs-on: ubuntu-latest
