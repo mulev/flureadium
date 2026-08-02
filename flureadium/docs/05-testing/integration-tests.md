@@ -296,6 +296,19 @@ CI runs the full test matrix on every push and pull request to `main`:
 
 The Android integration bundle (`all_tests_android_ci.dart`) intentionally omits the `@native` audiobook, EPUB-TTS, and WebPub tests because GitHub-hosted emulators lack reliable audio and network; those still run on the iOS leg and locally via `scripts/run_integration_tests.sh`. The web bundle (`all_tests_web.dart`) runs the launch smoke test live and bundles `epub_tts_web_test.dart` with its tests skipped in-file until the web-reader TTS plumbing lands (tracked in [Web Platform](../platform-specific/web.md)).
 
+### When the iOS job stalls before any test runs
+
+On a simulator, `flutter_tools` learns the Dart VM service URL one way only: it scrapes a single line out of `xcrun simctl spawn <udid> log stream`. There is no mDNS fallback, and the wait has no timeout. When that one log record does not reach the tool, the app boots and idles normally while the tool waits forever.
+
+What it looks like: `flutter test` prints `Waiting for VM Service port to be available...`, nothing follows, and the run sits there until CI kills the step. Ten runs died this way between March and August 2026, most of them cancelled at GitHub's six-hour default.
+
+Two things bound it now:
+
+- `example/dart_test.yaml` sets `suite_load_timeout: 10m`. Loading the suite takes about six minutes on a healthy CI run, so a stalled load fails at ten with a `TimeoutException` instead of hanging. `test_core` enforced a 12-minute default here until 0.6.16 removed it.
+- The iOS job retries once, and only for this failure. `.github/scripts/ios_suite_load_timed_out.sh` checks whether the timeout landed on the `loading ...` pseudo-test, which is what separates a lost VM service URL from a test that overran its own timeout. Compile errors and assertion failures are not retried, since a second run of those just costs another ten minutes.
+
+`.github/scripts/ios_suite_load_timed_out_test.sh` covers the predicate. It replays trimmed event streams for the four failure modes that have to be told apart — suite-load timeout, compile failure, assertion failure, test-body timeout — plus a passing run, a load timeout in a later suite, and empty, truncated and missing event files. The first four came off real `flutter test` runs; the rest are written by hand. `Test Example (Widget)` runs it in CI, and it takes about a second locally.
+
 ## In-car testing (CarPlay / Android Auto)
 
 The in-car browse/search/play surface is covered automatically as far as it can be without a head unit, and the rest is a documented, reproducible manual pass.
