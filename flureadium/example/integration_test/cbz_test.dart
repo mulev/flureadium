@@ -12,8 +12,11 @@ void main() {
 
   group('CBZ', () {
     // No tearDown close: the next test's ensureAppShowing switches publications
-    // via the Open button, mirroring the app. Closing the container under a
-    // still-mounted reader is not an app flow (flureadium-i0s).
+    // via the Open button, mirroring the app. That was flureadium-i0s's answer
+    // to a crash on closing under a mounted reader, and it only moved the crash
+    // out of teardown. The same fault came back through the image navigator as
+    // flureadium-pbc. The container guard fixes it properly now, so the last
+    // test in this group runs that flow deliberately.
 
     testWidgets('app auto-opens CBZ and shows reader widget', (tester) async {
       await ensureAppShowing(
@@ -171,6 +174,76 @@ void main() {
 
       expect(pub.readingOrder.first.href, equals(locator.href));
     });
+
+    // Regression test for flureadium-pbc, and for flureadium-i0s before it,
+    // which was the same crash reached through the EPUB WebView instead of the
+    // image navigator. Closing a publication closes the zip container; a page
+    // read already running against it throws `java.lang.IllegalStateException:
+    // zip file closed` from a readium coroutine that has no parent and so no
+    // handler, and Android kills the process. Nothing is catchable from Dart:
+    // the app is simply gone, and every remaining test in the run flushes as a
+    // pass in the same millisecond.
+    //
+    // The window is roughly 150ms wide, so a single attempt is a coin toss.
+    // These four sweep the delay between starting the read and closing under
+    // it, and each targets an unvisited page so the navigator has to go to the
+    // container rather than serving a cached bitmap.
+    //
+    // Reaching the assertion at the end is the result. On Android the guard
+    // logs `Read after the container closed` when it catches one, which is
+    // visible in the logcat the CI job uploads.
+    testWidgets(
+      'closing a publication during a page load keeps the app alive',
+      (tester) async {
+        const attempts = [
+          (href: '005.jpg', position: 5, delayMs: 0),
+          (href: '004.jpg', position: 4, delayMs: 20),
+          (href: '003.jpg', position: 3, delayMs: 60),
+          (href: '002.jpg', position: 2, delayMs: 120),
+        ];
+
+        for (final attempt in attempts) {
+          await ensureAppShowing(
+            tester,
+            initialAsset: 'assets/pubs/sample_comic.cbz',
+            reopenButton: 'Open CBZ',
+          );
+
+          // Deliberately not awaited. The read has to still be in flight when
+          // the container closes underneath it.
+          final navigating = Flureadium().goToLocator(
+            Locator(
+              href: attempt.href,
+              type: 'image/jpeg',
+              locations: Locations(position: attempt.position),
+            ),
+          );
+
+          if (attempt.delayMs > 0) {
+            await tester.pump(Duration(milliseconds: attempt.delayMs));
+          }
+
+          await Flureadium().closePublication();
+
+          // Either outcome is fine: the navigation may land before the close or
+          // fail against a closed publication. What must not happen is a crash.
+          await navigating.catchError((Object _) => false);
+          await tester.pump(const Duration(milliseconds: 250));
+        }
+
+        // Only reachable in a live process, and it also leaves the app open for
+        // whatever runs next.
+        await ensureAppShowing(
+          tester,
+          initialAsset: 'assets/pubs/sample_comic.cbz',
+          reopenButton: 'Open CBZ',
+        );
+        expect(
+          await Flureadium().extractPageThumbnail('001.jpg', 80, 70),
+          isNotNull,
+        );
+      },
+    );
   });
 }
 
