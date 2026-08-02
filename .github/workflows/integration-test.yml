@@ -38,6 +38,16 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # This suite dies mid-flight in roughly one run in fifteen (3 of the
+      # last 45, going back to June). It stops after a varying test - the
+      # seventh, eighth, tenth - package:test flushes everything left as
+      # passed, and `flutter test` exits 1 while printing "N tests passed".
+      # The job captured nothing, so none of the three could be diagnosed.
+      # logcat plus the event stream make the next one readable. Tracked as
+      # flureadium-pbc.
+      #
+      # Deliberately not retried, unlike the iOS suite-load hang. That one has
+      # a known upstream cause; this does not, and a retry would hide it.
       - name: Run integration tests
         timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@v2
@@ -46,7 +56,30 @@ jobs:
           arch: x86_64
           profile: Nexus 6
           working-directory: flureadium/example
-          script: flutter test integration_test/all_tests_android_ci.dart
+          script: |
+            mkdir -p "$RUNNER_TEMP/diag"
+            adb logcat -c || true
+            # Both streams go to the file, so this never holds the step's stdout.
+            adb logcat -v threadtime > "$RUNNER_TEMP/diag/logcat.txt" 2>&1 &
+            LOGCAT=$!
+
+            set +e
+            flutter test integration_test/all_tests_android_ci.dart \
+              --file-reporter "json:$RUNNER_TEMP/diag/test-events.json"
+            STATUS=$?
+            set -e
+
+            kill "$LOGCAT" 2>/dev/null || true
+            exit "$STATUS"
+
+      - name: Upload Android diagnostics
+        if: failure()
+        timeout-minutes: 5
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-integration-diagnostics
+          path: ${{ runner.temp }}/diag
+          retention-days: 14
 
   integration-ios:
     name: Integration Tests (iOS)
