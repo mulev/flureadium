@@ -5,6 +5,12 @@
 # 12-minute suite-load default and set it to `none`, which took away the last
 # backstop.
 #
+# Scoped to macOS, the only host that runs an iOS simulator. The Android and
+# web jobs run on Linux, where this section is not merged and the file loads
+# to an empty configuration.
+#
 # 10m is roughly 1.6x the slowest healthy load phase measured in CI (6m05s).
 # Older SDKs that predate this key ignore it, so local runs are unaffected.
-suite_load_timeout: 10m
+on_os:
+  mac-os:
+    suite_load_timeout: 10m
