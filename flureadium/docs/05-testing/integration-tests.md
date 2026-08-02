@@ -340,8 +340,17 @@ deliberately narrow: any other runtime failure belongs to our transformers or to
 has to stay loud. `ResourceClosedContainerTest` covers it, including that `CancellationException`
 still propagates — it subclasses `IllegalStateException`, so a careless guard would swallow it.
 
-The wiring itself is covered by the CBZ integration tests rather than by a unit test, matching
-how the rest of the real open path is tested. Tracked as `flureadium-pbc`.
+What no test covers is the wiring: that the guard is actually installed on the container the
+navigator reads through. I first assumed the CBZ integration tests covered it. They do not.
+Five green runs with diagnostics kept show the guard logging `Read after the container closed`
+zero times across 105 publication closes, so the suite passes without ever entering the guarded
+path. Absence of the crash in those runs is close to meaningless on its own: at the historical
+rate of one abort in fifteen runs, five clean runs happen about 71% of the time with no fix at
+all, and reaching 95% confidence by sampling would take roughly 45 runs.
+
+What would settle it is a test that closes a publication while a page load is genuinely in
+flight, rather than waiting for CI to roll the dice. Tracked as `flureadium-pbc`, which stays
+open until then.
 
 The capture lives in `.github/scripts/android_integration_tests.sh`, not inline in the workflow. `reactivecircus/android-emulator-runner` splits its `script:` input on newlines and runs each line in a separate `sh -c`, so a multi-line body loses its variables, its `set` flags and its line continuations, and a trailing `\` arrives as a literal argument. Give that action one command. `android_integration_tests_test.sh` covers the wrapper and fails if the workflow turns the input back into a block; `Test Example (Widget)` runs it.
 
