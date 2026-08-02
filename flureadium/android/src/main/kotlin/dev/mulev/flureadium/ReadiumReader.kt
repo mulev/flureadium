@@ -516,8 +516,10 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     ): Try<Publication, OpenError> {
         val publication: Publication =
             publicationOpener.open(asset, allowUserInteraction = true, onCreatePublication = {
+                // Outermost, so it also contains anything the injecting transformer
+                // surfaces from a container that closed underneath it.
                 container = TransformingContainer(container) { _: Url, resource: Resource ->
-                    resource.injectScriptsAndStyles()
+                    resource.injectScriptsAndStyles().catchingClosedContainer()
                 }
             }).getOrElse { err: OpenError ->
                 Log.e(TAG, "Error opening publication: $err")
