@@ -47,7 +47,7 @@ Future<Publication> openPublication(String pubUrl)
 
 **Returns:** The [Publication](publication.md) metadata
 
-**Throws:** [ReadiumException](../../ERROR_HANDLING.md) if the publication cannot be opened
+**Throws:** [ReadiumException](../guides/error-handling.md) if the publication cannot be opened
 
 **Example:**
 ```dart
@@ -164,7 +164,7 @@ Future<bool> goByLink(Link link, Publication pub)
 
 **Returns:** `true` if navigation succeeded
 
-**Throws:** [ReadiumException](../../ERROR_HANDLING.md) if the link cannot be resolved
+**Throws:** [ReadiumException](../guides/error-handling.md) if the link cannot be resolved
 
 **Example:**
 ```dart
@@ -187,7 +187,7 @@ Future<bool> toPhysicalPageIndex(String index, Publication pub)
 
 **Returns:** `true` if navigation succeeded
 
-**Throws:** [ReadiumException](../../ERROR_HANDLING.md) if the page is not found
+**Throws:** [ReadiumException](../guides/error-handling.md) if the page is not found
 
 **Example:**
 ```dart

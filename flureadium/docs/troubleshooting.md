@@ -377,6 +377,23 @@ The publication method-channel handler caught every exception and forwarded it t
 **Fix (applied):**
 `dispatchGuarded` re-throws `CancellationException` instead of reporting it, so a coroutine torn down mid-call unwinds normally and no phantom `PlatformException` reaches Dart.
 
+### Android: App Killed on Close with "zip file closed"
+
+**Symptom:**
+```
+FATAL EXCEPTION: main
+java.lang.IllegalStateException: zip file closed
+	at java.util.zip.ZipFile.ensureOpen(ZipFile.java:753)
+	at org.readium.r2.shared.util.zip.FileZipContainer$Entry$readFully$2.invokeSuspend(FileZipContainer.kt:97)
+```
+The app dies outright, with no Dart error and no exception reaching your code. Closing a publication is what triggers it, and it needs a page load still in flight, so it shows up on CBZ and DIVINA where the image navigator reads whole pages. It is timing dependent: the window is around 150 ms wide, and in CI it hit about one run in fifteen.
+
+**Cause:**
+`closePublication()` closes the backing `ZipFile`. Removing the navigator fragment cancels readium's page fragment, but cancellation is cooperative, so a read already inside `withContext(Dispatchers.IO)` keeps going and reaches the closed file. readium 3.1.2 catches `ZipException` and `IOException` in `FileZipContainer.Entry.read()` and not `IllegalStateException`, so the throw escapes the `Try<ByteArray, ReadError>` the method declares. It surfaces in `R2CbzPageFragment`, whose `coroutineContext` is `Dispatchers.Main` with no `Job`: that read is a parentless root coroutine, so no `CoroutineExceptionHandler` anywhere can reach it and the default handler kills the process.
+
+**Fix (applied):**
+Resources are wrapped at open time in a guard that reports a read against a closed container as `ReadError.Access`, which is what readium's own `read()` signature promises. The page render fails and the fragment is torn down regardless, so nothing is lost. The guard matches only `IllegalStateException` carrying `ZipFile`'s own "zip file closed" text, and re-throws `CancellationException` first, since that subclasses `IllegalStateException`. The race itself is upstream in readium and unchanged.
+
 ## Platform-Specific Issues
 
 ### iOS: Localhost Connection Failed
@@ -531,8 +548,8 @@ flureadium.onTextLocatorChanged.listen((locator) {
 If you can't resolve an issue:
 
 1. Check the [example app](../example/) for working code
-2. Review [Error Handling Guide](../../ERROR_HANDLING.md)
-3. Search existing [GitHub issues](https://github.com/anthropics/flureadium/issues)
+2. Review the [error handling guide](guides/error-handling.md)
+3. Search existing [GitHub issues](https://github.com/mulev/flureadium/issues)
 4. Open a new issue with:
    - Flutter version (`flutter --version`)
    - Platform (iOS, Android, Web, macOS)
@@ -542,5 +559,5 @@ If you can't resolve an issue:
 ## See Also
 
 - [Installation](getting-started/installation.md) - Setup guide
-- [Error Handling Guide](../../ERROR_HANDLING.md) - Exception types
+- [Error Handling](guides/error-handling.md) - Exception types
 - [Platform-Specific Docs](platform-specific/) - Platform details
