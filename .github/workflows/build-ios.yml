@@ -10,6 +10,7 @@ jobs:
   build:
     name: Build iOS Example
     runs-on: macos-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: flureadium/example
@@ -25,9 +26,11 @@ jobs:
         run: flutter pub get
 
       - name: Install CocoaPods
+        timeout-minutes: 6
         run: |
           cd ios
           pod install --repo-update
 
       - name: Build iOS (no codesign)
+        timeout-minutes: 8
         run: flutter build ios --debug --no-codesign

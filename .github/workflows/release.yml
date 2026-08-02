@@ -9,6 +9,7 @@ jobs:
   validate:
     name: Validate Release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +44,7 @@ jobs:
     name: Publish Dry Run
     needs: validate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -67,6 +69,7 @@ jobs:
     name: Create GitHub Release
     needs: publish-dry-run
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 

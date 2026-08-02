@@ -11,6 +11,7 @@ jobs:
   integration-android:
     name: Integration Tests (Android)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: flureadium/example
@@ -38,6 +39,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Run integration tests
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
@@ -49,6 +51,7 @@ jobs:
   integration-ios:
     name: Integration Tests (iOS)
     runs-on: macos-latest
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: flureadium/example
@@ -64,9 +67,11 @@ jobs:
         run: flutter pub get
 
       - name: Install CocoaPods
+        timeout-minutes: 8
         run: cd ios && pod install --repo-update
 
       - name: Boot simulator
+        timeout-minutes: 8
         run: |
           UDID=$(xcrun simctl list devices available | grep "iPhone" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
           if [ -z "$UDID" ]; then
@@ -79,6 +84,7 @@ jobs:
           xcrun simctl bootstatus "$UDID"
 
       - name: Run integration tests
+        timeout-minutes: 20
         run: |
           UDID=$(xcrun simctl list devices booted | grep "iPhone" | grep -oE '\([A-F0-9-]+\)' | tr -d '()' | head -1)
           flutter test integration_test/all_tests.dart -d "$UDID"
@@ -90,6 +96,7 @@ jobs:
   integration-web:
     name: Integration Tests (Web)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: flureadium/example
@@ -123,6 +130,7 @@ jobs:
           done
 
       - name: Run integration tests (Web)
+        timeout-minutes: 8
         run: |
           flutter drive \
             --driver=test_driver/integration_test.dart \
