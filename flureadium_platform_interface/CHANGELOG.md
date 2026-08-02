@@ -1,3 +1,15 @@
+## 0.10.1
+
+### Documentation
+
+- **Voice query contract**: `ttsGetAvailableVoices()` now documents that it does not throw merely because TTS is disabled. Android and iOS return an empty list; Web queries the browser's speech synthesis directly and may return voices either way. To populate a voice picker before enabling TTS, use `ttsGetSystemVoices()`.
+
+### Testing
+
+- The method-channel decode path surfaces an empty native voice response as an empty list, never a throw and never null.
+
+---
+
 ## 0.10.0
 
 ### New Features
