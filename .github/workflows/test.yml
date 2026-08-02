@@ -96,6 +96,13 @@ jobs:
         working-directory: .
         run: .github/scripts/ios_suite_load_timed_out_test.sh
 
+      # Covers the Android diagnostics wrapper, including the check that the
+      # emulator-runner still gets its script as a single command. A block
+      # scalar there silently splits into one shell per line.
+      - name: Check the Android integration wrapper
+        working-directory: .
+        run: .github/scripts/android_integration_tests_test.sh
+
   test-android-native:
     name: Test Android Native (Robolectric)
     runs-on: ubuntu-latest

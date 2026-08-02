@@ -48,6 +48,10 @@ jobs:
       #
       # Deliberately not retried, unlike the iOS suite-load hang. That one has
       # a known upstream cause; this does not, and a retry would hide it.
+      #
+      # This action runs every line of `script` in its own `sh -c`, so the
+      # wrapper has to arrive as one command. Keep it that way; the check in
+      # android_integration_tests_test.sh fails if it turns into a block.
       - name: Run integration tests
         timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@v2
@@ -56,21 +60,7 @@ jobs:
           arch: x86_64
           profile: Nexus 6
           working-directory: flureadium/example
-          script: |
-            mkdir -p "$RUNNER_TEMP/diag"
-            adb logcat -c || true
-            # Both streams go to the file, so this never holds the step's stdout.
-            adb logcat -v threadtime > "$RUNNER_TEMP/diag/logcat.txt" 2>&1 &
-            LOGCAT=$!
-
-            set +e
-            flutter test integration_test/all_tests_android_ci.dart \
-              --file-reporter "json:$RUNNER_TEMP/diag/test-events.json"
-            STATUS=$?
-            set -e
-
-            kill "$LOGCAT" 2>/dev/null || true
-            exit "$STATUS"
+          script: $GITHUB_WORKSPACE/.github/scripts/android_integration_tests.sh
 
       - name: Upload Android diagnostics
         if: failure()
