@@ -181,7 +181,9 @@ private class ClosedContainerSafeResource(
             throw e
         } catch (e: IllegalStateException) {
             if (e.message != ZIP_FILE_CLOSED) throw e
-            Log.w(TAG, "Read after the container closed: ${resource.sourceUrl}")
+            // Zip entries carry no sourceUrl, which is the common case here, so
+            // fall back to something an operator can still act on.
+            Log.w(TAG, "Read after the container closed: ${resource.sourceUrl ?: "zip entry"}")
             Try.failure(ReadError.Access(FileSystemError.IO(e)))
         }
 }

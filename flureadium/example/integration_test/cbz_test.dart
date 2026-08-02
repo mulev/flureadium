@@ -196,28 +196,37 @@ void main() {
     testWidgets('reads outliving closePublication fail soft, not fatal', (
       tester,
     ) async {
-      await ensureAppShowing(
-        tester,
-        initialAsset: 'assets/pubs/sample_comic.cbz',
-        reopenButton: 'Open CBZ',
-      );
+      // Three rounds. One round caught the unguarded build in one CI run out of
+      // two, which is not good enough for a regression test that has to fail on
+      // a build someone broke six months from now.
+      for (var round = 0; round < 3; round++) {
+        await ensureAppShowing(
+          tester,
+          initialAsset: 'assets/pubs/sample_comic.cbz',
+          reopenButton: 'Open CBZ',
+        );
 
-      // Not awaited, and sized to outlast the close: full-height thumbnails at
-      // top quality, so each read is followed by a decode and a re-encode.
-      final reads = [
-        for (var i = 0; i < 16; i++)
-          Flureadium().extractPageThumbnail('00${(i % 5) + 1}.jpg', 2000, 100),
-      ];
+        // Not awaited, and sized to outlast the close: full-height thumbnails
+        // at top quality, so each read is followed by a decode and a re-encode.
+        final reads = [
+          for (var i = 0; i < 16; i++)
+            Flureadium().extractPageThumbnail(
+              '00${(i % 5) + 1}.jpg',
+              2000,
+              100,
+            ),
+        ];
 
-      await Flureadium().closePublication();
+        await Flureadium().closePublication();
 
-      for (final read in reads) {
-        // The assertion is that awaiting does not throw. Either answer is
-        // legitimate: a read that beat the close returns bytes, one that lost
-        // returns null.
-        final bytes = await read;
-        if (bytes != null) {
-          expect(bytes, isNotEmpty);
+        for (final read in reads) {
+          // The assertion is that awaiting does not throw. Either answer is
+          // legitimate: a read that beat the close returns bytes, one that lost
+          // returns null.
+          final bytes = await read;
+          if (bytes != null) {
+            expect(bytes, isNotEmpty);
+          }
         }
       }
 
