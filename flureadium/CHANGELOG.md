@@ -2,6 +2,7 @@
 
 ### Bug Fixes
 
+- **Android application reference survives a UI-less engine**: `ReadiumReader.application` threw `IllegalStateException` in an engine with no Activity, because only `attach(activity, ...)` ever seeded it. An Android Auto car engine browsing the library therefore lost EPUB read-aloud. The reference is now seeded from the plugin binding's application context at engine attach, and `detach()` no longer clears it: it is process-scoped and outlives every engine, so a host running a UI engine and a car engine side by side keeps resolving it. The Activity-scoped event channels are unchanged and still require `attach()`.
 - **iOS TTS voice query no longer throws without a session**: `ttsGetAvailableVoices()` returned a `TTSError` on iOS when no TTS session was installed, while Android returned an empty list and Web queried the browser directly. A voice query that raced a TTS teardown therefore crashed on iOS only. iOS now returns an empty list, matching Android. On iOS, `ttsSetVoice()` and `ttsSetPreferences()` still fail without a session, since they mutate one.
 
 ### Documentation
@@ -13,6 +14,7 @@
 
 - iOS XCTest: `ttsGetAvailableVoices` with no TTS navigator returns an empty list rather than an error.
 - Dart: the method-channel decode path surfaces an empty native voice response as an empty list.
+- Android JVM (Robolectric): the Application reference is exposed after an engine attach with no Activity, survives Activity detach, throws before any attach, and cannot be unset by a later attach whose context has no Application.
 - Audiobook integration tests now compare track identity by href rather than by the whole label, and wait for a real href before treating it as a baseline. Three chapter-navigation tests had been reading the label before playback reported a track: one failed intermittently, and the other two could satisfy their "the track changed" check with the first href that arrived rather than with an actual change.
 
 ## 0.16.0
