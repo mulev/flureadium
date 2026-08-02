@@ -335,24 +335,49 @@ no handler anywhere in the chain, so Android kills the process.
 
 The fix is `Resource.catchingClosedContainer()` in `ReadiumExtensions.kt`, applied outermost in
 the `TransformingContainer` that `ReadiumReader.assetToPublication` already installs. It reports
-that one throw as a `ReadError`, which is what readium's own signature promises. It is
-deliberately narrow: any other runtime failure belongs to our transformers or to a navigator and
-has to stay loud. `ResourceClosedContainerTest` covers it, including that `CancellationException`
-still propagates — it subclasses `IllegalStateException`, so a careless guard would swallow it.
+the throw as a `ReadError`, which is what readium's own signature promises. It is deliberately
+narrow: any other runtime failure belongs to our transformers or to a navigator and has to stay
+loud. `ResourceClosedContainerTest` covers it, including that `CancellationException` still
+propagates — it subclasses `IllegalStateException`, so a careless guard would swallow it.
 
-What no test covers is the wiring: that the guard is actually installed on the container the
-navigator reads through. I first assumed the CBZ integration tests covered it. They do not.
-Five green runs with diagnostics kept show the guard logging `Read after the container closed`
-zero times across 105 publication closes, so the suite passes without ever entering the guarded
-path. Absence of the crash in those runs is close to meaningless on its own: at the historical
-rate of one abort in fifteen runs, five clean runs happen about 71% of the time with no fix at
-all, and reaching 95% confidence by sampling would take roughly 45 runs.
-
-What would settle it is a test that closes a publication while a page load is genuinely in
-flight, rather than waiting for CI to roll the dice. Tracked as `flureadium-pbc`, which stays
-open until then.
+`java.util.zip` reports this in two ways, and the first version of the guard only knew about one
+of them. Before the entry stream opens, `ZipFile.ensureOpen` throws
+`IllegalStateException("zip file closed")`. Once the read is streaming, the close has also ended
+the `Inflater`, and `Inflater.ensureOpen` throws `NullPointerException("Inflater has been
+closed")` instead. Same race, same container, and the second one killed a run on a build that
+was supposed to be fixed.
 
 The capture lives in `.github/scripts/android_integration_tests.sh`, not inline in the workflow. `reactivecircus/android-emulator-runner` splits its `script:` input on newlines and runs each line in a separate `sh -c`, so a multi-line body loses its variables, its `set` flags and its line continuations, and a trailing `\` arrives as a literal argument. Give that action one command. `android_integration_tests_test.sh` covers the wrapper and fails if the workflow turns the input back into a block; `Test Example (Widget)` runs it.
+
+### Proving a race is fixed
+
+Worth reading if you ever have to do this again, because the obvious approach does not work.
+
+Green runs prove very little about a fault that appears in one run in fifteen: five clean runs
+happen about 71% of the time with no fix at all, and reaching 95% confidence by sampling alone
+would take roughly 45 runs. Five were run anyway, and the guard logged `Read after the container
+closed` zero times across 105 publication closes — the suite never entered the guarded path, so
+those runs said nothing either way.
+
+Racing the real crash path from Dart did not work either. Firing `goToLocator` and closing
+underneath it left a window a few milliseconds wide, and two runs on a deliberately unguarded
+build both passed.
+
+What works is `reads outliving closePublication fail soft, not fatal` in `cbz_test.dart`. It
+fires sixteen unawaited `extractPageThumbnail` calls and closes the publication under them, three
+times over. Each call captures the publication and then goes to the container, so enough of them
+in flight guarantees some are mid-read when the close lands. It does not need the fatal variant:
+the same throw reaches `dispatchGuarded` on this path and comes back as a `PlatformException`,
+which fails the test just as well.
+
+Verified by running the identical test on two branches differing by the single line that installs
+the guard. Unguarded: three of three failed, all three hitting the throw, one escalating to
+`FATAL EXCEPTION` and taking 32 tests with it. Guarded: three of three passed, with the guard
+logging exactly twice per run. That is what closed `flureadium-pbc`.
+
+The same fault was reported once before as `flureadium-i0s`, through the EPUB WebView rather than
+the image navigator, and was closed by changing test teardown so it stopped closing publications.
+That moved it rather than fixing it, and it came back through another reader four months later.
 
 ## In-car testing (CarPlay / Android Auto)
 
