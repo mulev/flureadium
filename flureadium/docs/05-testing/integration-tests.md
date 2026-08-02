@@ -304,10 +304,18 @@ What it looks like: `flutter test` prints `Waiting for VM Service port to be ava
 
 Two things bound it now:
 
-- `example/dart_test.yaml` sets `suite_load_timeout: 10m`. Loading the suite takes about six minutes on a healthy CI run, so a stalled load fails at ten with a `TimeoutException` instead of hanging. `test_core` enforced a 12-minute default here until 0.6.16 removed it.
+- `example/dart_test.yaml` sets `suite_load_timeout: 10m`. Loading the suite takes about six minutes on a healthy CI run, so a stalled load fails at ten with a `TimeoutException` instead of hanging. `test_core` enforced a 12-minute default here until 0.6.16 removed it. The key sits under `on_os: mac-os`, since only a macOS host runs an iOS simulator — on the Linux runners the file loads to an empty configuration.
 - The iOS job retries once, and only for this failure. `.github/scripts/ios_suite_load_timed_out.sh` checks whether the timeout landed on the `loading ...` pseudo-test, which is what separates a lost VM service URL from a test that overran its own timeout. Compile errors and assertion failures are not retried, since a second run of those just costs another ten minutes.
 
 `.github/scripts/ios_suite_load_timed_out_test.sh` covers the predicate. It replays trimmed event streams for the four failure modes that have to be told apart — suite-load timeout, compile failure, assertion failure, test-body timeout — plus a passing run, a load timeout in a later suite, and empty, truncated and missing event files. The first four came off real `flutter test` runs; the rest are written by hand. `Test Example (Widget)` runs it in CI, and it takes about a second locally.
+
+### When the Android job stops partway and still says everything passed
+
+The Android suite dies mid-flight in roughly one run in fifteen — 3 of the last 45, the oldest on `main` in June. The run gets partway, everything left flushes as a pass in the same millisecond, and `flutter test` exits 1 after printing `N tests passed.` Where it stops moves around: after the seventh, eighth and tenth test in the three runs so far, 18 to 30 seconds into a test phase that normally takes 105.
+
+That output is not as contradictory as it reads. `test_core`'s GitHub reporter prints the success line whenever nothing is in `Engine.failed`, and `Engine.success` returns null — which the runner treats as failure — when the engine is closed before every test has finished. So the pair means the run was torn down early with nothing marked failed.
+
+Why it dies is still unknown. The job captured nothing at all, which is why none of the three could be diagnosed. It now writes `logcat` and a `--file-reporter` event stream to `$RUNNER_TEMP/diag` and uploads them on failure, so the next occurrence should be readable. It is deliberately not retried: the iOS retry is safe because that failure has a known upstream cause, and this one does not. Tracked as `flureadium-pbc`.
 
 ## In-car testing (CarPlay / Android Auto)
 
