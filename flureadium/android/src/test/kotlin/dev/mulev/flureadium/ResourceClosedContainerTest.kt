@@ -41,6 +41,13 @@ internal class ResourceClosedContainerTest {
     /** The literal message `ZipFile.ensureOpen` throws with. */
     private fun zipClosed() = IllegalStateException("zip file closed")
 
+    /**
+     * The literal message `Inflater.ensureOpen` throws with. A read already streaming
+     * when the container closes gets this instead of [zipClosed]; it killed a CI run
+     * on 2026-08-02 that the first version of this guard let through.
+     */
+    private fun inflaterClosed() = NullPointerException("Inflater has been closed")
+
     private class FakeResource(
         override val sourceUrl: AbsoluteUrl? = AbsoluteUrl("file:///tmp/comic.cbz"),
         val onRead: () -> Try<ByteArray, ReadError> = { Try.success(ByteArray(0)) },
@@ -97,6 +104,35 @@ internal class ResourceClosedContainerTest {
         ).catchingClosedContainer()
 
         assertFailsWith<NullPointerException> { guarded.read() }
+    }
+
+    @Test
+    fun read_againstClosedInflater_isReportedAsReadError() = runTest {
+        val guarded = FakeResource(onRead = { throw inflaterClosed() }).catchingClosedContainer()
+
+        val error = assertIs<Try.Failure<ByteArray, ReadError>>(guarded.read()).value
+
+        val access = assertIs<ReadError.Access>(error)
+        assertIs<FileSystemError.IO>(access.cause)
+    }
+
+    @Test
+    fun length_againstClosedInflater_isReportedAsReadError() = runTest {
+        val guarded = FakeResource(onLength = { throw inflaterClosed() }).catchingClosedContainer()
+
+        assertIs<ReadError.Access>(
+            assertIs<Try.Failure<Long, ReadError>>(guarded.length()).value,
+        )
+    }
+
+    @Test
+    fun properties_againstClosedInflater_isReportedAsReadError() = runTest {
+        val guarded =
+            FakeResource(onProperties = { throw inflaterClosed() }).catchingClosedContainer()
+
+        assertIs<ReadError.Access>(
+            assertIs<Try.Failure<Resource.Properties, ReadError>>(guarded.properties()).value,
+        )
     }
 
     @Test
