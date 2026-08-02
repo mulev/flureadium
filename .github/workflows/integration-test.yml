@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      android_only:
+        description: Skip the iOS and Web jobs. For sampling a flaky Android failure without paying for macOS at 10x.
+        type: boolean
+        default: false
 
 jobs:
   integration-android:
@@ -61,8 +66,13 @@ jobs:
           working-directory: flureadium/example
           script: $GITHUB_WORKSPACE/.github/scripts/android_integration_tests.sh
 
+      # Uploaded on success as well as failure. The closed-container guard logs
+      # "Read after the container closed" when it catches the race that used to
+      # kill this suite, and a run that hits the race and still passes is the
+      # only positive evidence the fix works. A green run with no artifact tells
+      # us nothing, since the race only shows up in about one run in fifteen.
       - name: Upload Android diagnostics
-        if: failure()
+        if: always()
         timeout-minutes: 5
         uses: actions/upload-artifact@v4
         with:
@@ -73,6 +83,8 @@ jobs:
   integration-ios:
     name: Integration Tests (iOS)
     runs-on: macos-latest
+    # Empty for push and pull_request, so those still run everything.
+    if: ${{ inputs.android_only != true }}
     timeout-minutes: 55
     defaults:
       run:
@@ -229,6 +241,7 @@ jobs:
   integration-web:
     name: Integration Tests (Web)
     runs-on: ubuntu-latest
+    if: ${{ inputs.android_only != true }}
     timeout-minutes: 15
     defaults:
       run:
