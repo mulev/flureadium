@@ -7,11 +7,13 @@
 ### Documentation
 
 - **Voice query contract stated where the API is defined**: the platform interface, the public facade, and the API reference now say the same thing about when a voice query throws. The TTS guide, the `TTSPreferences` reference, and the iOS troubleshooting page source voice identifiers with `ttsGetSystemVoices()`, which works before `ttsEnable()`. `docs/platform-specific/macos.md` is deliberately left alone: the macOS plugin implements only `getPlatformVersion`, so every call that page documents raises `MissingPluginException` regardless of which one it names.
+- **Audiobook position timing written down**: the audiobook guide now says that `play()` returning does not mean a position exists yet, and that on Android the native locator survives `stop()` and reopen, so early states for a new book can still carry the previous one's position. The auto-save example screens the locator against the reading order, with a note on why that filters rather than proves which book a locator came from.
 
 ### Testing
 
 - iOS XCTest: `ttsGetAvailableVoices` with no TTS navigator returns an empty list rather than an error.
 - Dart: the method-channel decode path surfaces an empty native voice response as an empty list.
+- Audiobook integration tests now compare track identity by href rather than by the whole label, and wait for a real href before treating it as a baseline. Three chapter-navigation tests had been reading the label before playback reported a track: one failed intermittently, and the other two could satisfy their "the track changed" check with the first href that arrived rather than with an actual change.
 
 ## 0.16.0
 

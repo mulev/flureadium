@@ -523,17 +523,33 @@ Widget buildTrackList(Publication pub) {
 
 ## Saving Playback Position
 
+`play()` returning does not mean a position exists yet. The first timebased
+state carrying this publication's `currentLocator` arrives a moment later on
+`onTimebasedPlayerStateChanged`, so read position from that stream rather than
+straight after `play()`. Be wary of stale locators, too: on Android the native
+locator is retained across `stop()` and reopen, so the first states of a new
+publication can still carry the previous one's position, and a null check will
+not catch it. Matching the locator's `href` against the reading order, as the
+listener below does, screens out the obvious cases. It is a filter rather than
+a guarantee — a `Locator` carries no publication identity, and hrefs are
+publication-relative, so two books that both contain `chapter1.mp3` are
+indistinguishable this way.
+
 ### Auto-Save Position
 
 ```dart
 flureadium.onTimebasedPlayerStateChanged
     .debounceTime(Duration(seconds: 5))
     .listen((state) async {
-  if (state.currentLocator != null) {
+  final locator = state.currentLocator;
+  // The locator can still be the previous book's. Screening it against the
+  // reading order catches the common case; see the note above for the limits.
+  if (locator != null &&
+      publication.readingOrder.any((link) => link.href == locator.href)) {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       'audio_position_${publication.identifier}',
-      state.currentLocator!.json,
+      locator.json,
     );
   }
 });
