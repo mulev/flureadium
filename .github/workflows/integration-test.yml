@@ -38,16 +38,15 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # This suite dies mid-flight in roughly one run in fifteen (3 of the
-      # last 45, going back to June). It stops after a varying test - the
-      # seventh, eighth, tenth - package:test flushes everything left as
-      # passed, and `flutter test` exits 1 while printing "N tests passed".
-      # The job captured nothing, so none of the three could be diagnosed.
-      # logcat plus the event stream make the next one readable. Tracked as
-      # flureadium-pbc.
+      # The diagnostics below caught the mid-run abort that killed this suite
+      # about one run in fifteen between June and August 2026: closing a
+      # publication under an in-flight page read threw `zip file closed` in a
+      # coroutine with no handler, and Android killed the app. Fixed in
+      # ReadiumExtensions.kt; kept because it is the only thing that would make
+      # a repeat readable. Tracked as flureadium-pbc.
       #
-      # Deliberately not retried, unlike the iOS suite-load hang. That one has
-      # a known upstream cause; this does not, and a retry would hide it.
+      # Still deliberately not retried. A retry hides the tear-down signature
+      # that made this diagnosable at all.
       #
       # This action runs every line of `script` in its own `sh -c`, so the
       # wrapper has to arrive as one command. Keep it that way; the check in

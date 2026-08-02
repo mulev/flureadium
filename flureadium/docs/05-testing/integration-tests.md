@@ -309,13 +309,39 @@ Two things bound it now:
 
 `.github/scripts/ios_suite_load_timed_out_test.sh` covers the predicate. It replays trimmed event streams for the four failure modes that have to be told apart — suite-load timeout, compile failure, assertion failure, test-body timeout — plus a passing run, a load timeout in a later suite, and empty, truncated and missing event files. The first four came off real `flutter test` runs; the rest are written by hand. `Test Example (Widget)` runs it in CI, and it takes about a second locally.
 
-### When the Android job stops partway and still says everything passed
+### When the Android job stopped partway and still said everything passed
 
-The Android suite dies mid-flight in roughly one run in fifteen — 3 of the last 45, the oldest on `main` in June. The run gets partway, everything left flushes as a pass in the same millisecond, and `flutter test` exits 1 after printing `N tests passed.` Where it stops moves around: after the seventh, eighth and tenth test in the three runs so far, 18 to 30 seconds into a test phase that normally takes 105.
+Fixed on 2026-08-02. Kept here because the shape is worth recognising: the suite would die
+mid-flight in roughly one run in fifteen, everything left would flush as a pass in the same
+millisecond, and `flutter test` would exit 1 after printing `N tests passed.`
 
-That output is not as contradictory as it reads. `test_core`'s GitHub reporter prints the success line whenever nothing is in `Engine.failed`, and `Engine.success` returns null — which the runner treats as failure — when the engine is closed before every test has finished. So the pair means the run was torn down early with nothing marked failed.
+That output is less contradictory than it reads. `test_core`'s GitHub reporter prints the success
+line whenever nothing is in `Engine.failed`, and `Engine.success` returns null — which the runner
+treats as failure — when the engine is closed before every test has finished. The pair means the
+run was torn down early with nothing marked failed.
 
-Why it dies is still unknown. The job captured nothing at all, which is why none of the three could be diagnosed. It now writes `logcat` and a `--file-reporter` event stream to `$RUNNER_TEMP/diag` and uploads them on failure, so the next occurrence should be readable. It is deliberately not retried: the iOS retry is safe because that failure has a known upstream cause, and this one does not. Tracked as `flureadium-pbc`.
+Three occurrences going back to June captured nothing, so none could be diagnosed. The fourth ran
+with `logcat` and a `--file-reporter` event stream and gave up the cause immediately: the app
+process was taken down by `FATAL EXCEPTION: main`, `java.lang.IllegalStateException: zip file
+closed`.
+
+Closing a publication while the image navigator is still loading a page closes the backing
+`ZipFile` underneath an in-flight read. Fragment removal cancels readium's page fragment, but
+cancellation is cooperative and a read already inside `withContext(Dispatchers.IO)` keeps going.
+It reaches `ZipFile.ensureOpen` and throws. readium 3.1.2's `FileZipContainer.Entry.read()`
+catches only `ZipException` and `IOException`, so that throw escapes the `Try` the method
+declares, and it surfaces in `R2CbzPageFragment`, which reads from a parentless root coroutine —
+no handler anywhere in the chain, so Android kills the process.
+
+The fix is `Resource.catchingClosedContainer()` in `ReadiumExtensions.kt`, applied outermost in
+the `TransformingContainer` that `ReadiumReader.assetToPublication` already installs. It reports
+that one throw as a `ReadError`, which is what readium's own signature promises. It is
+deliberately narrow: any other runtime failure belongs to our transformers or to a navigator and
+has to stay loud. `ResourceClosedContainerTest` covers it, including that `CancellationException`
+still propagates — it subclasses `IllegalStateException`, so a careless guard would swallow it.
+
+The wiring itself is covered by the CBZ integration tests rather than by a unit test, matching
+how the rest of the real open path is tested. Tracked as `flureadium-pbc`.
 
 The capture lives in `.github/scripts/android_integration_tests.sh`, not inline in the workflow. `reactivecircus/android-emulator-runner` splits its `script:` input on newlines and runs each line in a separate `sh -c`, so a multi-line body loses its variables, its `set` flags and its line continuations, and a trailing `\` arrives as a literal argument. Give that action one command. `android_integration_tests_test.sh` covers the wrapper and fails if the workflow turns the input back into a block; `Test Example (Widget)` runs it.
 
