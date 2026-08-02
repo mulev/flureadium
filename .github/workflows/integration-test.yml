@@ -51,7 +51,7 @@ jobs:
   integration-ios:
     name: Integration Tests (iOS)
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     defaults:
       run:
         working-directory: flureadium/example
@@ -82,12 +82,84 @@ jobs:
           echo "Booting simulator: $UDID"
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID"
+          echo "IOS_UDID=$UDID" >> "$GITHUB_ENV"
 
+      - name: Start simulator log capture
+        timeout-minutes: 2
+        run: |
+          mkdir -p "$RUNNER_TEMP/diag"
+          xcrun simctl spawn "$IOS_UDID" log stream --level debug --style compact \
+            --predicate 'process == "Runner"' \
+            > "$RUNNER_TEMP/diag/simulator.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/diag/logstream.pid"
+
+      # The watchdog samples while the hang is still live. Waiting for a later
+      # if: failure() step is too late: the 20m step timeout kills the process
+      # group, so Runner is gone and the spindump comes back empty. Two samples
+      # four minutes apart distinguish a deadlock (identical stacks) from slow
+      # progress (stacks move).
       - name: Run integration tests
         timeout-minutes: 20
         run: |
-          UDID=$(xcrun simctl list devices booted | grep "iPhone" | grep -oE '\([A-F0-9-]+\)' | tr -d '()' | head -1)
-          flutter test integration_test/all_tests.dart -d "$UDID"
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/diag"
+
+          capture() {
+            local tag="$1"
+            {
+              echo "=== watchdog $tag at $(date -u +%H:%M:%S) ==="
+              pgrep -fl Runner || echo "no Runner process"
+              xcrun simctl list devices booted || true
+              local pid
+              pid=$(pgrep -f 'Runner.app/Runner' | head -1 || true)
+              echo "host pid: ${pid:-none}"
+              if [ -n "$pid" ]; then
+                sample "$pid" 5 -file "$RUNNER_TEMP/diag/sample-$tag.txt" || true
+                sudo spindump "$pid" 10 -file "$RUNNER_TEMP/diag/spindump-$tag.txt" || true
+              fi
+            } >> "$RUNNER_TEMP/diag/watchdog.log" 2>&1
+          }
+          ( sleep 720; capture t12m; sleep 240; capture t16m ) &
+          WATCHDOG=$!
+
+          # bash -e is on by default, so the pipeline failing would exit the
+          # script before STATUS is read. pipefail makes $? flutter's status,
+          # not tee's.
+          set +e
+          # --file-reporter gives a per-test event stream: a hang leaves a
+          # testStart with no testDone, and zero testStart events means the
+          # suite never started at all.
+          flutter test integration_test/all_tests.dart -d "$IOS_UDID" \
+            --reporter expanded --verbose \
+            --file-reporter "json:$RUNNER_TEMP/diag/test-events.json" 2>&1 \
+            | tee "$RUNNER_TEMP/diag/flutter-test.log"
+          STATUS=$?
+          set -e
+          kill "$WATCHDOG" 2>/dev/null || true
+          exit "$STATUS"
+
+      # Post-hoc only: crash reports and logs survive process death, so these
+      # are safe to collect after the test step has been killed.
+      - name: Collect logs and crash reports
+        if: always()
+        timeout-minutes: 5
+        run: |
+          cd "$RUNNER_TEMP/diag" || exit 0
+          mkdir -p crashes coresim
+          [ -f logstream.pid ] && kill "$(cat logstream.pid)" 2>/dev/null || true
+          cp -R "$HOME/Library/Logs/DiagnosticReports/." crashes/ 2>/dev/null || true
+          cp -R "$HOME/Library/Logs/CoreSimulator/$IOS_UDID/." coresim/ 2>/dev/null || true
+          echo "=== watchdog ==="; cat watchdog.log 2>/dev/null || echo "(watchdog never fired)"
+          echo "=== last 40 lines of simulator log ==="; tail -40 simulator.log 2>/dev/null || true
+
+      - name: Upload hang diagnostics
+        if: failure()
+        timeout-minutes: 5
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-integration-diagnostics
+          path: ${{ runner.temp }}/diag
+          retention-days: 14
 
       - name: Shutdown simulator
         if: always()
