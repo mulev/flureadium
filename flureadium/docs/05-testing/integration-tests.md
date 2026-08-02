@@ -317,6 +317,8 @@ That output is not as contradictory as it reads. `test_core`'s GitHub reporter p
 
 Why it dies is still unknown. The job captured nothing at all, which is why none of the three could be diagnosed. It now writes `logcat` and a `--file-reporter` event stream to `$RUNNER_TEMP/diag` and uploads them on failure, so the next occurrence should be readable. It is deliberately not retried: the iOS retry is safe because that failure has a known upstream cause, and this one does not. Tracked as `flureadium-pbc`.
 
+The capture lives in `.github/scripts/android_integration_tests.sh`, not inline in the workflow. `reactivecircus/android-emulator-runner` splits its `script:` input on newlines and runs each line in a separate `sh -c`, so a multi-line body loses its variables, its `set` flags and its line continuations, and a trailing `\` arrives as a literal argument. Give that action one command. `android_integration_tests_test.sh` covers the wrapper and fails if the workflow turns the input back into a block; `Test Example (Widget)` runs it.
+
 ## In-car testing (CarPlay / Android Auto)
 
 The in-car browse/search/play surface is covered automatically as far as it can be without a head unit, and the rest is a documented, reproducible manual pass.
