@@ -207,11 +207,19 @@ await flureadium.goRight();
    await flureadium.play(null);
    ```
 
-2. Check available voices:
+2. Check voices. These two calls answer different questions, and comparing them tells you which cause you have. The device's own voices, independent of any TTS session:
+   ```dart
+   final systemVoices = await flureadium.ttsGetSystemVoices();
+   print('Device voices: ${systemVoices.length}');
+   ```
+
+   And what the TTS session reports — an empty list on Android and iOS when TTS is not enabled:
    ```dart
    final voices = await flureadium.ttsGetAvailableVoices();
-   print('Available voices: ${voices.length}');
+   print('Session voices: ${voices.length}');
    ```
+
+   An empty session list beside a populated device list points at cause 1, not cause 2.
 
 3. On Android, ensure TTS engine is installed
 
@@ -327,13 +335,27 @@ The audio delegate callbacks read `_audioNavigator?.playbackInfo` synchronously.
 **Fix (applied):**
 `FlutterAudioNavigator` now caches the `MediaPlaybackInfo` that Readium delivers off-lock to `playbackDidChange`, and the last `Locator` from `locationDidChange`. The two transition callbacks serve their state from those cached values instead of reading back into the live navigator, so nothing re-enters the AVPlayer lock.
 
+### iOS: "TTS Navigator not initialized" From a Voice Query After TTS Stops
+
+**Symptom:**
+```
+PlatformException(TTSError, TTS Navigator not initialized, null, null)
+```
+Thrown from `ttsGetAvailableVoices()`, often after the exception has already escaped the call that started it, so the stack points at whatever code was running when it surfaced. Distinct from the stop-then-re-enable case below, where `ttsEnable()` itself fails.
+
+**Cause:**
+iOS raised for a voice query with no TTS session installed, while Android returned an empty list and Web queried the browser directly. Any caller whose voice query outlived its session — a user tapping stop while an enable sequence was still resolving, for instance — got a fatal error on iOS only.
+
+**Fix (applied):**
+`ttsGetAvailableVoices` now answers an empty list when no `FlutterTTSNavigator` is installed, so a voice query for a session that has gone away is benign on Android, iOS, and Web. `ttsSetVoice` and `ttsSetPreferences` still fail without a session: they mutate one.
+
 ### iOS: "TTS Navigator not initialized" After Stop Then Re-enable
 
 **Symptom:**
 ```
 PlatformException(..., TTS Navigator not initialized)
 ```
-Enabling TTS (or opening another audio session) right after stopping playback fails, even though the new navigator was just created.
+Enabling TTS (or opening another audio session) right after stopping playback fails, even though the new navigator was just created. Distinct from the voice-query case above, which carries the same message but comes from `ttsGetAvailableVoices()`.
 
 **Cause:**
 `stop` disposes the timebased navigator on a detached main-actor task, so teardown runs after the call returns. If a newer session installs its own navigator before that straggler teardown runs, the late teardown nils it out and leaves the shared slot empty.
@@ -354,6 +376,30 @@ The publication method-channel handler caught every exception and forwarded it t
 
 **Fix (applied):**
 `dispatchGuarded` re-throws `CancellationException` instead of reporting it, so a coroutine torn down mid-call unwinds normally and no phantom `PlatformException` reaches Dart.
+
+### Android: App Killed on Close with "zip file closed" or "Inflater has been closed"
+
+**Symptom:**
+```
+FATAL EXCEPTION: main
+java.lang.IllegalStateException: zip file closed
+	at java.util.zip.ZipFile.ensureOpen(ZipFile.java:753)
+	at org.readium.r2.shared.util.zip.FileZipContainer$Entry$readFully$2.invokeSuspend(FileZipContainer.kt:97)
+```
+or, when the read had already started streaming:
+```
+FATAL EXCEPTION: main
+java.lang.NullPointerException: Inflater has been closed
+	at java.util.zip.Inflater.ensureOpen(Inflater.java:416)
+	at java.util.zip.InflaterInputStream.read(InflaterInputStream.java:172)
+```
+The app dies outright, with no Dart error and no exception reaching your code. Closing a publication is what triggers it, and it needs a read still in flight, so it shows up on CBZ and DIVINA where the image navigator reads whole pages. It is timing dependent: the window is around 150 ms wide, and in CI it hit about one run in fifteen.
+
+**Cause:**
+`closePublication()` closes the backing `ZipFile`. Removing the navigator fragment cancels readium's page fragment, but cancellation is cooperative, so a read already inside `withContext(Dispatchers.IO)` keeps going and reaches the closed container. Which exception you get depends on how far it had got: `ZipFile.ensureOpen` before the entry stream opens, `Inflater.ensureOpen` once it is streaming. readium 3.1.2 catches `ZipException` and `IOException` in `FileZipContainer.Entry.read()` and neither of these, so the throw escapes the `Try<ByteArray, ReadError>` the method declares. It surfaces in `R2CbzPageFragment`, whose `coroutineContext` is `Dispatchers.Main` with no `Job`: that read is a parentless root coroutine, so no `CoroutineExceptionHandler` anywhere can reach it and the default handler kills the process.
+
+**Fix (applied):**
+Resources are wrapped at open time in a guard that reports a read against a closed container as `ReadError.Access`, which is what readium's own `read()` signature promises. The page render fails and the fragment is torn down regardless, so nothing is lost. The guard matches the two exact messages above and nothing else, so a genuine null dereference in a transformer still surfaces, and it re-throws `CancellationException` first, since that subclasses `IllegalStateException`. The race itself is upstream in readium and unchanged.
 
 ## Platform-Specific Issues
 
@@ -509,8 +555,8 @@ flureadium.onTextLocatorChanged.listen((locator) {
 If you can't resolve an issue:
 
 1. Check the [example app](../example/) for working code
-2. Review [Error Handling Guide](../../ERROR_HANDLING.md)
-3. Search existing [GitHub issues](https://github.com/anthropics/flureadium/issues)
+2. Review the [error handling guide](guides/error-handling.md)
+3. Search existing [GitHub issues](https://github.com/mulev/flureadium/issues)
 4. Open a new issue with:
    - Flutter version (`flutter --version`)
    - Platform (iOS, Android, Web, macOS)
@@ -520,5 +566,5 @@ If you can't resolve an issue:
 ## See Also
 
 - [Installation](getting-started/installation.md) - Setup guide
-- [Error Handling Guide](../../ERROR_HANDLING.md) - Exception types
+- [Error Handling](guides/error-handling.md) - Exception types
 - [Platform-Specific Docs](platform-specific/) - Platform details

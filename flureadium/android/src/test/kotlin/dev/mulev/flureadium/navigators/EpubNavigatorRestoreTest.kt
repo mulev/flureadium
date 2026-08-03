@@ -20,8 +20,6 @@ import org.junit.runner.RunWith
  *
  * Fix: Skip scrollToLocations() when already positioned correctly (within 1% delta).
  *
- * See: /Users/mulev/Documents/projects/project_plans/epist/todo/epist_fix_epub_location_restore_android.md
- *
  * Uses Robolectric so that Readium's Url class can call android.net.Uri.parse.
  */
 @RunWith(RobolectricTestRunner::class)

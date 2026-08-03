@@ -263,6 +263,28 @@ void main() {
         },
       );
 
+      test(
+        'ttsGetAvailableVoices returns empty list for empty native response',
+        () async {
+          // Android and iOS answer with an empty list when no TTS session
+          // exists. The decode path must surface that as an empty list, never
+          // a throw and never null.
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(platform.methodChannel, (call) async {
+                methodCalls.add(call);
+                if (call.method == 'ttsGetAvailableVoices') {
+                  return <Object?>[];
+                }
+                return _mockResponse(call);
+              });
+
+          final voices = await platform.ttsGetAvailableVoices();
+
+          expect(methodCalls.last.method, equals('ttsGetAvailableVoices'));
+          expect(voices, isEmpty);
+        },
+      );
+
       test('ttsGetSystemVoices returns list of voices', () async {
         final voices = await platform.ttsGetSystemVoices();
 

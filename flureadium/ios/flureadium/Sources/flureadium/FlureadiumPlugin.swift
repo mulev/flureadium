@@ -281,11 +281,12 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
         }
       }
     case "ttsGetAvailableVoices":
+      // No session installed is an empty answer, not a failure: Android's
+      // PublicationChannel.ttsGetAvailableVoices returns listOf(), and Web
+      // queries the browser's speech synthesis directly.
+      // Raising here made a benign read fatal on iOS only.
       guard let ttsNavigator = self.timebasedNavigator as? FlutterTTSNavigator else {
-        return result(FlutterError.init(
-          code: "TTSError",
-          message: "TTS Navigator not initialized",
-          details: nil))
+        return result([String]())
       }
       let availableVoices = ttsNavigator.ttsGetAvailableVoices()
       result(availableVoices.compactMap { $0.jsonString })

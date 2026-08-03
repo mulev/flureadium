@@ -165,9 +165,31 @@ android/src/main/kotlin/dev/mulev/flureadium/
     └── PdfNavigator.kt          # PDF navigation controller
 ```
 
+### Plugin Lifecycle
+
+The plugin attaches twice, and each attachment owns different state.
+
+`onAttachedToEngine` seeds `ReadiumReader`'s `Application` reference from the
+plugin binding's application context. That context exists even when no Activity
+does, so an engine running without a UI (the car engine behind Android Auto, a
+background isolate) can still make application-only calls such as the TTS
+system-voice query or navigator construction. The reference is process-scoped
+and never cleared, because `Application` outlives every engine. A host can run a
+UI engine and a car engine at once, and both keep resolving it after either one
+detaches. The rest of `ReadiumReader`'s state is not engine-safe: `detach()`
+runs on both Activity and engine detach, and it clears everything else,
+including the channels below.
+
+`onAttachedToActivity` handles the parts that need an Activity: the reader
+widget, saved-state restore, and the event channels below. A headless engine
+skips all of it.
+
 ### Event Channels
 
-All four Flutter EventChannels are registered in `ReadiumReader.attach()`:
+All four Flutter EventChannels are registered in `ReadiumReader.attach()`, which
+runs at Activity attach. So registration is Activity-scoped: an engine with no
+Activity gets the application context it needs for method calls, but no reader
+state events.
 
 | Channel | Kotlin class | Events |
 |---|---|---|

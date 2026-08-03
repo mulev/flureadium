@@ -291,6 +291,15 @@ Android navigators (`AudiobookNavigator`, `TTSNavigator`, `EpubNavigator`, `PdfN
 
 `ReadiumReader.closePublication()`, `audioEnable()`, and `stop()` all use `release()` to prevent race conditions between test runs and publication switches on emulators with limited audio HAL resources.
 
+What `release()` does not buy you is a quiet container. It waits for our navigators, and
+`ImageNavigator.release()` removes the fragment, but removing a fragment only *cancels* readium's
+page fragment, and cancellation is cooperative. A read already suspended inside
+`withContext(Dispatchers.IO)` runs to completion against a `ZipFile` that `closePublication()`
+has since closed. Reading this paragraph as "the close is awaited, therefore nothing is still
+reading" is what made that crash hard to find. The container boundary carries its own guard for
+this (`Resource.catchingClosedContainer()` in `ReadiumExtensions.kt`); see the "zip file closed"
+entry in [Troubleshooting](../troubleshooting.md).
+
 ### iOS Publication Cleanup: `await MainActor.run` vs fire-and-forget `Task`
 
 iOS method channel handlers run on a background thread. Publication cleanup (nullifying navigators, closing the publication) must happen on `@MainActor` because UIKit state is involved. Two patterns exist:

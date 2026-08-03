@@ -498,9 +498,9 @@ Ensure NSAppTransportSecurity is configured in Info.plist.
 
 ### TTS Voice Quality
 
-iOS provides high-quality voices. To check available voices:
+iOS provides high-quality voices. To check what the device has installed, without needing TTS enabled:
 ```dart
-final voices = await flureadium.ttsGetAvailableVoices();
+final voices = await flureadium.ttsGetSystemVoices();
 // Look for "Enhanced" or "Premium" voices
 ```
 

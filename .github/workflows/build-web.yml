@@ -10,6 +10,7 @@ jobs:
   build:
     name: Build Web Example
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: flureadium/example

@@ -5,6 +5,7 @@ package dev.mulev.flureadium
 import android.util.Log
 import androidx.core.graphics.toColorInt
 import dev.mulev.flureadium.models.FlutterMediaOverlay
+import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.epub.EpubPreferences
@@ -19,6 +20,8 @@ import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.flatten
 import org.readium.r2.shared.publication.html.cssSelector
 import org.readium.r2.shared.util.Try
+import org.readium.r2.shared.util.data.ReadError
+import org.readium.r2.shared.util.file.FileSystemError
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.shared.util.resource.Resource
 import org.readium.r2.shared.util.resource.TransformingResource
@@ -130,6 +133,80 @@ fun Resource.injectScriptsAndStyles(): Resource =
 
         Try.success(newContent.toByteArray())
     }
+
+/** The literal message `java.util.zip.ZipFile.ensureOpen` throws with. */
+private const val ZIP_FILE_CLOSED = "zip file closed"
+
+/** The literal message `java.util.zip.Inflater.ensureOpen` throws with. */
+private const val INFLATER_CLOSED = "Inflater has been closed"
+
+/**
+ * Whether this is `java.util.zip` reporting that the container closed while a read
+ * was running against it.
+ *
+ * There are two of these, and which one you get depends on how far the read had got.
+ * Before the entry stream opens, `ZipFile.ensureOpen` throws an
+ * `IllegalStateException`. Once the read is streaming, the container's close has also
+ * ended the `Inflater`, and `Inflater.ensureOpen` throws a `NullPointerException`
+ * instead. Same fault, same cause, and both fatal if they escape. Matching on the
+ * message keeps this off genuine null-dereference bugs in our own code.
+ */
+private fun Throwable.isClosedContainerRead(): Boolean = when (this) {
+    is IllegalStateException -> message == ZIP_FILE_CLOSED
+    is NullPointerException -> message == INFLATER_CLOSED
+    else -> false
+}
+
+/**
+ * Reports a read against a closed container as a [ReadError] instead of throwing.
+ *
+ * Closing a publication while a navigator is still loading closes the backing
+ * `ZipFile` underneath the in-flight read. That read reaches
+ * `java.util.zip.ZipFile.ensureOpen` or, mid-stream, `java.util.zip.Inflater.ensureOpen`.
+ * readium 3.1.2's `FileZipContainer.Entry.read()` catches only `ZipException` and
+ * `IOException`, so neither is expressed through the `Try<ByteArray, ReadError>` it
+ * declares. They land in `R2CbzPageFragment`, which reads from a parentless root
+ * coroutine (`coroutineContext = Dispatchers.Main`, no `Job`), leaving no handler in
+ * the chain for us to install: Android takes the whole app down with
+ * `FATAL EXCEPTION: main`.
+ * That killed the integration suite about one run in fifteen (`flureadium-pbc`).
+ *
+ * Only those two messages are caught. Any other runtime failure is a bug in our own
+ * transformers or in a navigator and has to stay loud, or it turns into a blank page
+ * nobody can trace.
+ */
+fun Resource.catchingClosedContainer(): Resource = ClosedContainerSafeResource(this)
+
+private class ClosedContainerSafeResource(
+    private val resource: Resource,
+) : Resource by resource {
+
+    override suspend fun read(range: LongRange?): Try<ByteArray, ReadError> =
+        guarded { resource.read(range) }
+
+    override suspend fun length(): Try<Long, ReadError> =
+        guarded { resource.length() }
+
+    override suspend fun properties(): Try<Resource.Properties, ReadError> =
+        guarded { resource.properties() }
+
+    private suspend fun <T> guarded(
+        read: suspend () -> Try<T, ReadError>,
+    ): Try<T, ReadError> =
+        try {
+            read()
+        } catch (e: CancellationException) {
+            // Subclasses IllegalStateException, so it has to be re-thrown before the
+            // check below or a cancelled read unwinds as a missing resource instead.
+            throw e
+        } catch (e: RuntimeException) {
+            if (!e.isClosedContainerRead()) throw e
+            // Zip entries carry no sourceUrl, which is the common case here, so
+            // fall back to something an operator can still act on.
+            Log.w(TAG, "Read after the container closed: ${resource.sourceUrl ?: "zip entry"}")
+            Try.failure(ReadError.Access(FileSystemError.IO(e)))
+        }
+}
 
 val syncNarrationsMediaType = MediaType("application/vnd.syncnarr+json")
 

@@ -6,11 +6,17 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      android_only:
+        description: Skip the iOS and Web jobs. For sampling a flaky Android failure without paying for macOS at 10x.
+        type: boolean
+        default: false
 
 jobs:
   integration-android:
     name: Integration Tests (Android)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: flureadium/example
@@ -37,18 +43,49 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # The diagnostics below caught the mid-run abort that killed this suite
+      # about one run in fifteen between June and August 2026: closing a
+      # publication under an in-flight page read threw `zip file closed` in a
+      # coroutine with no handler, and Android killed the app. Fixed in
+      # ReadiumExtensions.kt; kept because it is the only thing that would make
+      # a repeat readable. Tracked as flureadium-pbc.
+      #
+      # Still deliberately not retried. A retry hides the tear-down signature
+      # that made this diagnosable at all.
+      #
+      # This action runs every line of `script` in its own `sh -c`, so the
+      # wrapper has to arrive as one command. Keep it that way; the check in
+      # android_integration_tests_test.sh fails if it turns into a block.
       - name: Run integration tests
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
           arch: x86_64
           profile: Nexus 6
           working-directory: flureadium/example
-          script: flutter test integration_test/all_tests_android_ci.dart
+          script: $GITHUB_WORKSPACE/.github/scripts/android_integration_tests.sh
+
+      # Uploaded on success as well as failure. The closed-container guard logs
+      # "Read after the container closed" when it catches the race that used to
+      # kill this suite, and a run that hits the race and still passes is the
+      # only positive evidence the fix works. A green run with no artifact tells
+      # us nothing, since the race only shows up in about one run in fifteen.
+      - name: Upload Android diagnostics
+        if: always()
+        timeout-minutes: 5
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-integration-diagnostics
+          path: ${{ runner.temp }}/diag
+          retention-days: 14
 
   integration-ios:
     name: Integration Tests (iOS)
     runs-on: macos-latest
+    # Empty for push and pull_request, so those still run everything.
+    if: ${{ inputs.android_only != true }}
+    timeout-minutes: 55
     defaults:
       run:
         working-directory: flureadium/example
@@ -64,9 +101,11 @@ jobs:
         run: flutter pub get
 
       - name: Install CocoaPods
+        timeout-minutes: 8
         run: cd ios && pod install --repo-update
 
       - name: Boot simulator
+        timeout-minutes: 8
         run: |
           UDID=$(xcrun simctl list devices available | grep "iPhone" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
           if [ -z "$UDID" ]; then
@@ -77,11 +116,123 @@ jobs:
           echo "Booting simulator: $UDID"
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID"
+          echo "IOS_UDID=$UDID" >> "$GITHUB_ENV"
 
-      - name: Run integration tests
+      - name: Start simulator log capture
+        timeout-minutes: 2
         run: |
-          UDID=$(xcrun simctl list devices booted | grep "iPhone" | grep -oE '\([A-F0-9-]+\)' | tr -d '()' | head -1)
-          flutter test integration_test/all_tests.dart -d "$UDID"
+          mkdir -p "$RUNNER_TEMP/diag"
+          xcrun simctl spawn "$IOS_UDID" log stream --level debug --style compact \
+            --predicate 'process == "Runner"' \
+            > "$RUNNER_TEMP/diag/simulator.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/diag/logstream.pid"
+
+      # The watchdog samples while the hang is still live. Waiting for a later
+      # if: failure() step is too late: the step timeout kills the process
+      # group, so Runner is gone and the spindump comes back empty. Two samples
+      # four minutes apart distinguish a deadlock (identical stacks) from slow
+      # progress (stacks move).
+      #
+      # It no longer fires for a stuck suite load, which dart_test.yaml now cuts
+      # off at 10m with a clear error. It stays for hangs that are still
+      # unbounded, such as a deadlock inside a test body.
+      #
+      # The cap covers two attempts: a load bounded at 10m, then a full healthy
+      # run, which takes about 10m.
+      - name: Run integration tests
+        id: run-tests
+        timeout-minutes: 25
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/diag"
+
+          capture() {
+            local tag="$1"
+            {
+              echo "=== watchdog $tag at $(date -u +%H:%M:%S) ==="
+              pgrep -fl Runner || echo "no Runner process"
+              xcrun simctl list devices booted || true
+              local pid
+              pid=$(pgrep -f 'Runner.app/Runner' | head -1 || true)
+              echo "host pid: ${pid:-none}"
+              if [ -n "$pid" ]; then
+                sample "$pid" 5 -file "$RUNNER_TEMP/diag/sample-$tag.txt" || true
+                sudo spindump "$pid" 10 -file "$RUNNER_TEMP/diag/spindump-$tag.txt" || true
+              fi
+            } >> "$RUNNER_TEMP/diag/watchdog.log" 2>&1
+          }
+
+          attempts=2
+          for attempt in $(seq 1 "$attempts"); do
+            events="$RUNNER_TEMP/diag/test-events-$attempt.json"
+
+            # Killing the subshell orphans whichever `sleep` it is sitting in,
+            # and an orphan that inherited the step's stdout keeps the runner
+            # waiting for EOF long after the tests finished. Point the whole
+            # subshell at /dev/null; capture() writes to watchdog.log directly,
+            # so no diagnostics are lost.
+            ( sleep 720; capture "a$attempt-t12m"; sleep 240; capture "a$attempt-t16m" ) \
+              >/dev/null 2>&1 &
+            WATCHDOG=$!
+
+            # bash -e is on by default, so the pipeline failing would exit the
+            # script before STATUS is read. pipefail keeps flutter's non-zero
+            # status from being masked by tee's success.
+            set +e
+            # --file-reporter gives a per-test event stream, which is how the
+            # retry check below tells a lost VM service URL apart from a real
+            # test failure.
+            flutter test integration_test/all_tests.dart -d "$IOS_UDID" \
+              --reporter expanded --verbose \
+              --file-reporter "json:$events" 2>&1 \
+              | tee "$RUNNER_TEMP/diag/flutter-test-$attempt.log"
+            STATUS=$?
+            set -e
+            kill "$WATCHDOG" 2>/dev/null || true
+
+            if [ "$STATUS" -eq 0 ]; then
+              exit 0
+            fi
+
+            # Retry only when the suite never loaded. Build, compile and
+            # assertion failures are deterministic, and a second run of those
+            # just burns ten minutes of macOS runner time.
+            if [ "$attempt" -lt "$attempts" ] \
+               && "$GITHUB_WORKSPACE/.github/scripts/ios_suite_load_timed_out.sh" "$events"; then
+              echo "::warning::Attempt $attempt never loaded the suite: the Dart VM service URL never reached the tool. Retrying."
+              # The root cause is upstream and still open, so a run that
+              # recovered is the one carrying fresh evidence. Flag it, or the
+              # failure()-gated upload below throws the artifacts away.
+              echo "retried=true" >> "$GITHUB_OUTPUT"
+              pkill -f 'Runner.app/Runner' 2>/dev/null || true
+              continue
+            fi
+
+            exit "$STATUS"
+          done
+
+      # Post-hoc only: crash reports and logs survive process death, so these
+      # are safe to collect after the test step has been killed.
+      - name: Collect logs and crash reports
+        if: always()
+        timeout-minutes: 5
+        run: |
+          cd "$RUNNER_TEMP/diag" || exit 0
+          mkdir -p crashes coresim
+          [ -f logstream.pid ] && kill "$(cat logstream.pid)" 2>/dev/null || true
+          cp -R "$HOME/Library/Logs/DiagnosticReports/." crashes/ 2>/dev/null || true
+          cp -R "$HOME/Library/Logs/CoreSimulator/$IOS_UDID/." coresim/ 2>/dev/null || true
+          echo "=== watchdog ==="; cat watchdog.log 2>/dev/null || echo "(watchdog never fired)"
+          echo "=== last 40 lines of simulator log ==="; tail -40 simulator.log 2>/dev/null || true
+
+      - name: Upload hang diagnostics
+        if: failure() || steps.run-tests.outputs.retried == 'true'
+        timeout-minutes: 5
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-integration-diagnostics
+          path: ${{ runner.temp }}/diag
+          retention-days: 14
 
       - name: Shutdown simulator
         if: always()
@@ -90,6 +241,8 @@ jobs:
   integration-web:
     name: Integration Tests (Web)
     runs-on: ubuntu-latest
+    if: ${{ inputs.android_only != true }}
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: flureadium/example
@@ -123,6 +276,7 @@ jobs:
           done
 
       - name: Run integration tests (Web)
+        timeout-minutes: 8
         run: |
           flutter drive \
             --driver=test_driver/integration_test.dart \

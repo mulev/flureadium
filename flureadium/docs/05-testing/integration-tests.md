@@ -296,6 +296,89 @@ CI runs the full test matrix on every push and pull request to `main`:
 
 The Android integration bundle (`all_tests_android_ci.dart`) intentionally omits the `@native` audiobook, EPUB-TTS, and WebPub tests because GitHub-hosted emulators lack reliable audio and network; those still run on the iOS leg and locally via `scripts/run_integration_tests.sh`. The web bundle (`all_tests_web.dart`) runs the launch smoke test live and bundles `epub_tts_web_test.dart` with its tests skipped in-file until the web-reader TTS plumbing lands (tracked in [Web Platform](../platform-specific/web.md)).
 
+### When the iOS job stalls before any test runs
+
+On a simulator, `flutter_tools` learns the Dart VM service URL one way only: it scrapes a single line out of `xcrun simctl spawn <udid> log stream`. There is no mDNS fallback, and the wait has no timeout. When that one log record does not reach the tool, the app boots and idles normally while the tool waits forever.
+
+What it looks like: `flutter test` prints `Waiting for VM Service port to be available...`, nothing follows, and the run sits there until CI kills the step. Ten runs died this way between March and August 2026, most of them cancelled at GitHub's six-hour default.
+
+Two things bound it now:
+
+- `example/dart_test.yaml` sets `suite_load_timeout: 10m`. Loading the suite takes about six minutes on a healthy CI run, so a stalled load fails at ten with a `TimeoutException` instead of hanging. `test_core` enforced a 12-minute default here until 0.6.16 removed it. The key sits under `on_os: mac-os`, since only a macOS host runs an iOS simulator — on the Linux runners the file loads to an empty configuration.
+- The iOS job retries once, and only for this failure. `.github/scripts/ios_suite_load_timed_out.sh` checks whether the timeout landed on the `loading ...` pseudo-test, which is what separates a lost VM service URL from a test that overran its own timeout. Compile errors and assertion failures are not retried, since a second run of those just costs another ten minutes.
+
+`.github/scripts/ios_suite_load_timed_out_test.sh` covers the predicate. It replays trimmed event streams for the four failure modes that have to be told apart — suite-load timeout, compile failure, assertion failure, test-body timeout — plus a passing run, a load timeout in a later suite, and empty, truncated and missing event files. The first four came off real `flutter test` runs; the rest are written by hand. `Test Example (Widget)` runs it in CI, and it takes about a second locally.
+
+### When the Android job stopped partway and still said everything passed
+
+Fixed on 2026-08-02. Kept here because the shape is worth recognising: the suite would die
+mid-flight in roughly one run in fifteen, everything left would flush as a pass in the same
+millisecond, and `flutter test` would exit 1 after printing `N tests passed.`
+
+That output is less contradictory than it reads. `test_core`'s GitHub reporter prints the success
+line whenever nothing is in `Engine.failed`, and `Engine.success` returns null — which the runner
+treats as failure — when the engine is closed before every test has finished. The pair means the
+run was torn down early with nothing marked failed.
+
+Three occurrences going back to June captured nothing, so none could be diagnosed. The fourth ran
+with `logcat` and a `--file-reporter` event stream and gave up the cause immediately: the app
+process was taken down by `FATAL EXCEPTION: main`, `java.lang.IllegalStateException: zip file
+closed`.
+
+Closing a publication while the image navigator is still loading a page closes the backing
+`ZipFile` underneath an in-flight read. Fragment removal cancels readium's page fragment, but
+cancellation is cooperative and a read already inside `withContext(Dispatchers.IO)` keeps going.
+It reaches `ZipFile.ensureOpen` and throws. readium 3.1.2's `FileZipContainer.Entry.read()`
+catches only `ZipException` and `IOException`, so that throw escapes the `Try` the method
+declares, and it surfaces in `R2CbzPageFragment`, which reads from a parentless root coroutine —
+no handler anywhere in the chain, so Android kills the process.
+
+The fix is `Resource.catchingClosedContainer()` in `ReadiumExtensions.kt`, applied outermost in
+the `TransformingContainer` that `ReadiumReader.assetToPublication` already installs. It reports
+the throw as a `ReadError`, which is what readium's own signature promises. It is deliberately
+narrow: any other runtime failure belongs to our transformers or to a navigator and has to stay
+loud. `ResourceClosedContainerTest` covers it, including that `CancellationException` still
+propagates — it subclasses `IllegalStateException`, so a careless guard would swallow it.
+
+`java.util.zip` reports this in two ways, and the first version of the guard only knew about one
+of them. Before the entry stream opens, `ZipFile.ensureOpen` throws
+`IllegalStateException("zip file closed")`. Once the read is streaming, the close has also ended
+the `Inflater`, and `Inflater.ensureOpen` throws `NullPointerException("Inflater has been
+closed")` instead. Same race, same container, and the second one killed a run on a build that
+was supposed to be fixed.
+
+The capture lives in `.github/scripts/android_integration_tests.sh`, not inline in the workflow. `reactivecircus/android-emulator-runner` splits its `script:` input on newlines and runs each line in a separate `sh -c`, so a multi-line body loses its variables, its `set` flags and its line continuations, and a trailing `\` arrives as a literal argument. Give that action one command. `android_integration_tests_test.sh` covers the wrapper and fails if the workflow turns the input back into a block; `Test Example (Widget)` runs it.
+
+### Proving a race is fixed
+
+Worth reading if you ever have to do this again, because the obvious approach does not work.
+
+Green runs prove very little about a fault that appears in one run in fifteen: five clean runs
+happen about 71% of the time with no fix at all, and reaching 95% confidence by sampling alone
+would take roughly 45 runs. Five were run anyway, and the guard logged `Read after the container
+closed` zero times across 105 publication closes — the suite never entered the guarded path, so
+those runs said nothing either way.
+
+Racing the real crash path from Dart did not work either. Firing `goToLocator` and closing
+underneath it left a window a few milliseconds wide, and two runs on a deliberately unguarded
+build both passed.
+
+What works is `reads outliving closePublication fail soft, not fatal` in `cbz_test.dart`. It
+fires sixteen unawaited `extractPageThumbnail` calls and closes the publication under them, three
+times over. Each call captures the publication and then goes to the container, so enough of them
+in flight guarantees some are mid-read when the close lands. It does not need the fatal variant:
+the same throw reaches `dispatchGuarded` on this path and comes back as a `PlatformException`,
+which fails the test just as well.
+
+Verified by running the identical test on two branches differing by the single line that installs
+the guard. Unguarded: three of three failed, all three hitting the throw, one escalating to
+`FATAL EXCEPTION` and taking 32 tests with it. Guarded: three of three passed, with the guard
+logging exactly twice per run. That is what closed `flureadium-pbc`.
+
+The same fault was reported once before as `flureadium-i0s`, through the EPUB WebView rather than
+the image navigator, and was closed by changing test teardown so it stopped closing publications.
+That moved it rather than fixing it, and it came back through another reader four months later.
+
 ## In-car testing (CarPlay / Android Auto)
 
 The in-car browse/search/play surface is covered automatically as far as it can be without a head unit, and the rest is a documented, reproducible manual pass.

@@ -10,6 +10,7 @@ jobs:
   test-platform-interface:
     name: Test Platform Interface
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: flureadium_platform_interface
@@ -39,6 +40,7 @@ jobs:
   test-main-package:
     name: Test Main Package
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: flureadium
@@ -68,6 +70,7 @@ jobs:
   test-example-widget:
     name: Test Example (Widget)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: flureadium/example
@@ -85,9 +88,25 @@ jobs:
       - name: Run widget tests
         run: flutter test test/
 
+      # The predicate fails closed: every internal error reads as "not the
+      # hang", which quietly disables the iOS retry. Run its fixtures here so a
+      # regression shows up as a red check rather than as a retry that stopped
+      # happening.
+      - name: Check the iOS suite-load predicate
+        working-directory: .
+        run: .github/scripts/ios_suite_load_timed_out_test.sh
+
+      # Covers the Android diagnostics wrapper, including the check that the
+      # emulator-runner still gets its script as a single command. A block
+      # scalar there silently splits into one shell per line.
+      - name: Check the Android integration wrapper
+        working-directory: .
+        run: .github/scripts/android_integration_tests_test.sh
+
   test-android-native:
     name: Test Android Native (Robolectric)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: flureadium/android
@@ -110,6 +129,7 @@ jobs:
   test-ios-native:
     name: Test iOS Native (XCTest)
     runs-on: macos-latest
+    timeout-minutes: 50
     defaults:
       run:
         working-directory: flureadium/example
@@ -125,12 +145,15 @@ jobs:
         run: flutter pub get
 
       - name: Install CocoaPods
+        timeout-minutes: 6
         run: cd ios && pod install --repo-update
 
       - name: Build for simulator
+        timeout-minutes: 10
         run: flutter build ios --simulator --debug
 
       - name: Run XCTest (RunnerTests)
+        timeout-minutes: 25
         run: |
           UDID=$(xcrun simctl list devices booted | grep "iPhone" | grep -oE '\([A-F0-9-]+\)' | tr -d '()' | head -1)
           if [ -z "$UDID" ]; then

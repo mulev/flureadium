@@ -91,7 +91,8 @@ private const val pdfEnabledKey = "pdfEnabled"
 private const val pdfNavigatorStateKey = "pdfState"
 private const val decorationStyleKey = "decorationStyle"
 
-// TODO: Support custom headers and authentication header for content files.
+// Content files are fetched with defaultHttpHeaders only; per-publication
+// authentication headers are not supported.
 
 @ExperimentalCoroutinesApi
 @OptIn(ExperimentalReadiumApi::class)
@@ -231,9 +232,21 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
             return _publicationOpener!!
         }
 
-    // Initialize from plugin or anywhere you have an Application or Context.
+    /**
+     * Seeds the process-wide [Application] reference.
+     *
+     * Called at engine attach, so a UI-less engine — the Android Auto car
+     * engine, a background isolate — reaches application-only APIs without an
+     * Activity. [attach] still covers everything the reader widget needs from
+     * an Activity.
+     */
+    fun attachApplication(context: Context) {
+        unwrapToApplication(context)?.let { appRef = WeakReference(it) }
+    }
+
+    // Initialize the reader session from the host Activity; a headless engine uses attachApplication.
     fun attach(activity: Activity, messenger: BinaryMessenger) {
-        unwrapToApplication(activity)?.let { appRef = WeakReference(it) }
+        attachApplication(activity)
 
         timedBasedStateEventChannel?.dispose()
         timedBasedStateEventChannel = TimedBasedStateEventChannel(messenger)
@@ -313,7 +326,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         mainScope.launch {
             val pub = openPublication(pubUrl).getOrElse {
                 Log.d(TAG, ":restoreState - failed to restore publication")
-                // TODO: Handle this somehow
+                // Restore is best-effort: the reader stays closed and Dart is not notified.
                 return@launch
             }
 
@@ -400,13 +413,19 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         }
     }
 
+    /**
+     * Tears down the reader session.
+     *
+     * The [Application] reference deliberately survives this: it is
+     * process-scoped and outlives every engine, so a second engine in the same
+     * process (a host can run a UI engine and a car engine side by side) keeps
+     * resolving it after this one tears down. Everything else here is still
+     * shared across engines and still cleared.
+     */
     fun detach() {
         mainScope.launch {
             closePublication()
         }
-
-        appRef?.clear()
-        appRef = null
 
         savedStateRef?.clear()
         savedStateRef = null
@@ -451,7 +470,10 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     // Safe getter — returns applicationContext or throws if not available.
     val application: Application
         get() = appRef?.get()
-            ?: throw IllegalStateException("Application not initialized. Call ReadiumReader.attach(...) first.")
+            ?: throw IllegalStateException(
+                "Application not initialized. FlureadiumPlugin seeds it in onAttachedToEngine; " +
+                    "call ReadiumReader.attachApplication(context) when driving the reader directly."
+            )
 
     var currentReaderWidget: ReadiumReaderWidget?
         get() = readerViewRef?.get()
@@ -494,8 +516,10 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     ): Try<Publication, OpenError> {
         val publication: Publication =
             publicationOpener.open(asset, allowUserInteraction = true, onCreatePublication = {
+                // Outermost, so it also contains anything the injecting transformer
+                // surfaces from a container that closed underneath it.
                 container = TransformingContainer(container) { _: Url, resource: Resource ->
-                    resource.injectScriptsAndStyles()
+                    resource.injectScriptsAndStyles().catchingClosedContainer()
                 }
             }).getOrElse { err: OpenError ->
                 Log.e(TAG, "Error opening publication: $err")
@@ -538,7 +562,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     ): Try<Publication, PublicationError> {
         return withContext(Dispatchers.IO) {
             try {
-                // TODO: should client provide mediaType to assetRetriever?
+                // No media type hint is passed; the retriever sniffs the asset.
                 val asset: Asset = assetRetriever.retrieve(pubUrl)
                     .getOrElse { error: AssetRetriever.RetrieveUrlError ->
                         Log.e(TAG, "Error retrieving asset: $error from url:$pubUrl")

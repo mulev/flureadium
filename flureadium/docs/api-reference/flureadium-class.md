@@ -47,7 +47,7 @@ Future<Publication> openPublication(String pubUrl)
 
 **Returns:** The [Publication](publication.md) metadata
 
-**Throws:** [ReadiumException](../../ERROR_HANDLING.md) if the publication cannot be opened
+**Throws:** [ReadiumException](../guides/error-handling.md) if the publication cannot be opened
 
 **Example:**
 ```dart
@@ -164,7 +164,7 @@ Future<bool> goByLink(Link link, Publication pub)
 
 **Returns:** `true` if navigation succeeded
 
-**Throws:** [ReadiumException](../../ERROR_HANDLING.md) if the link cannot be resolved
+**Throws:** [ReadiumException](../guides/error-handling.md) if the link cannot be resolved
 
 **Example:**
 ```dart
@@ -187,7 +187,7 @@ Future<bool> toPhysicalPageIndex(String index, Publication pub)
 
 **Returns:** `true` if navigation succeeded
 
-**Throws:** [ReadiumException](../../ERROR_HANDLING.md) if the page is not found
+**Throws:** [ReadiumException](../guides/error-handling.md) if the page is not found
 
 **Example:**
 ```dart
@@ -310,7 +310,7 @@ Future<bool> ttsCanSpeak()
 
 **Returns:** `true` if TTS can handle the publication's language, `false` otherwise
 
-Call this after opening a publication and before enabling TTS to verify language support. Platform-specific behavior is documented in Phase 1 (iOS), Phase 2 (Android), and Phase 3 (Web).
+Call this after opening a publication and before enabling TTS to verify language support. Web answers a different question — whether the Web Speech API is available and the navigator is ready — described in [Text-to-Speech on Web](../platform-specific/web.md#text-to-speech).
 
 **Example:**
 ```dart
@@ -329,7 +329,7 @@ Requests the system to install missing TTS voice data for the current publicatio
 Future<void> ttsRequestInstallVoice()
 ```
 
-On Android, this opens the system TTS voice data installation dialog. On iOS, this is a no-op since voice downloads are managed through system settings. Platform-specific behavior is documented in Phase 2 (Android).
+On Android, this opens the system TTS voice data installation dialog. On iOS, this is a no-op since voice downloads are managed through system settings.
 
 **Example:**
 ```dart
@@ -351,13 +351,15 @@ Future<void> ttsSetPreferences(TTSPreferences preferences)
 
 ### ttsGetAvailableVoices
 
-Gets the list of available TTS voices. Requires `ttsEnable()` to have been called first.
+Gets the list of available TTS voices on the platform.
+
+On the platforms that implement TTS — Android, iOS, Web — `ttsGetAvailableVoices()` does not throw merely because TTS is not enabled. Android and iOS return an empty list. Web queries the browser's speech synthesis directly and may return voices whether or not TTS is enabled. To populate a voice picker before enabling TTS, use `ttsGetSystemVoices()`.
 
 ```dart
 Future<List<ReaderTTSVoice>> ttsGetAvailableVoices()
 ```
 
-**Returns:** List of available platform voices
+**Returns:** List of available voices, or an empty list on Android and iOS when TTS is not enabled
 
 **Example:**
 ```dart
@@ -369,7 +371,9 @@ for (final voice in voices) {
 
 ### ttsGetSystemVoices
 
-Gets available TTS voices from the OS without requiring TTS to be enabled. Unlike `ttsGetAvailableVoices()`, this does not need a TTS navigator — call it anytime to populate a voice picker before the user starts reading aloud.
+Gets available TTS voices from the OS.
+
+On the platforms that implement TTS — Android, iOS, Web — this is independent of the TTS session and reports the device's voices whether or not TTS is enabled. Prefer this for voice pickers shown before reading aloud starts; see `ttsGetAvailableVoices()` for its per-platform behavior.
 
 ```dart
 Future<List<ReaderTTSVoice>> ttsGetSystemVoices()

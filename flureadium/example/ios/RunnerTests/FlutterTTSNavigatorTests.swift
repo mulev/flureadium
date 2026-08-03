@@ -219,6 +219,7 @@ final class FlutterTTSNavigatorTests: XCTestCase {
 
     // MARK: - Suppression: word range during suppressed utterance
 
+    @MainActor
     func testWordRangeSuppressedDuringFirstUtterance() async {
         let (navigator, mock) = makeNavigatorWithMock(
             initialLocator: makeLocator(href: "page2.xhtml")
@@ -229,18 +230,40 @@ final class FlutterTTSNavigatorTests: XCTestCase {
         // First utterance — suppressed
         navigator.playingUtterance = makeLocator(href: "page1.xhtml")
 
-        // Word range during suppressed utterance
-        navigator.playingWordRangeSubject.send(makeLocator(href: "page1.xhtml"))
+        // A word range arriving inside the suppressed utterance. The quiet
+        // window after it matters: the pipeline throttles on a 100 ms
+        // latest-wins window, so without it this value would be coalesced with
+        // the control below and would never get an emission of its own — the
+        // assertion at the end would then prove nothing.
+        navigator.playingWordRangeSubject.send(makeLocator(href: "suppressed.xhtml"))
+        try? await Task.sleep(nanoseconds: 300_000_000)
 
-        // Wait for throttle (100ms) to flush
-        let throttleExpectation = expectation(description: "throttle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            throttleExpectation.fulfill()
+        // Control: once suppression is cleared, word ranges must reach the
+        // listener. Without this the final assertion passes on a pipeline that
+        // died, which is how this test used to be able to fail only by
+        // timeout. Distinct hrefs each round, because removeDuplicates()
+        // upstream drops a repeat of the same locator. Bounded at 10 s so a
+        // loaded machine costs time rather than a failure; the healthy path
+        // exits on the first round.
+        _ = await navigator.seek(toLocator: makeLocator(href: "page3.xhtml"))
+        var delivered = false
+        var round = 0
+        while !delivered && round < 200 {
+            navigator.playingWordRangeSubject.send(
+                makeLocator(href: "control\(round).xhtml")
+            )
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            delivered = mock.reachedLocatorCalls.contains {
+                $0.locator.href.string.hasPrefix("control")
+            }
+            round += 1
         }
-        await fulfillment(of: [throttleExpectation], timeout: 1.0)
+        XCTAssertTrue(delivered,
+                      "word ranges must reach the listener once suppression is cleared")
 
-        XCTAssertEqual(mock.reachedLocatorCalls.count, 0,
-                        "Word range during suppressed utterance should not reach listener")
+        XCTAssertFalse(
+            mock.reachedLocatorCalls.contains { $0.locator.href.string == "suppressed.xhtml" },
+            "Word range during suppressed utterance should not reach listener")
     }
 
     // MARK: - dispose()
@@ -269,12 +292,11 @@ final class FlutterTTSNavigatorTests: XCTestCase {
         // After dispose, setting playingUtterance should NOT trigger listener
         navigator.playingUtterance = makeLocator(href: "page1.xhtml")
 
-        // Wait for Combine pipeline flush
-        let waitExpectation = expectation(description: "wait for Combine")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            waitExpectation.fulfill()
-        }
-        await fulfillment(of: [waitExpectation], timeout: 1.0)
+        // Give a cancelled pipeline the chance to deliver anything it still
+        // holds. Task.sleep rather than a main-queue block under a hard cap:
+        // that block is what starved on 2026-08-03 and failed a sibling test,
+        // and this one took 1.125 s against its 1 s cap the run before.
+        try? await Task.sleep(nanoseconds: 300_000_000)
 
         XCTAssertEqual(mock.reachedLocatorCalls.count, 0,
                        "No locator events should reach listener after dispose cancels subscriptions")
