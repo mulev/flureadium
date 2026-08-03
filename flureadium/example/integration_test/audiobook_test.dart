@@ -3,14 +3,14 @@ library;
 
 import 'dart:io';
 
-import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flureadium/flureadium.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'helpers/audiobook_track.dart';
 import 'helpers/ensure_app_showing.dart';
+import 'helpers/extract_asset.dart';
 import 'helpers/pump_until.dart';
 
 void main() {
@@ -56,18 +56,23 @@ void main() {
               '')
           .contains('true');
 
-  // Boots (or reuses) the app and opens the wanted audiobook. On Android the
-  // reader widget must host an EPUB, so an audiobook cannot be a direct
-  // initialAsset boot: the group cold-boots the host EPUB and then opens the
-  // audiobook via [button]. openAfterColdBoot makes the cold-boot path tap
-  // [button] too, so both cold and reuse calls end on a freshly opened
-  // audiobook — its open-generation bump being the observable "loaded" signal.
+  // Both the cold boot and the group's manifest load must name the same file,
+  // or the baseline track and the last-track jump would point at a different
+  // book than the one on screen.
+  const audiobookAsset = 'assets/pubs/38533.audiobook';
+
+  // Boots (or reuses) the app and opens the wanted audiobook. The audiobook is
+  // the cold-boot publication now that the Android reader widget can host one
+  // (flureadium-3wd). openAfterColdBoot keeps the cold-boot path tapping
+  // [button] as well, so a variant test (NoTitle/BadUrl/BadStream) still gets
+  // its own publication when it happens to run first — the open-generation bump
+  // being the observable "loaded" signal either way.
   Future<void> showAudiobook(
     WidgetTester tester, {
     String button = 'Open AudioBook',
   }) => ensureAppShowing(
     tester,
-    initialAsset: 'assets/pubs/moby_dick.epub',
+    initialAsset: audiobookAsset,
     reopenButton: button,
     openAfterColdBoot: true,
   );
@@ -90,7 +95,7 @@ void main() {
     late final String firstTrack;
 
     setUpAll(() async {
-      final path = await _extractAsset('assets/pubs/38533.audiobook');
+      final path = await extractAsset(audiobookAsset);
       audiobookPub = await Flureadium().loadPublication(path);
       firstTrack = audiobookPub.readingOrder.first.href;
     });
@@ -310,14 +315,10 @@ void main() {
       await waitForPlaying(tester);
 
       // Jump straight to the last reading-order track instead of skipping
-      // track by track. goByLink is the same navigation the app performs;
-      // loading the manifest separately just gets the reading order so we can
-      // pick the last link. The audiobook stays opened through showAudiobook
-      // above — on Android the reader widget must host an EPUB, so an audiobook
-      // cannot be a direct initialAsset boot.
-      final path = await _extractAsset('assets/pubs/38533.audiobook');
-      final pub = await Flureadium().loadPublication(path);
-      await Flureadium().goByLink(pub.readingOrder.last, pub);
+      // track by track. goByLink is the same navigation the app performs, and
+      // the group's already-loaded publication supplies the reading order —
+      // locatorFromLink is pure manifest arithmetic, so no reload is needed.
+      await Flureadium().goByLink(audiobookPub.readingOrder.last, audiobookPub);
 
       // Wait for the last track's duration to be reported.
       await pumpUntil(
@@ -481,17 +482,4 @@ void main() {
       skip: !Platform.isIOS,
     );
   });
-}
-
-// Extracts a bundled asset to a temp file so loadPublication can read the
-// manifest to pick the last reading-order track. Mirrors the app's own
-// _extractAsset and cbz_test's copy.
-Future<String> _extractAsset(String assetPath) async {
-  final bytes = await rootBundle.load(assetPath);
-  final filename = assetPath.split('/').last;
-  final tmp = File(
-    '${Directory.systemTemp.path}/${DateTime.now().millisecondsSinceEpoch}_$filename',
-  );
-  await tmp.writeAsBytes(bytes.buffer.asUint8List());
-  return tmp.path;
 }
