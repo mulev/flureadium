@@ -71,10 +71,11 @@ Hrefs are returned in the same format the `Locator` stream emits — as the
 native Readium parser produced them, with no synthetic leading slash. A bare
 resource such as `001.jpg` stays `001.jpg`, so an href round-tripped between
 `readingOrder` and a live `Locator` compares equal. That holds for a packaged
-publication whose manifest names itself with a relative `self` link, which is
-what Android sends for `.audiobook` and packaged `.webpub`: the href is
-resolved against the manifest's location only when that location is one, so a
-relative `self` link leaves siblings untouched. A remote manifest served from
+publication whose manifest names itself with a relative `self` link: the href
+is resolved against the manifest's location only when that location is one, so
+a relative `self` link leaves its siblings untouched. Android is where this
+comes up, because readium-kotlin passes a packaged manifest's `self` link
+through and readium-swift drops it. A remote manifest served from
 `https://host/dir/manifest.json` still resolves its hrefs against
 `https://host/dir/`.
 

@@ -258,6 +258,45 @@ func testSomethingAsync() async {
 }
 ```
 
+Waiting for a callback that fires directly, like the method-handler example above, is fine with
+`wait(for:timeout:)`. Waiting for a *scheduled* hop is not. Do not do this:
+
+```swift
+// Wrong: needs the main queue serviced inside a fixed cap.
+let e = expectation(description: "throttle")
+DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { e.fulfill() }
+await fulfillment(of: [e], timeout: 1.0)
+```
+
+That is a bet on main-queue latency, and it has lost: on 2026-08-03 the 200 ms block did not fire
+within the 1 s cap and the test failed. It had run in about 0.21 s on the four runs before. Use
+`try? await Task.sleep(nanoseconds:)` on a `@MainActor` test instead — it suspends the actor, so the
+run loop keeps turning, and nothing depends on a queued block being reached in time.
+
+### Negative assertions need a positive control
+
+"Nothing reached the listener" also holds when the thing under test stopped emitting altogether, so
+an assertion like `XCTAssertEqual(mock.calls.count, 0)` after a sleep can only fail by timeout —
+never by catching the bug it was written for. Drive the pipeline to a state where output *is*
+expected, wait for that, then assert the unwanted output never appeared:
+
+```swift
+// Suppressed input: must not arrive.
+navigator.playingWordRangeSubject.send(makeLocator(href: "suppressed.xhtml"))
+try? await Task.sleep(nanoseconds: 300_000_000)
+
+// Control: with suppression cleared, output must arrive. Poll for it rather
+// than sleeping a fixed amount, so a loaded machine costs time, not a failure.
+_ = await navigator.seek(toLocator: makeLocator(href: "page3.xhtml"))
+// ...send distinct locators until one is delivered, bounded...
+
+XCTAssertFalse(mock.reachedLocatorCalls.contains { $0.locator.href.string == "suppressed.xhtml" })
+```
+
+`FlutterTTSNavigatorTests.testWordRangeSuppressedDuringFirstUtterance` is the worked example. To
+check that a control actually bites, delete the production guard it depends on and confirm the test
+fails on its assertion rather than on a clock.
+
 ### What NOT to test here
 
 - Dart code — use `flutter test` for that
