@@ -1,3 +1,24 @@
+## 0.16.2
+
+### Bug Fixes
+
+- **Android reader widget hosts an audiobook instead of killing the app**: mounting `ReadiumReaderWidget` over an audiobook took the process down with `FATAL EXCEPTION: Publication is not an EPUB, cannot enable epub navigator`. `PublicationReaderKind` had three members (`EPUB`, `PDF`, `IMAGE`) and used `EPUB` as its catch-all, so an audiobook was classified as an EPUB, the widget had no audio-only host to dispatch to, and `epubEnable`'s own conformance guard then rejected the publication the classifier had handed it. The throw happened in a coroutine with no supervisor, so it killed the process rather than surfacing on the error channel. There is now an `AUDIO` kind, matched by `conformsTo(Publication.Profile.AUDIOBOOK)` and checked after PDF and image so the existing precedence and the media-overlay EPUB path are untouched, and the widget mounts an audiobook with no visual navigator at all. A host app can open an audiobook as the reader's first publication, which previously required booting an EPUB and swapping.
+- **Android reader status reaches a subscriber that arrives late**: `ReadiumReaderWidget.init` runs inside the platform-view `create` call, so the statuses it sends leave native before Flutter replies to Dart and before a host app can subscribe from `ReadiumReaderWidget.onReady`. `ReaderStatusEventChannel.sendEvent` wrote to an `eventSink` that only exists once Dart has subscribed, so those statuses went nowhere. EPUB, PDF, and image hosts were unaffected in practice, because their `"ready"` arrives later from `onVisualReaderIsReady()`; an audio host has no later source, so a host app that hides its spinner on `ready` would have waited forever. The channel now holds the most recent status while nobody is listening and delivers it when the first subscriber arrives. Only the latest is held, since status is a state rather than a log, and a status already delivered is never replayed to a later subscriber.
+- **Android reader kind is fixed for the widget's lifetime**: the widget derived its kind from `ReadiumReader.currentPublication` on every access, so opening a publication of another kind under a live platform view could flip the kind, send `dispose()` down the wrong teardown path, and leak the navigator and the is-ready channel the widget had actually enabled. The kind is now captured when the platform view is created. An audio host's `dispose()` also clears `ReadiumReader.currentReaderWidget` only while it is still the registered widget, so a stale teardown cannot wipe a newer widget's registration.
+
+### Documentation
+
+- **Android reader kinds written down**: `docs/platform-specific/android.md` gains a `Reader Kind` section covering the PDF, image, audio, and EPUB precedence and what each kind mounts, and states the reader-status lifecycle including the statuses held for a late first subscriber. `docs/api-reference/streams-events.md` records the same subscription timing next to `onReaderStatusChanged` and no longer claims Android's `ready` comes only from `onVisualReaderIsReady()`.
+- **Audiobook integration-test boot corrected**: `docs/05-testing/integration-tests.md` said an audiobook has to ride on a host EPUB. It now describes the direct boot, scopes the audio-only host to Android (iOS resolves an audiobook to its EPUB reader view and builds a navigator that renders nothing), and says why the audiobook group keeps `openAfterColdBoot` and which runs actually exercise the cold boot.
+
+### Testing
+
+- Android JVM (Robolectric): an audio-only publication mounts the widget with no EPUB navigator machinery, reports `loading` then `ready`, clears its own registration on dispose, and leaves a newer widget's registration alone.
+- Android JVM: `PublicationReaderKind` classifies an audiobook as `AUDIO`, and PDF, DIVINA, bitmap, and media-overlay EPUB publications keep their previous kinds.
+- Android JVM: `ReaderStatusEventChannel` delivers a status sent before the first subscriber, keeps only the latest while unsubscribed, delivers directly while subscribed, and does not replay to a second subscriber.
+- The audiobook integration group boots `assets/pubs/38533.audiobook` directly rather than booting `moby_dick.epub` and opening the audiobook over it, which drops an EPUB load and navigator mount from every run and exercises the fix end to end. Its end-of-book test reuses the publication the group already loaded instead of extracting and parsing the manifest a second time.
+- The audiobook and CBZ suites share one `extractAsset` helper instead of a private copy each, and it now gives every call its own temp directory: the old name was the current millisecond, so two extractions inside one millisecond returned the same path and the second write truncated the file the first caller had opened. `example/test/extract_asset_test.dart` covers both guarantees.
+
 ## 0.16.1
 
 ### Bug Fixes

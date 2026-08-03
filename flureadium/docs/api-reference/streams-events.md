@@ -209,10 +209,17 @@ enum ReadiumReaderStatus {
 | Status | Android | iOS |
 |--------|---------|-----|
 | `loading` | Emitted from `ReadiumReaderWidget.init` | Emitted from `ReadiumReaderView.init` |
-| `ready` | Emitted from `onVisualReaderIsReady()` | Emitted from first `locationDidChange` |
+| `ready` | Emitted from `onVisualReaderIsReady()`, or from `ReadiumReaderWidget.init` for an audiobook, which has no visual navigator to signal it | Emitted from first `locationDidChange` |
 | `closed` | Emitted from `ReadiumReaderWidget.dispose()` | Emitted on publication close |
 | `error` | Not currently emitted natively | Emitted from `didFailToLoadResourceAt` |
 | `reachedEndOfPublication` | Not emitted natively (Dart-side only) | Not emitted natively (Dart-side only) |
+
+On Android the widget's `init` runs inside the platform-view `create` call, which
+finishes before Flutter replies to Dart. A `loading`, and the `ready` an audiobook
+sends from `init`, therefore leave native before any Dart subscriber can exist, so
+the native side holds the most recent status and delivers it when the first
+subscriber arrives. Only the latest is held: status is a state rather than a log,
+and a status already delivered is never replayed to a later subscriber.
 
 See [Android platform docs](../platform-specific/android.md#event-channels) for implementation details.
 
