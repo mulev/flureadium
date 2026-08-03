@@ -120,14 +120,68 @@ internal class PublicationReaderKindTest {
         assertEquals(PublicationReaderKind.EPUB, publication.readerKind())
     }
 
+    @Test
+    fun `returns audio for audiobook publications`() {
+        val publication = publicationWith(
+            conformsToPdf = false,
+            conformsToDivina = false,
+            readingOrder = listOf(
+                linkWithMediaType("audio/mpeg"),
+                linkWithMediaType("audio/mpeg"),
+            ),
+            conformsToAudiobook = true
+        )
+
+        assertEquals(PublicationReaderKind.AUDIO, publication.readerKind())
+    }
+
+    @Test
+    fun `returns pdf when publication matches both pdf and audiobook profiles`() {
+        val publication = publicationWith(
+            conformsToPdf = true,
+            conformsToDivina = false,
+            readingOrder = listOf(linkWithMediaType("audio/mpeg")),
+            conformsToAudiobook = true
+        )
+
+        assertEquals(PublicationReaderKind.PDF, publication.readerKind())
+    }
+
+    @Test
+    fun `returns image when publication matches both divina and audiobook profiles`() {
+        val publication = publicationWith(
+            conformsToPdf = false,
+            conformsToDivina = true,
+            readingOrder = listOf(linkWithMediaType("audio/mpeg")),
+            conformsToAudiobook = true
+        )
+
+        assertEquals(PublicationReaderKind.IMAGE, publication.readerKind())
+    }
+
+    @Test
+    fun `returns epub when publication does not conform to audiobook profile`() {
+        val publication = publicationWith(
+            conformsToPdf = false,
+            conformsToDivina = false,
+            readingOrder = listOf(linkWithMediaType("audio/mpeg")),
+            conformsToAudiobook = false
+        )
+
+        assertEquals(PublicationReaderKind.EPUB, publication.readerKind())
+    }
+
     private fun publicationWith(
         conformsToPdf: Boolean,
         conformsToDivina: Boolean,
         readingOrder: List<Link>,
+        conformsToAudiobook: Boolean = false,
     ): Publication {
         val publication = mock<Publication>()
         `when`(publication.conformsTo(Publication.Profile.PDF)).thenReturn(conformsToPdf)
         `when`(publication.conformsTo(Publication.Profile.DIVINA)).thenReturn(conformsToDivina)
+        `when`(publication.conformsTo(Publication.Profile.AUDIOBOOK))
+            .thenReturn(conformsToAudiobook)
         `when`(publication.readingOrder).thenReturn(readingOrder)
         return publication
     }
