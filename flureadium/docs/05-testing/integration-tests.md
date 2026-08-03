@@ -167,13 +167,17 @@ Conventions:
 
 ### Audiobooks: boot the audiobook directly
 
-An audiobook mounts the reader widget as an audio-only host: no visual navigator
-is enabled, and the widget reports itself ready on its own. It is therefore an
-ordinary `initialAsset` boot on both platforms, so the audiobook group cold-boots
-the audiobook itself.
+On Android an audiobook mounts the reader widget as an audio-only host: no visual
+navigator is enabled, and the widget reports itself ready on its own, so it is an
+ordinary `initialAsset` boot. The audiobook group cold-boots the audiobook itself
+on both platforms — iOS has no audio reader kind yet, so `ReaderViewKind` resolves
+an audiobook to `.epub` and builds a content-less EPUB navigator over the audio
+tracks. That navigator does not crash and nothing renders through it either way,
+which is why iOS survives the direct boot; giving iOS the same audio-only host is
+`flureadium-5wu`.
 
 The group still passes `openAfterColdBoot`, for a different reason than before:
-its tests open four publications through four buttons, and the flag makes the
+its tests open five publications through five buttons, and the flag makes the
 cold-boot path tap the button too, so whichever test runs first gets the
 publication it asked for.
 
@@ -187,8 +191,14 @@ await ensureAppShowing(
 ```
 
 The audiobook group wraps this in a local `showAudiobook(tester, button: …)` so
-variant tests (`Open AudioBook NoTitle`/`BadUrl`/`BadStream`) reuse the same boot
-path and just pass their own button.
+variant tests (`Open AudioBook NoTitle`/`Streamed`/`BadUrl`/`BadStream`) reuse the
+same boot path and just pass their own button.
+
+The cold-boot arm only runs when the app is not already on screen, so the direct
+boot happens in a standalone `flutter test integration_test/audiobook_test.dart`
+run. In `all_tests.dart` the launch group boots first and the audiobook group
+takes the reuse path, and `all_tests_android_ci.dart` leaves the group out
+altogether — neither CI bundle exercises the audiobook boot (`flureadium-p1q`).
 
 This is applied to all four group test files (`audiobook`, `cbz`, `divina`,
 `epub_tts`) — each boots once per group and reuses the running app between tests.

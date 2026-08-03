@@ -63,10 +63,12 @@ void main() {
 
   // Boots (or reuses) the app and opens the wanted audiobook. The audiobook is
   // the cold-boot publication now that the Android reader widget can host one
-  // (flureadium-3wd). openAfterColdBoot keeps the cold-boot path tapping
-  // [button] as well, so a variant test (NoTitle/BadUrl/BadStream) still gets
-  // its own publication when it happens to run first — the open-generation bump
-  // being the observable "loaded" signal either way.
+  // (flureadium-3wd); iOS still resolves it to the EPUB reader view, which
+  // renders nothing either way and survives the boot (flureadium-5wu).
+  // openAfterColdBoot keeps the cold-boot path tapping [button] as well, so a
+  // variant test (NoTitle/Streamed/BadUrl/BadStream) still gets its own
+  // publication when it happens to run first — the open-generation bump being
+  // the observable "loaded" signal either way.
   Future<void> showAudiobook(
     WidgetTester tester, {
     String button = 'Open AudioBook',
