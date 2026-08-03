@@ -200,8 +200,40 @@ state events.
 
 Reader status lifecycle:
 - `"loading"` — emitted from `ReadiumReaderWidget.init` when the native view is created
-- `"ready"` — emitted from `onVisualReaderIsReady()` when Readium signals the reader is ready
+- `"ready"` — emitted from `onVisualReaderIsReady()` when Readium signals the reader is ready, or directly from `ReadiumReaderWidget.init` for an audio-only publication, which has no visual navigator to signal it
 - `"closed"` — emitted from `ReadiumReaderWidget.dispose()` before tearing down the navigator
+
+`ReadiumReaderWidget.init` runs inside the platform-view `create` call, which
+finishes before Flutter replies to Dart — so `"loading"`, and the `"ready"` an
+audio-only host sends from the same place, are emitted before a host app can
+subscribe from `onReady`. `ReaderStatusEventChannel` holds the most recent
+status while no one is listening and delivers it once, when the first
+subscriber arrives. Only the latest one is held: reader status is a state, not
+a log, and a status already delivered is never replayed to a later subscriber.
+
+### Reader Kind
+
+`PublicationReaderKind` decides which reader can host an open publication, and
+`ReadiumReaderWidget` freezes that decision when the platform view is created.
+Classification comes from Readium's own profile checks, in this order:
+
+| Kind | Matched when | What the widget mounts |
+|---|---|---|
+| `PDF` | `conformsTo(Profile.PDF)` | Pdfium navigator |
+| `IMAGE` | `conformsTo(Profile.DIVINA)`, or every reading-order item is a bitmap | Image navigator |
+| `AUDIO` | `conformsTo(Profile.AUDIOBOOK)` | Nothing — no visual navigator exists for audio |
+| `EPUB` | Everything else | EPUB navigator |
+
+`EPUB` is the fallback, so anything with an HTML reading order lands there —
+including a media-overlay ("karaoke") book, whose reading order is HTML rather
+than audio. Those keep their EPUB navigator and their existing audio path.
+
+An `AUDIO` host is a live but empty platform view: it registers itself, emits
+`"ready"` straight from `init`, and enables no navigator. The visual reader
+operations still answer, with their inert defaults — `isLocatorVisible` returns
+`false`, `isReaderReady` returns `true`, `getLocatorFragments` echoes the
+locator it was given, and preference or navigation calls are no-ops. Playback
+itself runs through the audio navigator and the media session, not the widget.
 
 ### Platform View
 
@@ -221,7 +253,7 @@ class ReadiumReaderViewFactory(
 
 Uses Readium Kotlin Toolkit:
 - `Streamer` for EPUB parsing
-- `Navigator` for EPUB, PDF, and image-based content display
+- `Navigator` for EPUB, PDF, and image-based content display; an audiobook gets no visual navigator
 - `TTS` and `MediaPlayer` for audio
 - `PdfiumNavigator` for PDF rendering (via Pdfium adapter)
 
