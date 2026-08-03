@@ -102,24 +102,19 @@ Conventions:
 ## Jumping to the last track instead of skipping to it
 
 The end-of-book audiobook test needs the last reading-order track. Stepping there
-with repeated `Audio Next Chapter` taps cost one poll per track. Load the manifest
-and jump straight to the end instead:
+with repeated `Audio Next Chapter` taps cost one poll per track. Take the last
+link from the reading order and jump straight to it instead:
 
 ```dart
-final path = await _extractAsset('assets/pubs/38533.audiobook');
-final pub = await Flureadium().loadPublication(path);
-await Flureadium().goByLink(pub.readingOrder.last, pub);
+await Flureadium().goByLink(audiobookPub.readingOrder.last, audiobookPub);
 ```
 
-`loadPublication` only parses the manifest, so it is cheap; `goByLink` is the same
-navigation the app performs. The near-end seek and natural play-out that follow
-stay as they are — that tail is real audio time and is the point of the test.
-
-Note the audiobook is still opened through the button flow (boot the default EPUB,
-tap `Open AudioBook`), not a direct `initialAsset` boot. On Android the reader
-widget hosts a visual navigator and an audiobook has none, so it must ride on an
-EPUB host; audio plays on top. CBZ and DIVINA are image publications with their own
-navigator, so those groups can and do boot directly via `initialAsset`.
+`audiobookPub` is the publication the group already loaded in `setUpAll` through
+the shared `extractAsset` helper. `goByLink` resolves the link against that
+manifest and navigates — it never reopens the publication it is handed, so the
+book the test is listening to is untouched. The near-end seek and natural play-out
+that follow stay as they are: that tail is real audio time and is the point of the
+test.
 
 ## Sharing one app boot across a group with `ensureAppShowing`
 
@@ -170,26 +165,40 @@ Conventions:
   TTS, audio, `ended-seen`, and the audio-error latch in its `setState`, so a
   reopen gives each test a clean slate.
 
-### Audiobooks: boot a host EPUB, then open the audiobook
+### Audiobooks: boot the audiobook directly
 
-An audiobook has no visual navigator, so on Android it cannot be a direct
-`initialAsset` boot — it rides on an EPUB host. `ensureAppShowing` takes
-`openAfterColdBoot` for this: the group cold-boots the host EPUB and then taps
-the audiobook's `Open …` button, so both the cold-boot and reuse paths finish on
-a freshly opened audiobook.
+On Android an audiobook mounts the reader widget as an audio-only host: no visual
+navigator is enabled, and the widget reports itself ready on its own, so it is an
+ordinary `initialAsset` boot. The audiobook group cold-boots the audiobook itself
+on both platforms — iOS has no audio reader kind yet, so `ReaderViewKind` resolves
+an audiobook to `.epub` and builds a content-less EPUB navigator over the audio
+tracks. That navigator does not crash and nothing renders through it either way,
+which is why iOS survives the direct boot; giving iOS the same audio-only host is
+`flureadium-5wu`.
+
+The group still passes `openAfterColdBoot`, for a different reason than before:
+its tests open five publications through five buttons, and the flag makes the
+cold-boot path tap the button too, so whichever test runs first gets the
+publication it asked for.
 
 ```dart
 await ensureAppShowing(
   tester,
-  initialAsset: 'assets/pubs/moby_dick.epub',
+  initialAsset: 'assets/pubs/38533.audiobook',
   reopenButton: 'Open AudioBook',
   openAfterColdBoot: true,
 );
 ```
 
 The audiobook group wraps this in a local `showAudiobook(tester, button: …)` so
-variant tests (`Open AudioBook NoTitle`/`BadUrl`/`BadStream`) reuse the same boot
-path and just pass their own button.
+variant tests (`Open AudioBook NoTitle`/`Streamed`/`BadUrl`/`BadStream`) reuse the
+same boot path and just pass their own button.
+
+The cold-boot arm only runs when the app is not already on screen, so the direct
+boot happens in a standalone `flutter test integration_test/audiobook_test.dart`
+run. In `all_tests.dart` the launch group boots first and the audiobook group
+takes the reuse path, and `all_tests_android_ci.dart` leaves the group out
+altogether — neither CI bundle exercises the audiobook boot (`flureadium-p1q`).
 
 This is applied to all four group test files (`audiobook`, `cbz`, `divina`,
 `epub_tts`) — each boots once per group and reuses the running app between tests.

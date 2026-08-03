@@ -59,17 +59,18 @@ class ReadiumReaderWidget(
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val readerKind: PublicationReaderKind
-        get() = ReadiumReader.currentPublication?.readerKind() ?: PublicationReaderKind.EPUB
+    // Fixed for this widget's lifetime. As a getter over the mutable
+    // ReadiumReader.currentPublication, a publication swap under a live
+    // platform view would flip this widget's kind and send dispose() down the
+    // wrong teardown path — leaking the navigator and is-ready channel it
+    // actually enabled.
+    private val readerKind: PublicationReaderKind =
+        ReadiumReader.currentPublication?.readerKind() ?: PublicationReaderKind.EPUB
 
-    private val isPdf: Boolean
-        get() = readerKind == PublicationReaderKind.PDF
-
-    private val isImage: Boolean
-        get() = readerKind == PublicationReaderKind.IMAGE
-
-    private val isEpub: Boolean
-        get() = readerKind == PublicationReaderKind.EPUB
+    private val isPdf: Boolean = readerKind == PublicationReaderKind.PDF
+    private val isImage: Boolean = readerKind == PublicationReaderKind.IMAGE
+    private val isAudio: Boolean = readerKind == PublicationReaderKind.AUDIO
+    private val isEpub: Boolean = readerKind == PublicationReaderKind.EPUB
 
     private var storedNavigationConfig: FlutterNavigationConfig? = null
 
@@ -80,18 +81,26 @@ class ReadiumReaderWidget(
 
     override fun dispose() {
         Log.d(TAG, "::dispose")
-        // Only send "closed" if this is still the active widget.
         // When Flutter recreates the widget tree (e.g. between integration
         // tests), the OLD platform view disposes asynchronously — after the
-        // NEW widget has already registered its event listener. Without this
-        // guard the stale "closed" event would clobber the new widget's state.
-        if (ReadiumReader.currentReaderWidget === this) {
+        // NEW widget has already registered itself. This guard covers the
+        // "closed" event and the audio teardown below; pdfClose(), imageClose()
+        // and epubClose() still clear currentReaderWidget unconditionally,
+        // which is tracked separately.
+        val isActiveWidget = ReadiumReader.currentReaderWidget === this
+        if (isActiveWidget) {
             ReadiumReader.sendReaderStatus("closed")
         }
         if (isPdf) {
             ReadiumReader.pdfClose()
         } else if (isImage) {
             ReadiumReader.imageClose()
+        } else if (isAudio) {
+            // No navigator and no is-ready channel were enabled, so this
+            // widget's registration is the only thing it owns.
+            if (isActiveWidget) {
+                ReadiumReader.currentReaderWidget = null
+            }
         } else {
             ReadiumReader.epubClose()
         }
@@ -181,6 +190,15 @@ class ReadiumReaderWidget(
                     layout,
                     this@ReadiumReaderWidget,
                 )
+            } else if (isAudio) {
+                // An audio-only publication has no visual navigator to enable.
+                // The widget is a live but empty host, so nothing else will
+                // report readiness — onVisualReaderIsReady() never fires
+                // without a navigator. Reuse the existing "ready" status:
+                // method_channel_flureadium.dart:80 maps statuses with
+                // firstWhere and no orElse, so an unknown string would throw
+                // StateError in every host app.
+                ReadiumReader.sendReaderStatus("ready")
             } else {
                 ReadiumReader.epubEnable(
                     initialLocator,
@@ -378,12 +396,7 @@ class ReadiumReaderWidget(
                 ReadiumReader.sendTextLocatorEvent(finalLocator)
             }
         } catch (e: Exception) {
-            val readerKindLabel = when {
-                isPdf -> "PDF"
-                isImage -> "IMAGE"
-                else -> "EPUB"
-            }
-            Log.e(TAG, "emitOnPageChanged: $readerKindLabel failed! $e")
+            Log.e(TAG, "emitOnPageChanged: ${readerKind.name} failed! $e")
         }
     }
 
