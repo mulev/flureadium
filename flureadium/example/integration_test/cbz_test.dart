@@ -1,11 +1,9 @@
-import 'dart:io';
-
-import 'package:flutter/services.dart';
 import 'package:flureadium/flureadium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'helpers/ensure_app_showing.dart';
+import 'helpers/extract_asset.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -169,7 +167,7 @@ void main() {
       );
       final locator = await _waitForCbzReaderReady(tester);
 
-      final path = await _extractAsset('assets/pubs/sample_comic.cbz');
+      final path = await extractAsset('assets/pubs/sample_comic.cbz');
       final pub = await Flureadium().loadPublication(path);
 
       expect(pub.readingOrder.first.href, equals(locator.href));
@@ -243,16 +241,6 @@ void main() {
       );
     });
   });
-}
-
-Future<String> _extractAsset(String assetPath) async {
-  final bytes = await rootBundle.load(assetPath);
-  final filename = assetPath.split('/').last;
-  final tmp = File(
-    '${Directory.systemTemp.path}/${DateTime.now().millisecondsSinceEpoch}_$filename',
-  );
-  await tmp.writeAsBytes(bytes.buffer.asUint8List());
-  return tmp.path;
 }
 
 Future<Locator> _waitForCbzReaderReady(
