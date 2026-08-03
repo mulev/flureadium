@@ -176,23 +176,30 @@ class Publication with EquatableMixin implements JSONable {
 
     final jsonObject = Map<String, dynamic>.of(json);
 
+    final linksJson = jsonObject.safeRemove<List<dynamic>>('links');
     final selfHref = packaged
         ? null
-        : Link.fromJsonArray(
-            jsonObject.optJsonArray('links', remove: true),
-          ).firstWithRel('self')?.href;
+        : Link.fromJsonArray(linksJson).firstWithRel('self')?.href;
+
+    // Resolve hrefs against the manifest's own location, but only when that
+    // location is one. A packaged manifest names itself with a relative href
+    // ('manifest.json'), whose base is the empty string — and Href turns an
+    // empty base into '/', prefixing every href with a slash no Locator
+    // carries. Keeping those verbatim is what makes an href round-tripped
+    // between readingOrder and a live Locator compare equal, which is the
+    // documented contract (docs/api-reference/publication.md). It also keeps
+    // native APIs working: extractPageThumbnail looks resources up in the
+    // container by href.
+    final selfBase = selfHref == null
+        ? null
+        : Uri.tryParse(selfHref)?.removeLastComponent();
     final String? resolvedBaseUrl;
     if (packaged) {
       resolvedBaseUrl = '/';
-    } else if (selfHref != null) {
-      resolvedBaseUrl =
-          Uri.tryParse(selfHref)?.removeLastComponent().toString() ?? '/';
+    } else if (selfBase != null &&
+        (selfBase.hasScheme || selfBase.path.startsWith('/'))) {
+      resolvedBaseUrl = selfBase.toString();
     } else {
-      // No self link, not packaged: hrefs are bare relative paths the
-      // native Readium parser already produced. Skip baseHref normalisation
-      // to keep the format symmetric with Locator.fromJson and avoid
-      // prepending a spurious '/' that breaks native APIs (e.g.
-      // extractPageThumbnail container resource lookups).
       resolvedBaseUrl = null;
     }
     final hrefNormalizer = resolvedBaseUrl == null
@@ -212,21 +219,17 @@ class Publication with EquatableMixin implements JSONable {
       return null;
     }
 
-    final links =
-        Link.fromJsonArray(
-              jsonObject.safeRemove<List<dynamic>>('links'),
-              normalizeHref: hrefNormalizer,
-            )
-            .map(
-              (it) => (!packaged || !it.rels.contains('self'))
-                  ? it
-                  : it.copyWith(
-                      rels: it.rels
-                        ..remove('self')
-                        ..add('alternate'),
-                    ),
-            )
-            .toList();
+    final links = Link.fromJsonArray(linksJson, normalizeHref: hrefNormalizer)
+        .map(
+          (it) => (!packaged || !it.rels.contains('self'))
+              ? it
+              : it.copyWith(
+                  rels: it.rels
+                    ..remove('self')
+                    ..add('alternate'),
+                ),
+        )
+        .toList();
     // [readingOrder] used to be [spine], so we parse [spine] as a fallback.
     final readingOrderJSON = jsonObject.safeRemove<List<dynamic>>(
       'readingOrder',

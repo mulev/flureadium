@@ -1,11 +1,17 @@
 ## 0.10.1
 
+### Bug Fixes
+
+- **Packaged manifests no longer gain a leading slash on their hrefs**: `Publication.fromJson` resolved reading-order hrefs against the manifest's `self` link. For a packaged publication that link is relative (`manifest.json`), its derived base is the empty string, and `Href` treats an empty base as `/` — so every href came back as `/01_track.mp3` while the `Locator` stream kept emitting `01_track.mp3`. On Android that made a publication href impossible to compare with a locator href, breaking the guarantee `docs/api-reference/publication.md` gives. It showed up only on Android because readium-kotlin keeps a packaged manifest's `self` link while readium-swift strips it, so iOS was already taking the verbatim path. Hrefs are now resolved against the manifest's location only when that location is one — an absolute or root-relative `self` link — and left verbatim otherwise. A remote manifest still resolves against its directory. The no-`self`-link case is unchanged and now shares the same rule rather than sitting in its own branch.
+- **`links` is no longer always empty**: looking up the `self` link consumed the manifest's `links` array, and the later parse re-read a key that was already gone, so `publication.links` came back empty for every caller that did not pass `packaged: true` — which is all of them. The array is read once and used for both.
+
 ### Documentation
 
 - **Voice query contract**: `ttsGetAvailableVoices()` now documents that it does not throw merely because TTS is disabled. Android and iOS return an empty list; Web queries the browser's speech synthesis directly and may return voices either way. To populate a voice picker before enabling TTS, use `ttsGetSystemVoices()`.
 
 ### Testing
 
+- `Publication.fromJson` href resolution is covered per branch: a relative `self` link keeps reading-order, resource and toc hrefs verbatim; a root-relative `self` link still resolves; the declared `links` survive the self-link lookup; and a `Locator` built from a reading-order `Link` carries that link's href unchanged. The last one pins, without a device, the invariant the Android audiobook integration tests assert.
 - The method-channel decode path surfaces an empty native voice response as an empty list, never a throw and never null.
 
 ---
