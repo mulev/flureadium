@@ -14,6 +14,7 @@ let package = Package(
         .library(name: "flureadium", targets: ["flureadium"])
     ],
     dependencies: [
+      .package(name: "FlutterFramework", path: "../FlutterFramework"),
       .package(url: "https://github.com/readium/swift-toolkit.git", .upToNextMinor(from: "3.5.0")),
       .package(url: "https://github.com/mxcl/PromiseKit", .upToNextMinor(from: "6.8.0"))
     ],
@@ -21,6 +22,7 @@ let package = Package(
         .target(
             name: "flureadium",
             dependencies: [
+              .product(name: "FlutterFramework", package: "FlutterFramework"),
               .product(name: "ReadiumShared", package: "swift-toolkit"),
               .product(name: "ReadiumStreamer", package: "swift-toolkit"),
               .product(name: "ReadiumNavigator", package: "swift-toolkit"),
