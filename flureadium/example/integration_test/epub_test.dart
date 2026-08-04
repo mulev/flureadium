@@ -173,8 +173,13 @@ void main() {
       await _waitForReader(tester);
       await tester.tap(find.text('Close'));
       // After close, _publication is null and CircularProgressIndicator keeps
-      // animating — pumpAndSettle would never settle. Use pump instead.
-      await tester.pump(const Duration(seconds: 5));
+      // animating — pumpAndSettle would never settle. Poll instead: the widget
+      // goes away when the native close completes, which is not a fixed cost.
+      await pumpUntil(
+        tester,
+        () => find.byType(ReadiumReaderWidget).evaluate().isEmpty,
+        timeout: const Duration(seconds: 15),
+      );
       expect(find.byType(ReadiumReaderWidget), findsNothing);
     });
 
