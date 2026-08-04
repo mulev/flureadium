@@ -23,7 +23,7 @@ A comprehensive Flutter plugin for reading EPUB ebooks, audiobooks, and comics u
 
 ```yaml
 dependencies:
-  flureadium: ^0.16.2
+  flureadium: ^0.16.3
 ```
 
 > Developed and tested with **Flutter 3.44.7 (Dart 3.12.2)**. The `pubspec.yaml` constraints (`sdk: >=3.8.0 <4.0.0`, `flutter: >=3.3.0`) remain the source of truth for supported versions.

@@ -15,7 +15,7 @@ Add Flureadium to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flureadium: ^0.16.2
+  flureadium: ^0.16.3
 ```
 
 Run:
