@@ -81,31 +81,26 @@ class ReadiumReaderWidget(
 
     override fun dispose() {
         Log.d(TAG, "::dispose")
-        // When Flutter recreates the widget tree (e.g. between integration
-        // tests), the OLD platform view disposes asynchronously — after the
-        // NEW widget has already registered itself. This guard covers the
-        // "closed" event and the audio teardown below; pdfClose(), imageClose()
-        // and epubClose() still clear currentReaderWidget unconditionally,
-        // which is tracked separately.
-        val isActiveWidget = ReadiumReader.currentReaderWidget === this
-        if (isActiveWidget) {
+        // Flutter creates the replacement platform view before disposing the one
+        // it replaces — the new element's initState runs during buildScope, the
+        // old element unmounts later in finalizeTree — so a stale widget's
+        // dispose() routinely arrives after a newer widget has already
+        // registered itself. Only the widget that still owns the registration
+        // may tear down anything shared.
+        if (ReadiumReader.currentReaderWidget === this) {
             ReadiumReader.sendReaderStatus("closed")
-        }
-        if (isPdf) {
-            ReadiumReader.pdfClose()
-        } else if (isImage) {
-            ReadiumReader.imageClose()
-        } else if (isAudio) {
-            // No navigator and no is-ready channel were enabled, so this
-            // widget's registration is the only thing it owns.
-            if (isActiveWidget) {
-                ReadiumReader.currentReaderWidget = null
+            ReadiumReader.currentReaderWidget = null
+            when (readerKind) {
+                PublicationReaderKind.PDF -> ReadiumReader.pdfClose()
+                PublicationReaderKind.IMAGE -> ReadiumReader.imageClose()
+                PublicationReaderKind.EPUB -> ReadiumReader.epubClose()
+                // AUDIO enables no navigator and no is-ready channel, so
+                // clearing the registration above is its whole teardown.
+                PublicationReaderKind.AUDIO -> Unit
             }
-        } else {
-            ReadiumReader.epubClose()
         }
-        channel.setMethodCallHandler(null)
 
+        channel.setMethodCallHandler(null)
         mainScope.coroutineContext.cancelChildren()
         layout.removeAllViews()
     }
