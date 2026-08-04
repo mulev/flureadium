@@ -255,7 +255,15 @@ void main() {
       );
       expect(find.text('Prev Sentence'), findsOneWidget);
       await tester.tap(find.text('TTS Off'));
-      await tester.pump(const Duration(seconds: 3));
+      // The button clears only once `stop()` resolves (main.dart:498-509), and
+      // that call is racing the `play()` still in flight from the enable above —
+      // waitForText returns at the setState that precedes it. Both serialize on
+      // the Android main thread, so a fixed sleep here is a coin flip. Poll.
+      await pumpUntil(
+        tester,
+        () => find.text('Prev Sentence').evaluate().isEmpty,
+        timeout: const Duration(seconds: 30),
+      );
       expect(find.text('Prev Sentence'), findsNothing);
       expect(find.text('TTS On'), findsOneWidget);
     });

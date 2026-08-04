@@ -54,17 +54,7 @@ internal class ReadiumReaderOpenConcurrencyTest {
         ReadiumReader.currentPublicationUrl = null
     }
 
-    private fun setReaderField(name: String, value: Any?) {
-        val field = ReadiumReader::class.java.getDeclaredField(name)
-        field.isAccessible = true
-        field.set(ReadiumReader, value)
-    }
-
-    private fun readerMutex(): Mutex {
-        val field = ReadiumReader::class.java.getDeclaredField("openMutex")
-        field.isAccessible = true
-        return field.get(ReadiumReader) as Mutex
-    }
+    private fun readerMutex(): Mutex = getReaderField("openMutex") as Mutex
 
     @Test
     fun openPublication_serializesBehindMutex_evenOnFastPath() = runTest {

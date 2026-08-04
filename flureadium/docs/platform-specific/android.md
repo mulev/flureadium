@@ -201,7 +201,7 @@ state events.
 Reader status lifecycle:
 - `"loading"` — emitted from `ReadiumReaderWidget.init` when the native view is created
 - `"ready"` — emitted from `onVisualReaderIsReady()` when Readium signals the reader is ready, or directly from `ReadiumReaderWidget.init` for an audio-only publication, which has no visual navigator to signal it
-- `"closed"` — emitted from `ReadiumReaderWidget.dispose()` before tearing down the navigator
+- `"closed"` — emitted from `ReadiumReaderWidget.dispose()`, by the widget that still owns the registration, before it tears down the navigator
 
 `ReadiumReaderWidget.init` runs inside the platform-view `create` call, which
 finishes before Flutter replies to Dart — so `"loading"`, and the `"ready"` an
@@ -240,14 +240,47 @@ itself runs through the audio navigator and the media session, not the widget.
 Uses `PlatformViewLink` with `AndroidViewSurface` for high-performance rendering:
 
 ```kotlin
-class ReadiumReaderViewFactory(
-    private val messenger: BinaryMessenger
-) : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
-    override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
-        return ReadiumReaderView(context, viewId, messenger, args as? Map<*, *>)
+internal class ReadiumReaderViewFactory(private val messenger: BinaryMessenger) :
+    PlatformViewFactory(StandardMessageCodec.INSTANCE) {
+    override fun create(context: Context?, viewId: Int, args: Any?): PlatformView {
+        @Suppress("UNCHECKED_CAST")
+        val creationParams = args as Map<String?, Any?>
+        return ReadiumReaderWidget(context!!, viewId, creationParams, messenger)
     }
 }
 ```
+
+#### Teardown ownership
+
+Flutter builds the replacement platform view before it disposes the one being
+replaced: the new element's `initState` runs during `buildScope`, and the old
+element is unmounted later, in `finalizeTree()`. Native therefore sees
+**create new, then dispose old** — so a stale widget's `dispose()` routinely
+arrives after a newer widget has already written itself to
+`ReadiumReader.currentReaderWidget`.
+
+`dispose()` guards every shared mutation on `ReadiumReader.currentReaderWidget
+=== this`. Only the widget that still owns the registration emits `"closed"`,
+clears the registration, and closes the navigator. A stale widget skips all
+three, so it cannot sever the live widget's callbacks.
+
+`epubClose()`, `imageClose()` and `pdfClose()` are publication-scoped: they
+release the navigator and the is-ready channel the matching `*Enable` created,
+and never touch the registration. `AUDIO` enables neither, so clearing the
+registration is its entire shared teardown.
+
+What a widget owns per instance — its method-call handler, its coroutine scope,
+its view group — is released unconditionally, guard or no guard.
+
+The flip side is that engine teardown can no longer lean on a widget dispose.
+`ReadiumReader.detach()` clears `readerViewRef` itself, so any dispose that
+arrives afterwards fails the identity check and releases nothing shared. It
+therefore calls `epubClose()`, `imageClose()` and `pdfClose()` up front. The
+`closePublication()` it launches is not a substitute: that suspends inside each
+navigator's `release()`, and the `cancelChildren()` at the end of `detach()`
+cancels it there. A navigator left behind would outlive the engine, because
+`ReadiumReader` is process-scoped — and the next engine's `*Enable` would
+attach to the dead one instead of building a fresh navigator.
 
 ### Readium Integration
 

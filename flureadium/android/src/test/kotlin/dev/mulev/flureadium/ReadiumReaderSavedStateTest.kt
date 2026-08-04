@@ -103,10 +103,4 @@ internal class ReadiumReaderSavedStateTest {
         storeState.isAccessible = true
         return storeState.invoke(ReadiumReader) as Bundle
     }
-
-    private fun setReaderField(name: String, value: Any?) {
-        val field = ReadiumReader::class.java.getDeclaredField(name)
-        field.isAccessible = true
-        field.set(ReadiumReader, value)
-    }
 }

@@ -210,7 +210,7 @@ enum ReadiumReaderStatus {
 |--------|---------|-----|
 | `loading` | Emitted from `ReadiumReaderWidget.init` | Emitted from `ReadiumReaderView.init` |
 | `ready` | Emitted from `onVisualReaderIsReady()`, or from `ReadiumReaderWidget.init` for an audiobook, which has no visual navigator to signal it | Emitted from first `locationDidChange` |
-| `closed` | Emitted from `ReadiumReaderWidget.dispose()` | Emitted on publication close |
+| `closed` | Emitted from `ReadiumReaderWidget.dispose()`, by the widget that still owns the reader registration — a stale platform view replaced by a newer one stays quiet | Emitted on publication close |
 | `error` | Not currently emitted natively | Emitted from `didFailToLoadResourceAt` |
 | `reachedEndOfPublication` | Not emitted natively (Dart-side only) | Not emitted natively (Dart-side only) |
 

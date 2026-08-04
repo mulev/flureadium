@@ -47,12 +47,6 @@ internal class ReadiumReaderSamePubCacheTest {
         ReadiumReader.currentPublicationUrl = null
     }
 
-    private fun setReaderField(name: String, value: Any?) {
-        val field = ReadiumReader::class.java.getDeclaredField(name)
-        field.isAccessible = true
-        field.set(ReadiumReader, value)
-    }
-
     @Test
     fun openPublication_sameUrl_returnsCachedPublication() = runTest {
         val mockPub = mock(Publication::class.java)

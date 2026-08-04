@@ -135,16 +135,4 @@ internal class ReadiumReaderWidgetAudioHostTest {
         `when`(publication.conformsTo(Publication.Profile.AUDIOBOOK)).thenReturn(true)
         return publication
     }
-
-    private fun setReaderField(name: String, value: Any?) {
-        val field = ReadiumReader::class.java.getDeclaredField(name)
-        field.isAccessible = true
-        field.set(ReadiumReader, value)
-    }
-
-    private fun getReaderField(name: String): Any? {
-        val field = ReadiumReader::class.java.getDeclaredField(name)
-        field.isAccessible = true
-        return field.get(ReadiumReader)
-    }
 }

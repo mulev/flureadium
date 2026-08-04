@@ -423,6 +423,19 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
      * shared across engines and still cleared.
      */
     fun detach() {
+        // Release the visual navigators and the is-ready channel here, on the
+        // synchronous path. Neither of the two paths that would otherwise do it
+        // survives engine teardown: the mounted widget's dispose() only tears
+        // down what it still owns, and clearing readerViewRef below drops its
+        // registration; closePublication() suspends inside each navigator's
+        // release(), which the cancelChildren() at the end of this function
+        // cancels. Leaving a navigator behind would leak it and its publication
+        // into the next engine in this process, where *Enable would attach to
+        // the dead one instead of building a fresh navigator.
+        epubClose()
+        imageClose()
+        pdfClose()
+
         mainScope.launch {
             closePublication()
         }
@@ -799,7 +812,6 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     }
 
     fun epubClose() {
-        currentReaderWidget = null
         epubNavigator?.dispose()
         epubNavigator = null
 
@@ -852,7 +864,6 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     }
 
     fun imageClose() {
-        currentReaderWidget = null
         imageNavigator?.dispose()
         imageNavigator = null
 
@@ -925,7 +936,6 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     }
 
     fun pdfClose() {
-        currentReaderWidget = null
         pdfNavigator?.dispose()
         pdfNavigator = null
 
