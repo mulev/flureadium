@@ -30,12 +30,6 @@ internal class ReadiumReaderTimebasedErrorTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
     }
 
-    private fun setReaderField(name: String, value: Any?) {
-        val field = ReadiumReader::class.java.getDeclaredField(name)
-        field.isAccessible = true
-        field.set(ReadiumReader, value)
-    }
-
     @AfterTest
     fun tearDown() {
         setReaderField("errorEventChannel", null)
