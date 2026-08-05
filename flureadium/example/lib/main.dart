@@ -191,6 +191,10 @@ class _ReaderPageState extends State<ReaderPage> {
       setState(() {
         _publication = pub;
         _openGeneration++;
+        // Every open mounts a fresh reader view, so the previous view's status
+        // must not stand in for the new one — an integration test polling for
+        // 'ready' would pass on a stale latch.
+        _readerStatus = '';
         _endedSeen = false;
         _ttsEnabled = false;
         _lastTtsLocator = null;
@@ -215,6 +219,7 @@ class _ReaderPageState extends State<ReaderPage> {
       setState(() {
         _publication = pub;
         _openGeneration++;
+        _readerStatus = '';
         _ttsEnabled = false;
         _lastTtsLocator = null;
         _readerLocatorAtTtsDisable = null;
@@ -428,6 +433,7 @@ class _ReaderPageState extends State<ReaderPage> {
     setState(() {
       _publication = pub;
       _openGeneration++;
+      _readerStatus = '';
       _endedSeen = false;
       _ttsEnabled = false;
       _lastTtsLocator = null;
@@ -449,6 +455,7 @@ class _ReaderPageState extends State<ReaderPage> {
       setState(() {
         _publication = pub;
         _openGeneration++;
+        _readerStatus = '';
         _ttsEnabled = false;
         _lastTtsLocator = null;
         _readerLocatorAtTtsDisable = null;
