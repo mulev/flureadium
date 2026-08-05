@@ -83,6 +83,39 @@ internal class ReaderStatusEventChannelTest {
         assertEquals(emptyList(), secondSink.events)
     }
 
+    @Test
+    fun buffersAgainForAStatusSentBetweenSubscriptions() {
+        val channel = ReaderStatusEventChannel(mock(BinaryMessenger::class.java))
+        val firstSink = RecordingSink()
+        channel.onListen(null, firstSink)
+        channel.onCancel(null)
+
+        // A publication swap: Dart unsubscribes, the replacement widget reports
+        // its status, then the host re-subscribes from onReady.
+        channel.sendEvent("ready")
+        val secondSink = RecordingSink()
+        channel.onListen(null, secondSink)
+
+        assertEquals(emptyList(), firstSink.events, "the cancelled subscriber must receive nothing")
+        assertEquals(listOf("ready"), secondSink.events, "buffering resumes once the sink is cleared")
+    }
+
+    @Test
+    fun disposeDropsThePendingStatus() {
+        val channel = ReaderStatusEventChannel(mock(BinaryMessenger::class.java))
+        val sink = RecordingSink()
+
+        channel.sendEvent("ready")
+        channel.dispose()
+        channel.onListen(null, sink)
+
+        assertEquals(
+            emptyList(),
+            sink.events,
+            "a status buffered for a subscriber that never arrived is stale"
+        )
+    }
+
     private class RecordingSink : EventChannel.EventSink {
         val events = mutableListOf<String>()
 
