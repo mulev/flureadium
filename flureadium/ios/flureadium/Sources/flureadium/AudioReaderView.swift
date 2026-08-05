@@ -12,8 +12,8 @@ private let AudioReaderStatusClosed = "closed"
 /// An audio-only publication has nothing to render, so this host builds no
 /// navigator: no `EPUBNavigatorViewController`, no pagination view, no preload
 /// WKWebViews, no `httpServer.serve` routes, no ReadiumCSS transformer. It is a
-/// live but empty view that owns the per-view method channel and the two event
-/// streams a host app subscribes to from `ReadiumReaderWidget.onReady`.
+/// live but empty view that owns the per-view method channel and nothing else;
+/// the reader-status and text-locator channels belong to `FlureadiumPlugin`.
 ///
 /// It reports "ready" from `init` because nothing else will: readiness is
 /// otherwise emitted from `navigator(_:locationDidChange:)`, which needs a
@@ -24,38 +24,19 @@ private let AudioReaderStatusClosed = "closed"
 final class AudioReaderView: NSObject, FlutterPlatformView {
 
   private let channel: ReadiumReaderChannel
-  private var readerStatusStream: EventStreamSink?
-  private var textLocatorStream: EventStreamSink?
   private let _view = UIView()
 
-  convenience init(viewIdentifier viewId: Int64, messenger: FlutterBinaryMessenger) {
-    self.init(
-      channel: ReadiumReaderChannel(
-        name: "\(readiumReaderViewType):\(viewId)", binaryMessenger: messenger),
-      readerStatusStream: ReaderStatusEventStream(
-        withName: "reader-status", messenger: messenger),
-      // Registered but never sent on: iOS registers the text-locator handler
-      // lazily, per reader view, and a host subscribes to it from onReady. A
-      // pure-audio first mount that skipped it would raise
-      // MissingPluginException in every host app.
-      textLocatorStream: EventStreamHandler(withName: "text-locator", messenger: messenger)
-    )
-  }
-
-  init(
-    channel: ReadiumReaderChannel,
-    readerStatusStream: EventStreamSink,
-    textLocatorStream: EventStreamSink
-  ) {
+  init(viewIdentifier viewId: Int64, messenger: FlutterBinaryMessenger) {
     print(TAG, "::init")
-    self.channel = channel
-    self.readerStatusStream = readerStatusStream
-    self.textLocatorStream = textLocatorStream
+    channel = ReadiumReaderChannel(
+      name: "\(readiumReaderViewType):\(viewId)", binaryMessenger: messenger)
     super.init()
 
     channel.setMethodCallHandler(onMethodCall)
-    readerStatusStream.sendEvent(AudioReaderStatusLoading)
-    readerStatusStream.sendEvent(AudioReaderStatusReady)
+    // The status a host waits for. It is sent before any subscriber exists, so
+    // the plugin's ReaderStatusEventStream holds it until Dart subscribes.
+    FlureadiumPlugin.shared?.sendReaderStatus(AudioReaderStatusLoading)
+    FlureadiumPlugin.shared?.sendReaderStatus(AudioReaderStatusReady)
   }
 
   func view() -> UIView {
@@ -83,11 +64,7 @@ final class AudioReaderView: NSObject, FlutterPlatformView {
       result(true)
     case "dispose":
       print(TAG, "::dispose")
-      readerStatusStream?.sendEvent(AudioReaderStatusClosed)
-      textLocatorStream?.dispose()
-      textLocatorStream = nil
-      readerStatusStream?.dispose()
-      readerStatusStream = nil
+      FlureadiumPlugin.shared?.sendReaderStatus(AudioReaderStatusClosed)
       channel.setMethodCallHandler(nil)
       result(nil)
     default:

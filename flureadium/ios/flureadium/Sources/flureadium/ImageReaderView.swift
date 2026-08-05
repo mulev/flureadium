@@ -14,8 +14,8 @@ private let ImageReaderNavigationReadyPollNanoseconds: UInt64 = 50_000_000
 
 class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, VisualNavigatorDelegate {
   private let channel: ReadiumReaderChannel
-  private var readerStatusStreamHandler: EventStreamHandler?
-  private var textLocatorStreamHandler: EventStreamHandler?
+  // reader-status and text-locator are owned by FlureadiumPlugin: this view is
+  // shorter-lived than the Dart subscription to them.
   private let viewContainer: UIView
   private let imageViewController: CBZNavigatorViewController
   private var hasSentReady = false
@@ -48,10 +48,7 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
 
     channel = ReadiumReaderChannel(
       name: "\(readiumReaderViewType):\(viewId)", binaryMessenger: registrar.messenger())
-    textLocatorStreamHandler = EventStreamHandler(withName: "text-locator", messenger: registrar.messenger())
-    readerStatusStreamHandler = ReaderStatusEventStream(withName: "reader-status", messenger: registrar.messenger())
-
-    readerStatusStreamHandler?.sendEvent(ImageReaderStatusLoading)
+    FlureadiumPlugin.shared?.sendReaderStatus(ImageReaderStatusLoading)
 
     imageViewController = try! CBZNavigatorViewController(
       publication: publication,
@@ -96,7 +93,7 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
 
   func navigator(_ navigator: Navigator, didFailToLoadResourceAt href: ReadiumShared.RelativeURL, withError error: ReadiumShared.ReadError) {
     print(TAG, "didFailToLoadResourceAt: \(href). err: \(error)")
-    readerStatusStreamHandler?.sendEvent(ImageReaderStatusError)
+    FlureadiumPlugin.shared?.sendReaderStatus(ImageReaderStatusError)
     // Route through the plugin, which owns the single "error" channel.
     FlureadiumPlugin.shared?.sendError(
       message: error.localizedDescription, code: "DidFailToLoadResource", data: href.string)
@@ -105,7 +102,7 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
   func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
     print(TAG, "onPageChanged: \(locator)")
     if !hasSentReady {
-      readerStatusStreamHandler?.sendEvent(ImageReaderStatusReady)
+      FlureadiumPlugin.shared?.sendReaderStatus(ImageReaderStatusReady)
       hasSentReady = true
     }
     emitOnPageChanged(locator: locator)
@@ -222,7 +219,7 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
     print(TAG, "emitOnPageChanged: locator=\(locator)")
     Task { @MainActor in
       self.channel.onPageChanged(locator: locator)
-      self.textLocatorStreamHandler?.sendEvent(locator.jsonString)
+      FlureadiumPlugin.shared?.sendTextLocator(locator.jsonString)
     }
   }
 
@@ -272,11 +269,7 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
       ImageCacheURLProtocol.disable()
       imageViewController.view.removeFromSuperview()
       imageViewController.delegate = nil
-      readerStatusStreamHandler?.sendEvent(ImageReaderStatusClosed)
-      textLocatorStreamHandler?.dispose()
-      textLocatorStreamHandler = nil
-      readerStatusStreamHandler?.dispose()
-      readerStatusStreamHandler = nil
+      FlureadiumPlugin.shared?.sendReaderStatus(ImageReaderStatusClosed)
       channel.setMethodCallHandler(nil)
       if currentImageReaderView === self { currentImageReaderView = nil }
       result(nil)

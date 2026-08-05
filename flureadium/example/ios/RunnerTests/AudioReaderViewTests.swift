@@ -52,6 +52,7 @@ private final class MockBinaryMessenger: NSObject, FlutterBinaryMessenger {
 final class AudioReaderViewTests: XCTestCase {
 
   private var messenger: MockBinaryMessenger!
+  private var plugin: FlureadiumPlugin!
   private var readerStatus: CapturingEventStreamSink!
   private var textLocator: CapturingEventStreamSink!
 
@@ -60,10 +61,17 @@ final class AudioReaderViewTests: XCTestCase {
     messenger = MockBinaryMessenger()
     readerStatus = CapturingEventStreamSink()
     textLocator = CapturingEventStreamSink()
+    // The host sends status through the plugin, which owns the channel.
+    plugin = FlureadiumPlugin()
+    plugin.readerStatusStreamHandler = readerStatus
+    plugin.textLocatorStreamHandler = textLocator
+    FlureadiumPlugin.shared = plugin
     currentReaderView = nil
   }
 
   override func tearDown() {
+    FlureadiumPlugin.shared = nil
+    plugin = nil
     currentReaderView = nil
     messenger = nil
     readerStatus = nil
@@ -72,11 +80,7 @@ final class AudioReaderViewTests: XCTestCase {
   }
 
   private func makeView() -> AudioReaderView {
-    return AudioReaderView(
-      channel: ReadiumReaderChannel(name: "audio-test", binaryMessenger: messenger),
-      readerStatusStream: readerStatus,
-      textLocatorStream: textLocator
-    )
+    return AudioReaderView(viewIdentifier: 7, messenger: messenger)
   }
 
   /// Drives a method call synchronously and returns whatever the handler passed
@@ -110,9 +114,15 @@ final class AudioReaderViewTests: XCTestCase {
   func testInitSendsNothingOnTextLocator() {
     _ = makeView()
 
-    XCTAssertTrue(
-      textLocator.events.isEmpty,
-      "the text-locator stream is registered so hosts can subscribe, never sent on")
+    XCTAssertTrue(textLocator.events.isEmpty, "there is no page, so there is no text locator")
+  }
+
+  func testInitRegistersOnlyItsOwnMethodChannel() {
+    _ = makeView()
+
+    XCTAssertEqual(
+      messenger.registeredChannels, ["dev.mulev.flureadium/ReadiumReaderWidget:7"],
+      "the event channels belong to the plugin, which registered them at launch")
   }
 
   func testViewHasNoSubviews() {
@@ -184,25 +194,23 @@ final class AudioReaderViewTests: XCTestCase {
 
   // MARK: - Dispose
 
-  func testDisposeReportsClosedAndReleasesBothStreams() {
+  func testDisposeReportsClosed() {
     let view = makeView()
 
     XCTAssertNil(call(view, "dispose"))
 
     XCTAssertEqual(readerStatus.events.last as? String, "closed")
-    XCTAssertTrue(readerStatus.disposed, "the reader-status stream must be end-streamed")
-    XCTAssertTrue(textLocator.disposed, "the text-locator stream must be end-streamed")
   }
 
-  func testDisposeTwiceReportsClosedOnce() {
+  func testDisposeLeavesThePluginOwnedStreamsOpen() {
     let view = makeView()
 
     call(view, "dispose")
-    call(view, "dispose")
 
-    XCTAssertEqual(
-      readerStatus.events.filter { $0 as? String == "closed" }.count, 1,
-      "the streams are released on the first dispose")
+    XCTAssertFalse(
+      readerStatus.disposed,
+      "end-streaming here would close the host's subscription for good — the view is shorter-lived than it")
+    XCTAssertFalse(textLocator.disposed, "same: the plugin owns this channel")
   }
 
   // MARK: - Unknown methods
@@ -213,21 +221,5 @@ final class AudioReaderViewTests: XCTestCase {
     XCTAssertTrue(
       (call(view, "somethingElse") as AnyObject) === (FlutterMethodNotImplemented as AnyObject),
       "an unknown method must reach Dart's MissingPluginException path")
-  }
-
-  // MARK: - Convenience init
-
-  func testConvenienceInitRegistersEveryChannelAHostNeeds() {
-    _ = AudioReaderView(viewIdentifier: 7, messenger: messenger)
-
-    XCTAssertTrue(
-      messenger.registeredChannels.contains("dev.mulev.flureadium/ReadiumReaderWidget:7"),
-      "the per-view method channel must carry the same name every reader view uses")
-    XCTAssertTrue(
-      messenger.registeredChannels.contains("dev.mulev.flureadium/reader-status"),
-      "hosts subscribe to reader-status from onReady")
-    XCTAssertTrue(
-      messenger.registeredChannels.contains("dev.mulev.flureadium/text-locator"),
-      "an unregistered text-locator raises MissingPluginException in every host app")
   }
 }
