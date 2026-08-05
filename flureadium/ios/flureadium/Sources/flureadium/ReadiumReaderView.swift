@@ -96,7 +96,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     channel = ReadiumReaderChannel(
       name: "\(readiumReaderViewType):\(viewId)", binaryMessenger: registrar.messenger())
     textLocatorStreamHandler = EventStreamHandler(withName: "text-locator", messenger: registrar.messenger())
-    readerStatusStreamHandler = EventStreamHandler(withName: "reader-status", messenger: registrar.messenger())
+    readerStatusStreamHandler = ReaderStatusEventStream(withName: "reader-status", messenger: registrar.messenger())
 
     readerStatusStreamHandler?.sendEvent(ReadiumReaderStatusLoading)
 
