@@ -240,6 +240,35 @@ void main() {
         isNotNull,
       );
     });
+
+    // Regression for flureadium-37h: opening a publication into a live reader
+    // must rebuild the native view. Before the fix the platform view stayed
+    // bound to the EPUB that openPublication had already closed, so every
+    // navigation call hit a released navigator and the reader never reported
+    // a CBZ page.
+    testWidgets('opening a CBZ into a live EPUB reader rebuilds the view', (
+      tester,
+    ) async {
+      await ensureAppShowing(
+        tester,
+        initialAsset: 'assets/pubs/moby_dick.epub',
+        reopenButton: 'Open EPUB',
+        openAfterColdBoot: true,
+      );
+
+      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+
+      await ensureAppShowing(
+        tester,
+        initialAsset: 'assets/pubs/moby_dick.epub',
+        reopenButton: 'Open CBZ',
+      );
+
+      expect(
+        (await _waitForCbzReaderReady(tester, href: '001.jpg')).href,
+        '001.jpg',
+      );
+    });
   });
 }
 
