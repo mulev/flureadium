@@ -11,13 +11,16 @@ import '../utils/toc_matcher.dart';
 /// from the entry navigation actually targeted.
 mixin TocSkipNavigationMixin {
   int? _lastNavigatedTocIndex;
+  int _stateGeneration = 0;
 
   /// Drops the remembered TOC index.
   ///
   /// Call when the hosted publication changes — otherwise the next skip indexes
-  /// the new publication's TOC with the previous publication's position.
+  /// the new publication's TOC with the previous publication's position. A skip
+  /// already waiting on the native navigation will not write its index back.
   void resetSkipNavigationState() {
     _lastNavigatedTocIndex = null;
+    _stateGeneration++;
   }
 
   /// Navigates to the table-of-contents entry after [currentLocator].
@@ -89,11 +92,17 @@ mixin TocSkipNavigationMixin {
     }
 
     R2Log.d('$label: navigating to ${targetLink.href}');
+    final generation = _stateGeneration;
     await channel?.go(
       targetLocator,
       isAudioBookWithText: false,
       animated: true,
     );
+    if (generation != _stateGeneration) {
+      // A reset landed while native was navigating — most likely a publication
+      // swap. This index belongs to the publication that was just torn down.
+      return;
+    }
     _lastNavigatedTocIndex = decision.targetTocIndex;
   }
 }

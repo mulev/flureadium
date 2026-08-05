@@ -77,7 +77,13 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
   StreamSubscription<Locator>? _locatorDebugSub;
   bool isReady = false;
 
-  final _isReadyCompleter = Completer<Locator>();
+  /// Bumped on every publication swap and used as the platform view's key.
+  /// A changed key is the only lever that replaces the element and builds a
+  /// fresh native view: the view type is constant and creation params are
+  /// never re-sent to a live view.
+  int _viewGeneration = 0;
+
+  Completer<Locator> _isReadyCompleter = Completer<Locator>();
 
   late Widget _readerWidget;
 
@@ -102,15 +108,53 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
   }
 
   @override
-  void dispose() {
-    R2Log.d('ReadiumReaderWidget disposed');
+  void didUpdateWidget(final ReadiumReaderWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(widget.publication, oldWidget.publication)) {
+      return;
+    }
+
+    R2Log.d('Publication swapped — rebuilding the native reader view');
+    _teardownCurrentView();
+    _isReadyCompleter = Completer<Locator>();
+    _viewGeneration++;
+    _readerWidget = _buildNativeReader();
+  }
+
+  /// Releases everything bound to the current platform view.
+  ///
+  /// Runs on dispose and, on a publication swap, before the replacement view
+  /// is built. Leaves [_isReadyCompleter] settled rather than replacing it —
+  /// only a swap has a new view to hand a fresh one to.
+  void _teardownCurrentView() {
     _locatorDebugSub?.cancel();
     _locatorDebugSub = null;
     cleanupWidgetInterface(_channel?.name);
+    // Detached before dispose() because dispose() awaits a native round-trip
+    // and only drops the handler afterwards. A page change delivered in that
+    // window would otherwise run against the replacement view's state.
+    _channel?.setMethodCallHandler(null);
     _channel?.dispose();
     _channel = null;
     lastOrientation = null;
+    isReady = false;
+    _currentLocator = null;
+    resetSkipNavigationState();
 
+    if (!_isReadyCompleter.isCompleted) {
+      // Nothing may be awaiting it; ignore() keeps the error from surfacing as
+      // an unhandled async error while still delivering to a real awaiter.
+      _isReadyCompleter.future.ignore();
+      _isReadyCompleter.completeError(
+        ReadiumError('Reader view was released before it reported a locator.'),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    R2Log.d('ReadiumReaderWidget disposed');
+    _teardownCurrentView();
     disableWakelock();
 
     super.dispose();
@@ -181,9 +225,15 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
   Future<Locator?> getLocatorFragments(final Locator locator) async {
     R2Log.d('getLocatorFragments: $locator');
 
-    await _awaitNativeViewReady();
+    try {
+      await _isReadyCompleter.future;
+    } on ReadiumError {
+      // The view was replaced by a publication swap before it reported a
+      // locator; there is no longer a channel that could answer this call.
+      return null;
+    }
 
-    return await _channel?.getLocatorFragments(locator);
+    return _channel?.getLocatorFragments(locator);
   }
 
   @override
@@ -220,12 +270,10 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
 
     R2Log.d(publication.identifier);
 
-    // Check if this is a PDF publication by looking at reading order media types
     final isPdf = publication.readingOrder.any(
       (link) => link.type?.contains('pdf') ?? false,
     );
 
-    // Use PDF preferences for PDF publications, EPUB preferences for others
     final defaultPreferences = isPdf
         ? _defaultPdfPreferences?.toJson()
         : _defaultPreferences?.toJson();
@@ -240,8 +288,11 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
 
     R2Log.d('creationParams=$creationParams');
 
+    final viewKey = ValueKey<int>(_viewGeneration);
+
     if (Platform.isAndroid) {
       return PlatformViewLink(
+        key: viewKey,
         viewType: _viewType,
         surfaceFactory: (final context, final controller) => AndroidViewSurface(
           controller: controller as AndroidViewController,
@@ -262,6 +313,7 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
       );
     } else if (Platform.isIOS) {
       return UiKitView(
+        key: viewKey,
         viewType: _viewType,
         layoutDirection: TextDirection.ltr,
         creationParams: creationParams,
@@ -270,6 +322,7 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
       );
     }
     return ColoredBox(
+      key: viewKey,
       color: const Color(0xffff00ff),
       child: Center(
         child: Text(
@@ -323,9 +376,5 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
     _locatorDebugSub = nativeLocatorStream.listen((locator) {
       R2Log.d('ReaderWidget.LocatorChanged - $locator');
     });
-  }
-
-  Future _awaitNativeViewReady() {
-    return _isReadyCompleter.future;
   }
 }

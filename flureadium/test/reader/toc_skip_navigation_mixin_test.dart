@@ -15,6 +15,10 @@ class MockReaderChannel extends ReadiumReaderChannel {
 
   final goCallLog = <GoCall>[];
 
+  /// Runs inside `go`, standing in for anything the host does while the
+  /// native navigation round-trip is still in flight.
+  void Function()? duringGo;
+
   @override
   Future<void> go(
     Locator locator, {
@@ -26,6 +30,7 @@ class MockReaderChannel extends ReadiumReaderChannel {
       animated: animated,
       isAudioBookWithText: isAudioBookWithText,
     ));
+    duringGo?.call();
   }
 }
 
@@ -186,6 +191,30 @@ void main() {
       expect(channel.goCallLog, hasLength(2));
       // Without the memory, path matching resolves to the file's last entry
       // and the skip leaves ch1 entirely.
+      expect(channel.goCallLog[1].locator.href, '/ch2.xhtml');
+    });
+
+    test('a reset landing mid-navigation is not undone by that skip', () async {
+      final publication = _subSectionPublication();
+      // A publication swap tears down state while `go` is still in flight.
+      channel.duringGo = navigator.resetSkipNavigationState;
+
+      await navigator.skipToPreviousChapter(
+        publication: publication,
+        currentLocator: _atFragment('/ch1.xhtml', 'toc=a'),
+        channel: channel,
+      );
+      channel.duringGo = null;
+
+      await navigator.skipToNextChapter(
+        publication: publication,
+        currentLocator: _at('/ch1.xhtml'),
+        channel: channel,
+      );
+
+      expect(channel.goCallLog, hasLength(2));
+      // The reset must hold: if the in-flight skip wrote its index back after
+      // the await, this resolves from the old book's entry instead.
       expect(channel.goCallLog[1].locator.href, '/ch2.xhtml');
     });
 
