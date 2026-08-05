@@ -1,3 +1,21 @@
+## 0.16.4
+
+### Bug Fixes
+
+- **Assigning a new publication to a mounted reader rebuilds the native view**: opening a second book into a reader that was already on screen left the platform view bound to the publication the plugin had just closed. The reader kept showing the old book, and every navigation call reached a navigator native had already released, so it did nothing and reported nothing. Flutter only recreates a platform view when the element is replaced, and nothing forced that: `_PlatformViewLinkState.didUpdateWidget` recreates the view only when `viewType` changes, which is a constant here, and creation parameters are never re-sent to a live view. The view is now keyed by a generation counter that `didUpdateWidget` bumps whenever the widget receives a publication that is not the same instance as the previous one. The check is instance identity rather than equality, because `Publication` compares by full manifest value, so reopening the same file produces an object that is equal to the one native has already released. A swap now tears down the old channel, registration, reading position and remembered chapter before the replacement view is built, and `onReady` fires again for the new view. A `getLocatorFragments` call that was waiting when the swap happened used to wait forever on a completer nothing would ever complete; it returns `null` instead.
+- **A replaced reader view stops reporting**: the outgoing view's method-call handler used to stay installed for the length of the native dispose round-trip, because `ReadiumReaderChannel.dispose()` only drops the handler after that call returns. A page change delivered in that window ran against whatever the widget held at the time, so after a swap it could write the previous book's position into the new reader and fire `onLocatorChanged` with it — which a host would store as the position of the book now on screen. The handler is detached before the round-trip starts. A skip that was waiting on native navigation when the swap happened no longer writes its chapter index back either.
+
+### Refactoring
+
+- Chapter-skip navigation moved out of `reader_widget.dart` into `TocSkipNavigationMixin`. `skipToNext` and `skipToPrevious` were 148 lines of near-identical code inside a widget whose job is hosting the platform view, and they differed in three places: the decision function, the last-match flag, and the log label. The shared table-of-contents index lookup they both carried is now `resolveCurrentTocIndex` in `toc_matcher.dart`, alongside `tocHrefWithFragment`. `reader_widget.dart` went from 385 to 264 code lines.
+- Removed `wasDestroyed` from the reader widget. It was assigned during disposal and never read.
+
+### Testing
+
+- Widget tests for the swap: a different publication replaces the view element, the same instance does not, a swap clears the registered reader widget, and an in-flight `getLocatorFragments` resolves to `null`.
+- Nine behaviour tests for `TocSkipNavigationMixin`, covering empty tables of contents, missing locators, boundaries at both ends, a null channel, and the remembered index that carries a skip when the reported locator has not caught up yet.
+- Integration test in `example/integration_test/cbz_test.dart` opens a CBZ into a live EPUB reader and waits for the reader to report the first page. Before the fix that poll timed out.
+
 ## 0.16.3
 
 ### Bug Fixes
