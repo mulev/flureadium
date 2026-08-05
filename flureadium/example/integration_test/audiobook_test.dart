@@ -43,6 +43,12 @@ void main() {
       (tester.widget<Text>(find.byKey(const Key('audio-error'))).data ?? '')
           .replaceFirst('audio-error: ', '');
 
+  // Reads the keyed latch the example updates from onReaderStatusChanged.
+  // The text is 'reader-status: <name>'; empty until a status arrives.
+  String readerStatus(WidgetTester tester) =>
+      (tester.widget<Text>(find.byKey(const Key('reader-status'))).data ?? '')
+          .replaceFirst('reader-status: ', '');
+
   // Reads the keyed latch the streamed-audio fixture flips when the client
   // cancels an in-flight range request (see StreamedAudioServer). Lets the
   // cancelled-read test confirm a cancellation actually happened, so its
@@ -62,9 +68,9 @@ void main() {
   const audiobookAsset = 'assets/pubs/38533.audiobook';
 
   // Boots (or reuses) the app and opens the wanted audiobook. The audiobook is
-  // the cold-boot publication now that the Android reader widget can host one
-  // (flureadium-3wd); iOS still resolves it to the EPUB reader view, which
-  // renders nothing either way and survives the boot (flureadium-5wu).
+  // the cold-boot publication on both platforms: Android since the reader
+  // widget could host one (flureadium-3wd), iOS since audio-only publications
+  // route to AudioReaderView instead of the EPUB reader view (flureadium-5wu).
   // openAfterColdBoot keeps the cold-boot path tapping [button] as well, so a
   // variant test (NoTitle/Streamed/BadUrl/BadStream) still gets its own
   // publication when it happens to run first — the open-generation bump being
@@ -115,6 +121,26 @@ void main() {
     testWidgets('opens audiobook and shows reader widget', (tester) async {
       await showAudiobook(tester);
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+    });
+
+    testWidgets('audio-only host reports reader status ready', (tester) async {
+      // The host's only readiness signal for an audio publication: there is no
+      // navigator to report a first page. Android has answered this since
+      // flureadium-3wd; iOS answers it since audio-only publications stopped
+      // being routed into the EPUB navigator (flureadium-5wu).
+      await showAudiobook(tester);
+
+      final ready = await pumpUntil(
+        tester,
+        () => readerStatus(tester) == 'ready',
+        timeout: const Duration(seconds: 15),
+      );
+
+      expect(
+        ready,
+        isTrue,
+        reason: 'reader status was "${readerStatus(tester)}"',
+      );
     });
 
     testWidgets('audio play changes button to Audio Pause', (tester) async {

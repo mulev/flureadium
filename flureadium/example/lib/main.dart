@@ -87,6 +87,10 @@ class _ReaderPageState extends State<ReaderPage> {
   // in-flight range request (client disconnect mid-response); lets the
   // integration test confirm the benign-cancellation path actually ran.
   bool _cancelledStreamDisconnectSeen = false;
+  // Latches the last reader status so integration tests can assert the reader
+  // reported readiness. For an audio-only publication this is the only
+  // readiness signal there is: the host has no navigator to report a page.
+  String _readerStatus = '';
 
   StreamSubscription<ReadiumReaderStatus>? _statusSub;
   StreamSubscription<Locator>? _locatorSub;
@@ -126,9 +130,11 @@ class _ReaderPageState extends State<ReaderPage> {
     _statusSub?.cancel();
     _locatorSub?.cancel();
     _errorSub?.cancel();
-    _statusSub = _flureadium.onReaderStatusChanged.listen(
-      (s) => debugPrint('ReaderStatus: $s'),
-    );
+    _statusSub = _flureadium.onReaderStatusChanged.listen((s) {
+      debugPrint('ReaderStatus: $s');
+      if (!mounted) return;
+      setState(() => _readerStatus = s.name);
+    });
     _locatorSub = _flureadium.onTextLocatorChanged.listen(
       (l) => setState(() {
         _locator = l;
@@ -256,6 +262,7 @@ class _ReaderPageState extends State<ReaderPage> {
         _publication = pub;
         _openGeneration++;
         _lastAudioError = '';
+        _readerStatus = '';
         _endedSeen = false;
         _ttsEnabled = false;
         _lastTtsLocator = null;
@@ -337,6 +344,7 @@ class _ReaderPageState extends State<ReaderPage> {
         _publication = pub;
         _openGeneration++;
         _lastAudioError = '';
+        _readerStatus = '';
         _endedSeen = false;
         _ttsEnabled = false;
         _lastTtsLocator = null;
@@ -397,6 +405,7 @@ class _ReaderPageState extends State<ReaderPage> {
         _publication = pub;
         _openGeneration++;
         _lastAudioError = '';
+        _readerStatus = '';
         _cancelledStreamDisconnectSeen = false;
         _endedSeen = false;
         _ttsEnabled = false;
@@ -748,6 +757,14 @@ class _ReaderPageState extends State<ReaderPage> {
                     Text(
                       key: const Key('audio-error'),
                       'audio-error: $_lastAudioError',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('reader-status'),
+                      'reader-status: $_readerStatus',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 10,
