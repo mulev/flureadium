@@ -182,6 +182,11 @@ Uses:
 - UIKit views embedded via UiKitView
 - GCDWebServer for local content serving
 
+`ReadiumReaderViewFactory` picks the view from the publication: PDF, then image
+(DiViNa or an all-bitmap reading order), then audio (an all-audio reading
+order), then EPUB. Only the audio host builds no navigator — it has nothing to
+render. See [iOS platform notes](../platform-specific/ios.md).
+
 ### Web (TypeScript)
 
 ```
