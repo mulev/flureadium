@@ -68,6 +68,7 @@ lib/
     ├── reader/               # Reader lifecycle mixins
     │   ├── orientation_handler_mixin.dart
     │   ├── reader_lifecycle_mixin.dart
+    │   ├── toc_skip_navigation_mixin.dart
     │   └── wakelock_manager_mixin.dart
     ├── utils/                # Utilities
     │   ├── navigation_helper.dart
@@ -95,6 +96,7 @@ Includes mixins for:
 - **WakelockManagerMixin**: Keeps screen on during reading
 - **ReaderLifecycleMixin**: Manages widget registration
 - **OrientationHandlerMixin**: Handles orientation changes
+- **TocSkipNavigationMixin**: Skips to the adjacent chapter
 
 ## Platform Interface (flureadium_platform_interface/)
 
