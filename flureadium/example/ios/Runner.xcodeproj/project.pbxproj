@@ -41,6 +41,7 @@
 		DDBBCC0011223344AABBCC06 /* EventStreamHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC05 /* EventStreamHandlerTests.swift */; };
 		DDBBCC0011223344AABBCC08 /* ReaderStatusEventStreamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC07 /* ReaderStatusEventStreamTests.swift */; };
 		DDBBCC0011223344AABBCC0A /* AudioReaderViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC09 /* AudioReaderViewTests.swift */; };
+		DDBBCC0011223344AABBCC0C /* ReaderViewKindRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC0B /* ReaderViewKindRoutingTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		CA90AC1234567890ABCDEF22 /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA90AC1234567890ABCDEF21 /* CarPlaySceneDelegate.swift */; };
@@ -108,6 +109,7 @@
 		DDBBCC0011223344AABBCC05 /* EventStreamHandlerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStreamHandlerTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC07 /* ReaderStatusEventStreamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderStatusEventStreamTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC09 /* AudioReaderViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioReaderViewTests.swift; sourceTree = "<group>"; };
+		DDBBCC0011223344AABBCC0B /* ReaderViewKindRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewKindRoutingTests.swift; sourceTree = "<group>"; };
 		E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubEditingActionsTests.swift; sourceTree = "<group>"; };
 		F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheURLProtocolTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginGoToLocatorTests.swift; sourceTree = "<group>"; };
@@ -202,6 +204,7 @@
 				DDBBCC0011223344AABBCC05 /* EventStreamHandlerTests.swift */,
 				DDBBCC0011223344AABBCC07 /* ReaderStatusEventStreamTests.swift */,
 				DDBBCC0011223344AABBCC09 /* AudioReaderViewTests.swift */,
+				DDBBCC0011223344AABBCC0B /* ReaderViewKindRoutingTests.swift */,
 			);
 			path = RunnerTests;
 			sourceTree = "<group>";
@@ -512,6 +515,7 @@
 				DDBBCC0011223344AABBCC06 /* EventStreamHandlerTests.swift in Sources */,
 				DDBBCC0011223344AABBCC08 /* ReaderStatusEventStreamTests.swift in Sources */,
 				DDBBCC0011223344AABBCC0A /* AudioReaderViewTests.swift in Sources */,
+				DDBBCC0011223344AABBCC0C /* ReaderViewKindRoutingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
