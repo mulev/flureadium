@@ -182,6 +182,7 @@ ios/Sources/flureadium/
 ├── ReadiumReaderView.swift      # EPUB reader view
 ├── PdfReaderView.swift          # PDF reader view
 ├── ImageReaderView.swift        # CBZ / DIVINA reader view
+├── AudioReaderView.swift        # Audio-only reader host (no navigator)
 ├── EdgeTapInterceptView.swift   # Edge tap and swipe overlay
 └── PageThumbnailExtractor.swift # Downscaled JPEG thumbnails for image resources
 ```
