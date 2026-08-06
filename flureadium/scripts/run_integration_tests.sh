@@ -23,9 +23,11 @@
 #   If auto-start fails you will be prompted with manual instructions.
 #
 # Android note:
-#   Runs the full suite including @native audiobook tests.
-#   CI excludes @native via --exclude-tags native because GitHub-hosted
-#   emulators have unreliable audio; local runs include them.
+#   Runs everything, tags included. CI runs the same aggregator with
+#   --exclude-tags "native || network", because GitHub-hosted emulators have
+#   no audio or TTS engine and no route to the public internet. A local run
+#   has both, so it is the only place the tagged tests execute — treat a green
+#   CI run as silent about them.
 #   Native logcat is captured to android_native.log alongside flutter output
 #   to diagnose hangs and native-side issues that don't surface in Dart logs.
 #   Before the Android leg the script pins Google TTS as the default engine
@@ -33,9 +35,16 @@
 #   default synthesizer, so the EPUB TTS tests query an unconfigured engine,
 #   get an empty voice list, and fail nondeterministically.
 #
+# Tags:
+#   native  — needs a real audio or TTS engine
+#   network — needs the public internet
+#   Applied to tests, not as library-level @Tags: an annotation is ignored once
+#   an aggregator imports the file rather than running it, and an aggregator is
+#   what every path here runs.
+#
 # iOS note:
-#   Audiobook tests (tagged @native) are included in the iOS suite.
-#   They require a connected device or booted simulator (iOS >= 16).
+#   Runs everything too, including the audio suites. Requires a connected
+#   device or booted simulator (iOS >= 16).
 
 # ── Colours ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'

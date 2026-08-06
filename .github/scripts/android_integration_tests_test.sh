@@ -76,13 +76,35 @@ make_sandbox 1 1; run_target
   && ok "the event stream is captured" || bad "the event stream is captured"
 
 # 5. Regression for the trailing-backslash bug: flutter must receive exactly
-#    three arguments, with no stray continuation character.
+#    these arguments, with no stray continuation character.
 expected="test
-integration_test/all_tests_android_ci.dart
+integration_test/all_tests.dart
+--exclude-tags
+native || network
 --file-reporter
 json:$work/temp/diag/test-events.json"
 check "flutter is invoked with clean arguments" "$expected" "$(cat "$work/argv.txt")"
 rm -rf "$work"
+
+# 5b. The suite is selected by tag, not by a second aggregator. An import list
+#     fails silently: a file left out of it never runs and nothing says so,
+#     which is how the audiobook group went unrun here (flureadium-29l).
+INTEGRATION_DIR="$SCRIPT_DIR/../../flureadium/example/integration_test"
+if [ -e "$INTEGRATION_DIR/all_tests_android_ci.dart" ]; then
+  bad "the Android CI aggregator is gone (tags select the suite now)"
+else
+  ok "the Android CI aggregator is gone (tags select the suite now)"
+fi
+
+# 5c. The tags the script excludes have to exist on some test, or the exclusion
+#     is a no-op that reads as coverage.
+for tag in native network; do
+  if grep -rq "tags: '$tag'" "$INTEGRATION_DIR"; then
+    ok "the '$tag' tag is applied to at least one test"
+  else
+    bad "the '$tag' tag is applied to at least one test"
+  fi
+done
 
 # 6. A long-running logcat must not hold the step's stdout open.
 make_sandbox 0 15; run_target pipe
