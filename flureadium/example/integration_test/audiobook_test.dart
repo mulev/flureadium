@@ -43,12 +43,6 @@ void main() {
       (tester.widget<Text>(find.byKey(const Key('audio-error'))).data ?? '')
           .replaceFirst('audio-error: ', '');
 
-  // Reads the keyed latch the example updates from onReaderStatusChanged.
-  // The text is 'reader-status: <name>'; empty until a status arrives.
-  String readerStatus(WidgetTester tester) =>
-      (tester.widget<Text>(find.byKey(const Key('reader-status'))).data ?? '')
-          .replaceFirst('reader-status: ', '');
-
   // Reads the keyed latch the streamed-audio fixture flips when the client
   // cancels an in-flight range request (see StreamedAudioServer). Lets the
   // cancelled-read test confirm a cancellation actually happened, so its
@@ -95,6 +89,20 @@ void main() {
     timeout: timeout,
   );
 
+  // Every test here drives real playback, so every one carries the `native`
+  // tag that CI excludes where there is no audio engine.
+  //
+  // The tag sits on each test because flutter_test's `group` drops `tags`
+  // (test_compat.dart) — and the library-level `@Tags` at the top of this file
+  // is ignored once an aggregator imports it rather than running it, which is
+  // what CI does. Going through this wrapper is what keeps the next test in
+  // the file tagged by construction instead of by remembering to.
+  void audioTest(
+    String description,
+    WidgetTesterCallback body, {
+    bool skip = false,
+  }) => testWidgets(description, body, tags: 'native', skip: skip);
+
   group('Audiobook', () {
     // The book under test, loaded once. Anchoring a baseline to a known href
     // keeps a previous test's retained track from being mistaken for this
@@ -118,32 +126,7 @@ void main() {
       await Flureadium().stop();
     });
 
-    testWidgets('opens audiobook and shows reader widget', (tester) async {
-      await showAudiobook(tester);
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
-    });
-
-    testWidgets('audio-only host reports reader status ready', (tester) async {
-      // The host's only readiness signal for an audio publication: there is no
-      // navigator to report a first page. Android has answered this since
-      // flureadium-3wd; iOS answers it since audio-only publications stopped
-      // being routed into the EPUB navigator (flureadium-5wu).
-      await showAudiobook(tester);
-
-      final ready = await pumpUntil(
-        tester,
-        () => readerStatus(tester) == 'ready',
-        timeout: const Duration(seconds: 15),
-      );
-
-      expect(
-        ready,
-        isTrue,
-        reason: 'reader status was "${readerStatus(tester)}"',
-      );
-    });
-
-    testWidgets('audio play changes button to Audio Pause', (tester) async {
+    audioTest('audio play changes button to Audio Pause', (tester) async {
       await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));
       // audioEnable() + play() + setState; poll for the button (max 15s).
@@ -151,7 +134,7 @@ void main() {
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
-    testWidgets('audioSeekBy does not crash', (tester) async {
+    audioTest('audioSeekBy does not crash', (tester) async {
       await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
@@ -160,7 +143,7 @@ void main() {
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
-    testWidgets('pause then resume restores playback', (tester) async {
+    audioTest('pause then resume restores playback', (tester) async {
       await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));
       await waitForPlaying(tester);
@@ -178,7 +161,7 @@ void main() {
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
-    testWidgets('chapter skip keeps playback going', (tester) async {
+    audioTest('chapter skip keeps playback going', (tester) async {
       // Skipping a chapter is the navigator path a head unit (Android Auto)
       // drives when the listener picks a chapter or hits next-track. This
       // guards that the MediaLibraryService migration left it working.
@@ -191,7 +174,7 @@ void main() {
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
-    testWidgets('chapter skip previous keeps playback going', (tester) async {
+    audioTest('chapter skip previous keeps playback going', (tester) async {
       // Previous-track is the other navigator path a head unit drives: on
       // Android Auto, PluginSimpleBasePlayer remaps a head-unit "previous" to a
       // backward seek. Skip Next is tested above; this guards the symmetric
@@ -209,7 +192,7 @@ void main() {
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
-    testWidgets(
+    audioTest(
       'go-to-chapter across a track boundary while playing does not freeze',
       (tester) async {
         // Pre-fix repro of the chapter-transition deadlock: go(to:) fires
@@ -229,7 +212,7 @@ void main() {
       },
     );
 
-    testWidgets(
+    audioTest(
       'play(locator) to a later chapter while playing keeps playback going',
       (tester) async {
         // The Table-of-Contents / bookmark jump path: play(fromLocator) must
@@ -272,7 +255,7 @@ void main() {
       },
     );
 
-    testWidgets('untitled chapter audiobook plays and skips without crashing', (
+    audioTest('untitled chapter audiobook plays and skips without crashing', (
       tester,
     ) async {
       // The untitled_chapter.audiobook fixture has a second chapter with no
@@ -289,7 +272,7 @@ void main() {
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
-    testWidgets('next chapter advances the track', (tester) async {
+    audioTest('next chapter advances the track', (tester) async {
       // Audio Next Chapter drives Flureadium.next(), which must move to the
       // next reading-order track — not seek inside the current one. The bug
       // this guards made next() a 30s seek, so the track never changed.
@@ -306,7 +289,7 @@ void main() {
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
-    testWidgets('previous chapter at first track is a no-op', (tester) async {
+    audioTest('previous chapter at first track is a no-op', (tester) async {
       // From track 1, Audio Prev Chapter must be bounded: next()/previous()
       // move exactly one track and clamp at the ends, so this leaves the
       // current track unchanged and does not crash.
@@ -328,7 +311,7 @@ void main() {
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
-    testWidgets('audiobook reaches ended state at end of book', (tester) async {
+    audioTest('audiobook reaches ended state at end of book', (tester) async {
       // Playing the last track to its natural end must surface
       // TimebasedState.ended — the signal the host app turns into its completion
       // popup. Guards the iOS (shouldPlayNextResource) and Android (forward
@@ -381,7 +364,7 @@ void main() {
       expect(endedSeen(tester), isTrue);
     });
 
-    testWidgets('streamed audiobook opens and plays on the main thread', (
+    audioTest('streamed audiobook opens and plays on the main thread', (
       tester,
     ) async {
       // Regression for the Android wrong-thread crash: building the audio
@@ -399,7 +382,7 @@ void main() {
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
-    testWidgets('unreachable streamed audio surfaces an error event', (
+    audioTest('unreachable streamed audio surfaces an error event', (
       tester,
     ) async {
       // A dead host ('Open AudioBook BadUrl') fails at *load time*, before
@@ -424,9 +407,7 @@ void main() {
       );
     });
 
-    testWidgets('partial stream failure surfaces an error event', (
-      tester,
-    ) async {
+    audioTest('partial stream failure surfaces an error event', (tester) async {
       // Regression for the streaming-error observability gap on Android:
       // 'Open AudioBook BadStream' serves a WAV whose Content-Length promises
       // 30s but drops the socket after ~1s. ExoPlayer raises a source error
@@ -451,7 +432,7 @@ void main() {
       );
     }, skip: Platform.isIOS);
 
-    testWidgets(
+    audioTest(
       'seeking a streamed audiobook does not surface a spurious cancelled error',
       (tester) async {
         // A streamed audiobook served by a local range-seekable WAV server that
