@@ -35,6 +35,22 @@ void dispose() {
 }
 ```
 
+### Delivery
+
+Nothing is buffered. A page change that happens while no one is subscribed is
+dropped, and a locator already delivered is never replayed to a later
+subscriber. This is deliberately unlike `onReaderStatusChanged`, which holds
+its latest value for a first subscriber: a status describes where the reader
+*is*, while a locator describes a page turn that already happened. Replaying
+one would move a reader that never went there.
+
+The consequence for a host app: subscribe from
+[`ReadiumReaderWidget.onReady`](reader-widget.md), which fires once per
+platform view — including after a publication swap — and treat the stream as
+silent until the reader reports its first page. Do not carry a locator across
+a swap; an href from the publication that just closed does not resolve in the
+one replacing it.
+
 ### Debouncing
 
 For performance, consider debouncing frequent updates:
