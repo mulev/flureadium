@@ -9,6 +9,7 @@ import 'epub_tts_test.dart' as epub_tts;
 import 'error_handling_test.dart' as error_handling;
 import 'webpub_test.dart' as webpub;
 import 'car_transport_test.dart' as car_transport;
+import 'text_locator_test.dart' as text_locator;
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -22,4 +23,5 @@ void main() {
   error_handling.main();
   webpub.main();
   car_transport.main();
+  text_locator.main();
 }

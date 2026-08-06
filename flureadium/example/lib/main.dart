@@ -190,19 +190,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
-        _openGeneration++;
-        // Every open mounts a fresh reader view, so the previous view's status
-        // must not stand in for the new one — an integration test polling for
-        // 'ready' would pass on a stale latch.
-        _readerStatus = '';
-        _endedSeen = false;
-        _ttsEnabled = false;
-        _lastTtsLocator = null;
-        _readerLocatorAtTtsDisable = null;
-        _audioEnabled = false;
-        _audioPaused = false;
-        _voices = [];
-        _voiceIndex = 0;
+        _resetPublicationLatches();
       });
     } catch (e) {
       debugPrint('openAudiobook error: $e');
@@ -218,15 +206,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
-        _openGeneration++;
-        _readerStatus = '';
-        _ttsEnabled = false;
-        _lastTtsLocator = null;
-        _readerLocatorAtTtsDisable = null;
-        _audioEnabled = false;
-        _audioPaused = false;
-        _voices = [];
-        _voiceIndex = 0;
+        _resetPublicationLatches();
       });
     } catch (e) {
       debugPrint('openAudiobookUntitledChapter error: $e');
@@ -265,17 +245,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
-        _openGeneration++;
-        _lastAudioError = '';
-        _readerStatus = '';
-        _endedSeen = false;
-        _ttsEnabled = false;
-        _lastTtsLocator = null;
-        _readerLocatorAtTtsDisable = null;
-        _audioEnabled = false;
-        _audioPaused = false;
-        _voices = [];
-        _voiceIndex = 0;
+        _resetPublicationLatches();
       });
     } catch (e) {
       debugPrint('openUnreachableAudiobook error: $e');
@@ -347,17 +317,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
-        _openGeneration++;
-        _lastAudioError = '';
-        _readerStatus = '';
-        _endedSeen = false;
-        _ttsEnabled = false;
-        _lastTtsLocator = null;
-        _readerLocatorAtTtsDisable = null;
-        _audioEnabled = false;
-        _audioPaused = false;
-        _voices = [];
-        _voiceIndex = 0;
+        _resetPublicationLatches();
       });
     } catch (e) {
       debugPrint('openMidStreamFailAudiobook error: $e');
@@ -408,18 +368,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
-        _openGeneration++;
-        _lastAudioError = '';
-        _readerStatus = '';
-        _cancelledStreamDisconnectSeen = false;
-        _endedSeen = false;
-        _ttsEnabled = false;
-        _lastTtsLocator = null;
-        _readerLocatorAtTtsDisable = null;
-        _audioEnabled = false;
-        _audioPaused = false;
-        _voices = [];
-        _voiceIndex = 0;
+        _resetPublicationLatches();
       });
     } catch (e) {
       debugPrint('openStreamedAudiobook error: $e');
@@ -432,17 +381,37 @@ class _ReaderPageState extends State<ReaderPage> {
     if (!mounted) return;
     setState(() {
       _publication = pub;
-      _openGeneration++;
-      _readerStatus = '';
-      _endedSeen = false;
-      _ttsEnabled = false;
-      _lastTtsLocator = null;
-      _readerLocatorAtTtsDisable = null;
-      _audioEnabled = false;
-      _audioPaused = false;
-      _voices = [];
-      _voiceIndex = 0;
+      _resetPublicationLatches();
     });
+  }
+
+  /// Clears every latch that describes the publication being replaced. Called
+  /// from inside each open path's `setState`.
+  ///
+  /// Each of these is a fact about one publication, so leaving any of them set
+  /// lets an integration test poll a stale value and pass before the new
+  /// reader has reported anything. That is how a swapped-in audiobook kept
+  /// showing the previous EPUB's page, and how a `ready` from the outgoing
+  /// view stood in for the incoming one before flureadium-5wu.
+  ///
+  /// The seven open paths used to clear overlapping subsets of this list. The
+  /// union is applied everywhere now: no latch here outlives its publication,
+  /// so there is no case where clearing one is wrong.
+  void _resetPublicationLatches() {
+    _openGeneration++;
+    _readerStatus = '';
+    _locator = null;
+    _savedLocator = null;
+    _lastAudioError = '';
+    _cancelledStreamDisconnectSeen = false;
+    _endedSeen = false;
+    _ttsEnabled = false;
+    _lastTtsLocator = null;
+    _readerLocatorAtTtsDisable = null;
+    _audioEnabled = false;
+    _audioPaused = false;
+    _voices = [];
+    _voiceIndex = 0;
   }
 
   Future<void> _openWebPub() async {
@@ -454,15 +423,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       setState(() {
         _publication = pub;
-        _openGeneration++;
-        _readerStatus = '';
-        _ttsEnabled = false;
-        _lastTtsLocator = null;
-        _readerLocatorAtTtsDisable = null;
-        _audioEnabled = false;
-        _audioPaused = false;
-        _voices = [];
-        _voiceIndex = 0;
+        _resetPublicationLatches();
       });
     } catch (e) {
       debugPrint('openWebPub error: $e');

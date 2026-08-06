@@ -9,6 +9,7 @@ import 'divina_test.dart' as divina;
 import 'epub_test.dart' as epub;
 import 'error_handling_test.dart' as error_handling;
 import 'car_transport_test.dart' as car_transport;
+import 'text_locator_test.dart' as text_locator;
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -19,4 +20,5 @@ void main() {
   epub.main();
   error_handling.main();
   car_transport.main();
+  text_locator.main();
 }
