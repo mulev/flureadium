@@ -109,6 +109,22 @@ internal class ErrorEventChannelTest {
     }
 
     @Test
+    fun keepsPendingErrorsWhenOnListenArrivesWithoutASink() {
+        val channel = ErrorEventChannel(mock(BinaryMessenger::class.java))
+        channel.sendEvent(errorMap("boom"))
+
+        channel.onListen(null, null)
+
+        val sink = RecordingSink()
+        channel.onListen(null, sink)
+        assertEquals(
+            listOf(errorMap("boom")),
+            sink.events,
+            "there was nowhere to send the error, so it stays queued for a real subscriber"
+        )
+    }
+
+    @Test
     fun dropsPendingErrorsWhenTheChannelIsDisposed() {
         val channel = ErrorEventChannel(mock(BinaryMessenger::class.java))
         val sink = RecordingSink()
