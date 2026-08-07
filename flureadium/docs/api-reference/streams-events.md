@@ -227,7 +227,7 @@ enum ReadiumReaderStatus {
 | `loading` | Emitted from `ReadiumReaderWidget.init` | Emitted from `ReadiumReaderView.init` |
 | `ready` | Emitted from `onVisualReaderIsReady()`, or from `ReadiumReaderWidget.init` for an audiobook, which has no visual navigator to signal it | Emitted from first `locationDidChange` |
 | `closed` | Emitted from `ReadiumReaderWidget.dispose()`, by the widget that still owns the reader registration — a stale platform view replaced by a newer one stays quiet | Emitted on publication close |
-| `error` | Not currently emitted natively | Emitted from `didFailToLoadResourceAt` |
+| `error` | Emitted whenever a reader coroutine fails, from `readerCoroutineExceptionHandler` | Emitted from `didFailToLoadResourceAt` |
 | `reachedEndOfPublication` | Not emitted natively (Dart-side only) | Not emitted natively (Dart-side only) |
 
 On Android the widget's `init` runs inside the platform-view `create` call, which
@@ -235,7 +235,10 @@ finishes before Flutter replies to Dart. A `loading`, and the `ready` an audiobo
 sends from `init`, therefore leave native before any Dart subscriber can exist, so
 the native side holds the most recent status and delivers it when the first
 subscriber arrives. Only the latest is held: status is a state rather than a log,
-and a status already delivered is never replayed to a later subscriber.
+and a status already delivered is never replayed to a later subscriber. The error
+channel holds what it is sent under the same rule with a different shape — an
+error is an event, not a state, so it keeps the first eight in order instead of
+the latest one.
 
 See [Android platform docs](../platform-specific/android.md#event-channels) for implementation details.
 
@@ -290,7 +293,16 @@ class ReadiumError implements Error {
 
 On iOS the `error` EventChannel is owned by `FlureadiumPlugin`, registered once in `register(with:)` and kept for the lifetime of the plugin. Reader views no longer register their own `error` handler; both `ReadiumReaderView` and `ImageReaderView` route resource-load failures through the plugin's `sendError(message:code:data:)`. Because the channel has a single owner, the Dart subscription survives reader-view open/close cycles, and paths that have no reader view (such as the audiobook player) can send on the same channel. The PDF reader uses a separate `pdf-error` channel and is unaffected.
 
-On Android the `error` EventChannel handler is registered at activity attach time. Android does not currently emit error events automatically — the `sendError()` helper in `ReadiumReader` exists for future native failure paths (e.g. failed resource loads). Subscribe to this stream for forward compatibility.
+On Android the `error` EventChannel handler is registered at activity attach time.
+Android emits two kinds of error today: a timebased playback failure, with
+`code: "TimebasedError"` and the Readium error category as `data`, and an
+uncaught reader coroutine failure, with `code: "ReaderFailure"`, the exception
+message, and the native stack trace as `data`. A reader failure is usually
+reported from platform-view creation, before any Dart subscriber can exist, so
+the channel holds errors sent while nobody is listening and replays them in
+order, up to eight of them, to the first subscriber. Disposing the channel drops
+whatever it still holds, so a finished reader session cannot surface on a later
+subscription.
 
 ### Error Handling Pattern
 

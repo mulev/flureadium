@@ -211,12 +211,54 @@ status while no one is listening and delivers it once, when the first
 subscriber arrives. Only the latest one is held: reader status is a state, not
 a log, and a status already delivered is never replayed to a later subscriber.
 
-`ReaderStatusEventChannel` is the only one that buffers. `TextLocatorEventChannel`
-deliberately does not: a locator is a page turn that already happened, so
-holding one and handing it to a later subscriber would move a reader that never
-went there. A page change sent while nobody is listening is dropped. Both
-channels are recreated by `ReadiumReader.attach()`, and disposing either clears
-whatever it was holding, so nothing survives into the next Activity attach.
+What a channel holds while nobody is listening differs per channel, because the
+events differ. `ReaderStatusEventChannel` keeps the latest status and nothing
+else: status is a state, so an older one is stale the moment a newer arrives.
+`ErrorEventChannel` keeps up to eight errors in order: an error is an event, one
+does not supersede another, and the first failure is usually the one that
+explains the rest — hence the oldest are the ones kept when the cap is reached.
+`TextLocatorEventChannel` keeps nothing at all: a locator is a page turn that
+already happened, and handing it to a later subscriber would move a reader that
+never went there. All three are recreated by `ReadiumReader.attach()`, and
+disposing one clears whatever it was holding, so nothing survives into the next
+Activity attach.
+
+### Coroutine Failure Reporting
+
+Three scopes are owned by the reader: `ReadiumReaderWidget.mainScope`,
+`ReadiumReader.mainScope`, and `BaseNavigator.mainScope`, which every navigator
+inherits. All three carry `readerCoroutineExceptionHandler`.
+
+They need it because of how a supervisor works. Each scope is built on a
+`SupervisorJob`, and a supervisor's direct children are root coroutines, so a
+failure is never passed up to a parent. `handleCoroutineException` looks for a
+`CoroutineExceptionHandler` in the coroutine's context and, finding none, falls
+through to the thread's uncaught handler — `RuntimeInit.KillApplicationHandler`
+on Android, which kills the process. A failed navigator enable used to take the
+whole app down that way, with nothing reaching Dart.
+
+The handler logs the throwable, sets reader status to `error`, and sends an
+error event carrying the exception message, `code: "ReaderFailure"`, and the
+stack trace as `data`. The widget passes its own ownership check to the handler:
+Flutter builds a replacement platform view before unmounting the one it
+replaces, so a stale widget's enable can still be in flight while a newer widget
+owns the reader, and its failure must not describe a session the host has
+already dropped.
+
+Two deliberate exclusions:
+
+- `EventChannelWrapper.mainScope` has no reporting handler. It owns the channel
+  a report travels on, so reporting a failure from there could re-enter
+  `sendError` and loop.
+- Cancellation reports nothing. A coroutine cancelled by widget `dispose()` or
+  engine `detach()` completes with a `CancellationException`, which coroutines
+  never hand to a handler, so teardown stays silent by construction.
+
+A failed reader method call is answered rather than reported: `onMethodCall`
+catches the exception and replies `result.error` with the exception class,
+message and stack trace, the same shape `PublicationChannel.dispatchGuarded`
+returns. `CancellationException` is rethrown there too, so a call torn down by
+`dispose()` does not reach Dart as a phantom failure.
 
 ### Reader Kind
 

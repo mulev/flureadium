@@ -1,3 +1,28 @@
+## 0.16.5
+
+### Bug Fixes
+
+- **An Android reader failure no longer kills the app**: any exception in a reader coroutine took the process down with a `FATAL EXCEPTION` and no signal to Dart — no error event, no `error` status, nothing thrown into your code. The observed one was mounting the reader over a publication that had been closed, which throws `Publication not opened cannot enable epub`. Each reader scope was a `SupervisorJob` scope with no `CoroutineExceptionHandler`, and a supervisor's direct children are root coroutines, so the failure went straight to Android's `KillApplicationHandler`. The widget scope, the `ReadiumReader` singleton scope and every navigator scope now carry a handler that reports the failure as reader status `error` plus an error event with `code: "ReaderFailure"`, the exception message and the native stack trace. A widget only reports while it still owns the reader registration, so a stale platform view cannot flip the reader that replaced it to `error`, and cancellation reports nothing, so `dispose()` and `detach()` stay silent.
+- **A failed reader method call answers Dart**: `onMethodCall` dispatched every branch on a coroutine with no catch, and several branches parse their payload with unguarded casts. A malformed call threw, nothing was replied, and the Dart future never completed. It now replies `result.error` with the exception class, message and stack trace — the same shape the publication channel returns — and rethrows `CancellationException` so a call torn down by `dispose()` does not surface as a phantom `PlatformException`.
+- **An error reported before Dart subscribes still arrives**: the reader widget reports a failed enable from `init`, which runs inside the platform-view `create` call, so the error left native before Flutter replied to Dart and before a host could subscribe from `onReady`. `ErrorEventChannel` sent it into a null sink and dropped it. It now holds pending errors and replays them in order to the first subscriber, keeping the first eight because the earliest failure explains the ones after it, and clears them on dispose so a finished session cannot surface on a later subscription.
+- **A rejected publication leaves no is-ready channel behind**: `epubEnable`, `imageEnable` and `pdfEnable` disposed and recreated `EpubIsReadyEventChannel` before checking whether the publication could host the navigator, so a rejected publication left a live channel registered for a reader that never came up. Invisible while the process died; now the guard runs first.
+
+### Documentation
+
+- `docs/troubleshooting.md` gains the reader-failure entry: the fatal exception, why a supervisor child reaches the kill handler, and what the fix reports instead.
+- `docs/guides/error-handling.md` documents what a native reader failure delivers on `onErrorEvent`, that the same failure sets reader status `error`, that an error reported during platform-view creation is held for the first subscriber, and the limitation that a failed enable leaves the widget mounted with no navigator and will not recover on its own.
+- `docs/api-reference/streams-events.md` said Android never emits the `error` status and never emits error events automatically. Both were false after this release; the status table and the Android paragraph now describe what is emitted and how errors are held for a late subscriber.
+- `docs/platform-specific/android.md` said `ReaderStatusEventChannel` is the only channel that buffers. It now covers all three shapes — latest status, first eight errors, no locators — and gains a `Coroutine Failure Reporting` section covering the three scopes, the one handler, the widget's ownership check, and why the event-channel scope deliberately has none.
+- `docs/05-testing/integration-tests.md` documents the `Reader failure` integration group and the two example-app buttons it needs to force a failure no asset produces on its own.
+- The three install snippets (`docs/getting-started/installation.md`, `README.md`, `flureadium/README.md`) still read `^0.16.3`; the 0.16.4 release commit bumped `pubspec.yaml` without them. All three now read `^0.16.4`. **Bump them again in the 0.16.5 release commit.**
+
+### Testing
+
+- Four new Android JVM classes: `ErrorEventChannelTest` (pending delivery, ordering, the cap, drain-not-replay, dispose), `ReaderCoroutineFailureTest` (what the handler reports and when it stays silent), `ReadiumReaderWidgetEnableFailureTest` (a failed enable reports instead of reaching the default uncaught handler, and a stale widget stays quiet), and `ReadiumReaderScopeHandlerTest` plus `ReadiumReaderEnableGuardTest` (both remaining scopes carry a reporting handler; a rejected publication leaves no channel).
+- `ReadiumReaderWidgetAudioChannelTest` gained the method-channel failure cases, including one that cancels a call mid-flight and checks nothing is answered or reported.
+- Three test classes carried their own copy of the same Robolectric harness. They share `ReaderTestHarness.kt` now, alongside the `ReadiumReaderFields.kt` reflection helper.
+- `example/integration_test/error_handling_test.dart` gained an untagged `Reader failure` group: it closes the publication natively, remounts the reader over it, waits for `reader-status: error`, and reopens the book so the files after it still have a working reader. Making the assertion at all is the proof — the failure used to take the process down and every later test reported "did not complete".
+
 ## 0.16.4
 
 ### Bug Fixes
