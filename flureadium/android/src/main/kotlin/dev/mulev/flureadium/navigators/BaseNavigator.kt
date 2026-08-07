@@ -1,6 +1,7 @@
 package dev.mulev.flureadium.navigators
 
 import android.os.Bundle
+import dev.mulev.flureadium.readerCoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,7 +38,9 @@ abstract class BaseNavigator(
     /**
      * The main coroutine scope for the navigator. Most operations should be done on the main thread.
      */
-    protected val mainScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    protected val mainScope: CoroutineScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate + readerCoroutineExceptionHandler(TAG)
+    )
 
     /**
      * Init the navigator

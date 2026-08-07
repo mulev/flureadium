@@ -97,7 +97,9 @@ private const val decorationStyleKey = "decorationStyle"
 @ExperimentalCoroutinesApi
 @OptIn(ExperimentalReadiumApi::class)
 object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.VisualListener, ImageNavigator.VisualListener, PdfNavigator.VisualListener {
-    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val mainScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate + readerCoroutineExceptionHandler(TAG)
+    )
 
     private val jobs = mutableListOf<Job>()
 
@@ -776,14 +778,14 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     ) {
         val pub = currentPublication ?: throw Exception("Publication not opened cannot enable epub")
 
-        isReadyEventChannel?.dispose()
-        isReadyEventChannel = EpubIsReadyEventChannel(messenger)
-        currentReaderWidget = readerWidget
-
         val isEpub = pub.conformsTo(Publication.Profile.EPUB) || pub.readingOrder.allAreHtml
         if (!isEpub) {
             throw Exception("Publication is not an EPUB, cannot enable epub navigator")
         }
+
+        isReadyEventChannel?.dispose()
+        isReadyEventChannel = EpubIsReadyEventChannel(messenger)
+        currentReaderWidget = readerWidget
 
         withScope(mainScope) {
             epubNavigator?.let {
@@ -829,13 +831,13 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     ) {
         val pub = currentPublication ?: throw Exception("Publication not opened cannot enable image navigator")
 
-        isReadyEventChannel?.dispose()
-        isReadyEventChannel = EpubIsReadyEventChannel(messenger)
-        currentReaderWidget = readerWidget
-
         if (pub.readerKind() != PublicationReaderKind.IMAGE) {
             throw Exception("Publication is not image-based, cannot enable image navigator")
         }
+
+        isReadyEventChannel?.dispose()
+        isReadyEventChannel = EpubIsReadyEventChannel(messenger)
+        currentReaderWidget = readerWidget
 
         withScope(mainScope) {
             imageNavigator?.let {
@@ -898,14 +900,14 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     ) {
         val pub = currentPublication ?: throw Exception("Publication not opened cannot enable pdf")
 
-        isReadyEventChannel?.dispose()
-        isReadyEventChannel = EpubIsReadyEventChannel(messenger)
-        currentReaderWidget = readerWidget
-
         val isPdf = pub.conformsTo(Publication.Profile.PDF)
         if (!isPdf) {
             throw Exception("Publication is not a PDF, cannot enable pdf navigator")
         }
+
+        isReadyEventChannel?.dispose()
+        isReadyEventChannel = EpubIsReadyEventChannel(messenger)
+        currentReaderWidget = readerWidget
 
         _pdfPreferences = initialPreferences
 
