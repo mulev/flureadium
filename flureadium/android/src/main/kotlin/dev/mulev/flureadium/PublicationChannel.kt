@@ -65,6 +65,9 @@ internal class PublicationMethodCallHandler(
 
     @OptIn(InternalReadiumApi::class, ExperimentalReadiumApi::class)
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        // no-handler: the body is one dispatchGuarded call, which catches every
+        // exception and answers with result.error, so nothing escapes this
+        // coroutine to the thread's uncaught handler.
         CoroutineScope(Dispatchers.IO).launch {
             result.dispatchGuarded(call.method) {
                 handleMethodCallsQueue(call.method, call.arguments)

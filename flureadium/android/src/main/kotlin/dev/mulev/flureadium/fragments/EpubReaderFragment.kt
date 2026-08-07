@@ -12,11 +12,13 @@ import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.R
 import dev.mulev.flureadium.ReadiumReader
 import dev.mulev.flureadium.models.EpubReaderViewModel
+import dev.mulev.flureadium.readerCoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
@@ -32,7 +34,8 @@ private var instanceNo = 0
 @ExperimentalCoroutinesApi
 @OptIn(ExperimentalReadiumApi::class)
 class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listener,
-    EpubNavigatorFragment.PaginationListener, CoroutineScope by MainScope() {
+    EpubNavigatorFragment.PaginationListener,
+    CoroutineScope by (MainScope() + readerCoroutineExceptionHandler(TAG)) {
 
     interface Listener {
         /**

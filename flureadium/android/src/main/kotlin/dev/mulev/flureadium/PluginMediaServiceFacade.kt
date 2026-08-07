@@ -15,6 +15,8 @@ import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.CoroutineQueue
 
+private const val TAG = "PluginMediaServiceFacade"
+
 /**
  * Enables to try to close a session without starting the [PluginMediaService] if it is not started.
  */
@@ -24,7 +26,7 @@ class PluginMediaServiceFacade(
     private val application: Application,
 ) {
     private val coroutineScope: CoroutineScope =
-        MainScope()
+        MainScope() + readerCoroutineExceptionHandler(TAG)
 
     private val coroutineQueue: CoroutineQueue =
         CoroutineQueue()

@@ -35,11 +35,7 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -97,9 +93,7 @@ class PluginMediaService : MediaLibraryService() {
     class Session(
         val navigator: AnyMediaNavigator,
         val publication: Publication?,
-    ) {
-        val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    }
+    )
 
     internal val libraryCallback by lazy {
         PluginLibrarySessionCallback(
@@ -162,7 +156,6 @@ class PluginMediaService : MediaLibraryService() {
                 // Swap the browse placeholder back in before tearing down the
                 // navigator, so the persistent session survives playback teardown.
                 librarySession.player = browsePlayer
-                session.coroutineScope.cancel()
                 session.navigator.close()
                 sessionMutable.value = null
             }
