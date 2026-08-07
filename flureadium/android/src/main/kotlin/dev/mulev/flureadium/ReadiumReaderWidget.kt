@@ -56,8 +56,9 @@ class ReadiumReaderWidget(
     private val fragmentManager
         get() = activity.supportFragmentManager
 
-    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val mainScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate + readerCoroutineExceptionHandler(TAG)
+    )
 
     // Fixed for this widget's lifetime. As a getter over the mutable
     // ReadiumReader.currentPublication, a publication swap under a live
