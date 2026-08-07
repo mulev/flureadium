@@ -1,11 +1,6 @@
 package dev.mulev.flureadium
 
-import android.content.ContextWrapper
 import android.os.Build
-import androidx.fragment.app.FragmentActivity
-import dev.mulev.flureadium.events.ReaderStatusEventChannel
-import io.flutter.plugin.common.BinaryMessenger
-import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.Dispatchers
@@ -14,11 +9,8 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.runner.RunWith
-import org.mockito.Mockito.`when`
-import org.mockito.Mockito.mock
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Publication
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.AfterTest
@@ -55,7 +47,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         resetReaderState()
-        setReaderField("_currentPublication", audiobookPublication())
+        setReaderField("_currentPublication", publicationConformingTo(Publication.Profile.AUDIOBOOK))
     }
 
     @AfterTest
@@ -64,18 +56,11 @@ internal class ReadiumReaderWidgetAudioChannelTest {
         resetReaderState()
     }
 
-    private fun resetReaderState() {
-        setReaderField("_currentPublication", null)
-        setReaderField("isReadyEventChannel", null)
-        setReaderField("readerStatusEventChannel", null)
-        ReadiumReader.currentReaderWidget = null
-    }
-
     // MARK: - Queries
 
     @Test
     fun getLocatorFragmentsEchoesItsArgument() {
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("getLocatorFragments", LOCATOR_JSON), result)
@@ -85,7 +70,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
 
     @Test
     fun isReaderReadyIsTrue() {
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("isReaderReady", null), result)
@@ -95,7 +80,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
 
     @Test
     fun isLocatorVisibleIsFalse() {
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("isLocatorVisible", LOCATOR_JSON), result)
@@ -105,7 +90,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
 
     @Test
     fun getCurrentLocatorIsNull() {
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("getCurrentLocator", null), result)
@@ -119,7 +104,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
     @Test
     fun navigationAndStylingCallsAreSilentNoOps() {
         val statuses = subscribeToReaderStatus()
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val statusesAfterInit = statuses.size
 
         val calls = listOf(
@@ -152,7 +137,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
     @Test
     fun disposeReportsClosed() {
         val statuses = subscribeToReaderStatus()
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("dispose", null), result)
@@ -165,7 +150,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
 
     @Test
     fun unknownMethodIsNotImplemented() {
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("somethingElse", null), result)
@@ -197,42 +182,6 @@ internal class ReadiumReaderWidgetAudioChannelTest {
         override fun notImplemented() {
             notImplemented = true
         }
-    }
-
-    /** Attaches a listener to the reader-status channel and records what it receives. */
-    private fun subscribeToReaderStatus(): List<String> {
-        val received = mutableListOf<String>()
-        val channel = ReaderStatusEventChannel(mock(BinaryMessenger::class.java))
-        setReaderField("readerStatusEventChannel", channel)
-        channel.onListen(
-            null,
-            object : EventChannel.EventSink {
-                override fun success(event: Any?) {
-                    received.add(event as String)
-                }
-
-                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) = Unit
-
-                override fun endOfStream() = Unit
-            }
-        )
-        return received
-    }
-
-    private fun buildAudioHostWidget(): ReadiumReaderWidget {
-        val activity = Robolectric.buildActivity(FragmentActivity::class.java).setup().get()
-        return ReadiumReaderWidget(
-            ContextWrapper(activity),
-            1,
-            emptyMap(),
-            mock(BinaryMessenger::class.java)
-        )
-    }
-
-    private fun audiobookPublication(): Publication {
-        val publication = mock(Publication::class.java)
-        `when`(publication.conformsTo(Publication.Profile.AUDIOBOOK)).thenReturn(true)
-        return publication
     }
 
     private companion object {
