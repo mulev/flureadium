@@ -56,8 +56,12 @@ class ReadiumReaderWidget(
     private val fragmentManager
         get() = activity.supportFragmentManager
 
+    // Only the widget that still owns the registration may report a failure, the
+    // same identity rule dispose() follows below: a stale widget's enable can
+    // still be in flight while its replacement is mounting.
     private val mainScope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Main.immediate + readerCoroutineExceptionHandler(TAG)
+        SupervisorJob() + Dispatchers.Main.immediate +
+            readerCoroutineExceptionHandler(TAG) { ReadiumReader.currentReaderWidget === this }
     )
 
     // Fixed for this widget's lifetime. As a getter over the mutable

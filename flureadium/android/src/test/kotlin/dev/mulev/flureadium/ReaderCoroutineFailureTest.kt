@@ -1,7 +1,12 @@
 package dev.mulev.flureadium
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -72,6 +77,33 @@ internal class ReaderCoroutineFailureTest {
             errors.single()["message"],
             "an empty message tells a host app nothing about what failed"
         )
+    }
+
+    @Test
+    fun cancellingAScopeReportsNothing() {
+        val statuses = subscribeToReaderStatus()
+        val errors = subscribeToErrorEvents()
+        val scope = CoroutineScope(
+            SupervisorJob() + testDispatcher + readerCoroutineExceptionHandler("TestTag")
+        )
+        scope.launch { awaitCancellation() }
+
+        scope.coroutineContext.cancelChildren()
+
+        assertTrue(statuses.isEmpty(), "widget dispose and engine detach are not failures")
+        assertTrue(errors.isEmpty(), "widget dispose and engine detach are not failures")
+    }
+
+    @Test
+    fun staysSilentWhenTheFailingSessionIsNoLongerTheCurrentOne() {
+        val statuses = subscribeToReaderStatus()
+        val errors = subscribeToErrorEvents()
+
+        readerCoroutineExceptionHandler("TestTag", shouldReport = { false })
+            .handleException(EmptyCoroutineContext, Exception("boom"))
+
+        assertTrue(statuses.isEmpty(), "a dead session must not describe the live one")
+        assertTrue(errors.isEmpty(), "a dead session must not describe the live one")
     }
 
     private fun handleFailure(throwable: Throwable) {

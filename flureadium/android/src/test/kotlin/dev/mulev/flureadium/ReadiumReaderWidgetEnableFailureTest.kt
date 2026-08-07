@@ -3,10 +3,13 @@ package dev.mulev.flureadium
 import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.runner.RunWith
+import org.mockito.Mockito.mock
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Publication
 import org.robolectric.RobolectricTestRunner
@@ -99,5 +102,25 @@ internal class ReadiumReaderWidgetEnableFailureTest {
 
         assertEquals(listOf("loading", "ready", "closed"), statuses)
         assertTrue(errors.isEmpty(), "cancelling a scope is not a failure")
+    }
+
+    @Test
+    fun aStaleWidgetsFailureDoesNotReportOverTheLiveWidget() {
+        // Flutter builds the replacement platform view before unmounting the one
+        // it replaces, so a stale widget's enable can still be in flight while a
+        // newer widget owns the session. A standard dispatcher holds the stale
+        // enable until the newer widget has registered, which is the ordering
+        // the unconfined dispatcher cannot express.
+        val scheduler = TestCoroutineScheduler()
+        Dispatchers.setMain(StandardTestDispatcher(scheduler))
+        val statuses = subscribeToReaderStatus()
+        val errors = subscribeToErrorEvents()
+        buildReaderWidget()
+        ReadiumReader.currentReaderWidget = mock(ReadiumReaderWidget::class.java)
+
+        scheduler.advanceUntilIdle()
+
+        assertTrue(errors.isEmpty(), "the failure belongs to a session the host already replaced")
+        assertEquals(listOf("loading"), statuses, "the live widget must not be flipped to error")
     }
 }

@@ -21,10 +21,23 @@ internal const val readerFailureErrorCode = "ReaderFailure"
  * Cancellation never arrives here: a coroutine cancelled by dispose() or
  * detach() completes with a CancellationException, which is not handed to a
  * handler, so teardown stays silent.
+ *
+ * [shouldReport] decides whether this failure still describes the session the
+ * host app is looking at. A reader widget passes its own identity check here:
+ * Flutter builds a replacement platform view before unmounting the one it
+ * replaces, so a stale widget's enable can fail while a newer widget already
+ * owns the reader — and reporting then would flip a healthy reader to "error"
+ * over a failure that belongs to a session the host has already dropped. The
+ * log line is written either way, because a swallowed failure still has to be
+ * findable.
  */
-internal fun readerCoroutineExceptionHandler(tag: String): CoroutineExceptionHandler =
+internal fun readerCoroutineExceptionHandler(
+    tag: String,
+    shouldReport: () -> Boolean = { true },
+): CoroutineExceptionHandler =
     CoroutineExceptionHandler { _, throwable ->
         Log.e(tag, "Uncaught coroutine failure", throwable)
+        if (!shouldReport()) return@CoroutineExceptionHandler
         ReadiumReader.sendReaderStatus("error")
         ReadiumReader.sendError(
             throwable.message ?: throwable.toString(),
