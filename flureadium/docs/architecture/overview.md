@@ -68,6 +68,7 @@ lib/
     ├── reader/               # Reader lifecycle mixins
     │   ├── orientation_handler_mixin.dart
     │   ├── reader_lifecycle_mixin.dart
+    │   ├── toc_skip_navigation_mixin.dart
     │   └── wakelock_manager_mixin.dart
     ├── utils/                # Utilities
     │   ├── navigation_helper.dart
@@ -95,6 +96,7 @@ Includes mixins for:
 - **WakelockManagerMixin**: Keeps screen on during reading
 - **ReaderLifecycleMixin**: Manages widget registration
 - **OrientationHandlerMixin**: Handles orientation changes
+- **TocSkipNavigationMixin**: Skips to the adjacent chapter
 
 ## Platform Interface (flureadium_platform_interface/)
 
@@ -170,6 +172,7 @@ ios/Sources/flureadium/
 ├── ReadiumReaderView.swift    # EPUB reader view
 ├── PdfReaderView.swift        # PDF reader view
 ├── ImageReaderView.swift      # CBZ / DIVINA reader view
+├── AudioReaderView.swift      # Audio-only reader host (no navigator)
 ├── PageThumbnailExtractor.swift # Image-resource thumbnail extraction
 └── ...
 ```
@@ -178,6 +181,11 @@ Uses:
 - Readium Swift Toolkit 3.5.0
 - UIKit views embedded via UiKitView
 - GCDWebServer for local content serving
+
+`ReadiumReaderViewFactory` picks the view from the publication: PDF, then image
+(DiViNa or an all-bitmap reading order), then audio (an all-audio reading
+order), then EPUB. Only the audio host builds no navigator — it has nothing to
+render. See [iOS platform notes](../platform-specific/ios.md).
 
 ### Web (TypeScript)
 

@@ -46,6 +46,20 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
   /// (from Phase 2) the audio path forward errors here via `sendError`.
   internal var errorStreamHandler: EventStreamSink?
 
+  /// Single owners of the `reader-status` and `text-locator` channels, for the
+  /// same reason the `error` channel has one: a reader view is shorter-lived
+  /// than the Dart subscription. Flutter builds the replacement platform view
+  /// before disposing the one it replaces, so a view that owned these channels
+  /// would end-stream them on teardown and close the host's subscription for
+  /// good — `MethodChannelFlureadium` memoizes both streams, so nothing
+  /// re-opens them. Owning them here matches Android, where
+  /// `ReaderStatusEventChannel` lives on the plugin.
+  ///
+  /// `reader-status` buffers (see `ReaderStatusEventStream`): a view reports
+  /// its status from `init`, before a host subscribes from `onReady`.
+  internal var readerStatusStreamHandler: EventStreamSink?
+  internal var textLocatorStreamHandler: EventStreamSink?
+
   /// Timebased Navigator. Can be TTS, Audio or MediaOverlay implementations.
   internal var timebasedNavigator: FlutterTimebasedNavigator? = nil
 
@@ -63,6 +77,8 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
     registrar.addMethodCallDelegate(instance, channel: channel)
     instance.timebasedPlayerStateStreamHandler = EventStreamHandler(withName: "timebased-state", messenger: registrar.messenger())
     instance.errorStreamHandler = EventStreamHandler(withName: "error", messenger: registrar.messenger())
+    instance.readerStatusStreamHandler = ReaderStatusEventStream(withName: "reader-status", messenger: registrar.messenger())
+    instance.textLocatorStreamHandler = EventStreamHandler(withName: "text-locator", messenger: registrar.messenger())
 
     // Register reader view factory
     let factory = ReadiumReaderViewFactory(registrar: registrar)
@@ -80,6 +96,16 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
   internal func sendError(message: String, code: String? = nil, data: Any? = nil) {
     let error = FlureadiumError(message: message, code: code, data: data)
     errorStreamHandler?.sendEvent(error.toJson())
+  }
+
+  /// Forwards a reader status onto the plugin-owned `"reader-status"` channel.
+  internal func sendReaderStatus(_ status: String) {
+    readerStatusStreamHandler?.sendEvent(status)
+  }
+
+  /// Forwards a text locator onto the plugin-owned `"text-locator"` channel.
+  internal func sendTextLocator(_ locatorJson: String?) {
+    textLocatorStreamHandler?.sendEvent(locatorJson)
   }
 
   public func log(_ warning: Warning) {
@@ -106,6 +132,10 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
           self.timebasedPlayerStateStreamHandler = nil
           self.errorStreamHandler?.dispose()
           self.errorStreamHandler = nil
+          self.readerStatusStreamHandler?.dispose()
+          self.readerStatusStreamHandler = nil
+          self.textLocatorStreamHandler?.dispose()
+          self.textLocatorStreamHandler = nil
           result(nil)
         }
       }

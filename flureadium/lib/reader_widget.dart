@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -12,9 +11,8 @@ import 'package:rxdart/rxdart.dart';
 import 'reader_channel.dart';
 import 'src/reader/orientation_handler_mixin.dart';
 import 'src/reader/reader_lifecycle_mixin.dart';
+import 'src/reader/toc_skip_navigation_mixin.dart';
 import 'src/reader/wakelock_manager_mixin.dart';
-import 'src/utils/navigation_helper.dart';
-import 'src/utils/toc_matcher.dart';
 
 const _viewType = 'dev.mulev.flureadium/ReadiumReaderWidget';
 
@@ -68,14 +66,24 @@ class ReadiumReaderWidget extends StatefulWidget {
 }
 
 class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
-    with WakelockManagerMixin, ReaderLifecycleMixin, OrientationHandlerMixin
+    with
+        WakelockManagerMixin,
+        ReaderLifecycleMixin,
+        OrientationHandlerMixin,
+        TocSkipNavigationMixin
     implements ReadiumReaderWidgetInterface {
   ReadiumReaderChannel? _channel;
+  Locator? _currentLocator;
   StreamSubscription<Locator>? _locatorDebugSub;
-  bool wasDestroyed = false;
   bool isReady = false;
 
-  final _isReadyCompleter = Completer<Locator>();
+  /// Bumped on every publication swap and used as the platform view's key.
+  /// A changed key is the only lever that replaces the element and builds a
+  /// fresh native view: the view type is constant and creation params are
+  /// never re-sent to a live view.
+  int _viewGeneration = 0;
+
+  Completer<Locator> _isReadyCompleter = Completer<Locator>();
 
   late Widget _readerWidget;
 
@@ -100,17 +108,54 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
   }
 
   @override
-  void dispose() {
-    R2Log.d('ReadiumReaderWidget disposed');
+  void didUpdateWidget(final ReadiumReaderWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(widget.publication, oldWidget.publication)) {
+      return;
+    }
+
+    R2Log.d('Publication swapped — rebuilding the native reader view');
+    _teardownCurrentView();
+    _isReadyCompleter = Completer<Locator>();
+    _viewGeneration++;
+    _readerWidget = _buildNativeReader();
+  }
+
+  /// Releases everything bound to the current platform view.
+  ///
+  /// Runs on dispose and, on a publication swap, before the replacement view
+  /// is built. Leaves [_isReadyCompleter] settled rather than replacing it —
+  /// only a swap has a new view to hand a fresh one to.
+  void _teardownCurrentView() {
     _locatorDebugSub?.cancel();
     _locatorDebugSub = null;
     cleanupWidgetInterface(_channel?.name);
+    // Detached before dispose() because dispose() awaits a native round-trip
+    // and only drops the handler afterwards. A page change delivered in that
+    // window would otherwise run against the replacement view's state.
+    _channel?.setMethodCallHandler(null);
     _channel?.dispose();
     _channel = null;
     lastOrientation = null;
+    isReady = false;
+    _currentLocator = null;
+    resetSkipNavigationState();
 
+    if (!_isReadyCompleter.isCompleted) {
+      // Nothing may be awaiting it; ignore() keeps the error from surfacing as
+      // an unhandled async error while still delivering to a real awaiter.
+      _isReadyCompleter.future.ignore();
+      _isReadyCompleter.completeError(
+        ReadiumError('Reader view was released before it reported a locator.'),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    R2Log.d('ReadiumReaderWidget disposed');
+    _teardownCurrentView();
     disableWakelock();
-    wasDestroyed = true;
 
     super.dispose();
   }
@@ -162,162 +207,33 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
       _channel?.goRight(animated: animated);
 
   @override
-  Future<void> skipToNext({final bool animated = true}) async {
-    final toc = flattenToc(widget.publication.toc);
-    if (toc.isEmpty || _currentLocator == null) {
-      R2Log.d('skipToNext: no TOC or no current locator');
-      return;
-    }
-
-    int curIndex = -1;
-
-    // Priority 1: stored index from last chapter navigation
-    if (_lastNavigatedTocIndex != null &&
-        _lastNavigatedTocIndex! < toc.length) {
-      final expectedPath = normalizePath(toc[_lastNavigatedTocIndex!].hrefPart);
-      final currentPath = normalizePath(_currentLocator!.hrefPath);
-      if (currentPath == expectedPath) {
-        curIndex = _lastNavigatedTocIndex!;
-        R2Log.d('skipToNext: using stored index $curIndex');
-      } else {
-        R2Log.d('skipToNext: stored index invalid (file changed)');
-        _lastNavigatedTocIndex = null;
-      }
-    }
-
-    // Priority 2: toc= fragment matching (sub-chapter granularity)
-    if (curIndex == -1) {
-      final currentHref = getTextLocatorHrefWithTocFragment(_currentLocator);
-      if (currentHref != null) {
-        curIndex = toc.indexWhere((l) => l.href == currentHref);
-      }
-    }
-
-    // Priority 3: path-based fallback (file-level granularity)
-    if (curIndex == -1) {
-      R2Log.d('skipToNext: toc= fragment matching failed, using fallback');
-      // Check if this is a PDF (page-based matching)
-      if (isPdfToc(toc)) {
-        curIndex = findTocIndexByPage(_currentLocator!, toc);
-        R2Log.d('skipToNext: PDF page matching returned index $curIndex');
-      } else {
-        curIndex = findTocIndexByPath(_currentLocator!, toc, lastMatch: true);
-      }
-    }
-
-    R2Log.d('skipToNext: curIndex=$curIndex, tocLength=${toc.length}');
-
-    // Use navigation helper to decide where to navigate
-    final decision = decideSkipToNext(
-      currentLocator: _currentLocator!,
-      toc: toc,
-      readingOrder: widget.publication.readingOrder,
-      currentTocIndex: curIndex,
-      publication: widget.publication,
-    );
-
-    if (!decision.canNavigate) {
-      R2Log.d('skipToNext: ${decision.reason}');
-      return;
-    }
-
-    // Navigate to the target
-    final targetLocator = widget.publication.locatorFromLink(
-      decision.targetLink!,
-    );
-    if (targetLocator != null) {
-      R2Log.d('skipToNext: navigating to ${decision.targetLink!.href}');
-      await _channel?.go(
-        targetLocator,
-        isAudioBookWithText: false,
-        animated: true,
-      );
-      _lastNavigatedTocIndex = decision.targetTocIndex;
-    }
-  }
+  Future<void> skipToNext({final bool animated = true}) => skipToNextChapter(
+    publication: widget.publication,
+    currentLocator: _currentLocator,
+    channel: _channel,
+  );
 
   @override
-  Future<void> skipToPrevious({final bool animated = true}) async {
-    final toc = flattenToc(widget.publication.toc);
-    if (toc.isEmpty || _currentLocator == null) {
-      R2Log.d('skipToPrevious: no TOC or no current locator');
-      return;
-    }
-
-    int curIndex = -1;
-
-    // Priority 1: stored index from last chapter navigation
-    if (_lastNavigatedTocIndex != null &&
-        _lastNavigatedTocIndex! < toc.length) {
-      final expectedPath = normalizePath(toc[_lastNavigatedTocIndex!].hrefPart);
-      final currentPath = normalizePath(_currentLocator!.hrefPath);
-      if (currentPath == expectedPath) {
-        curIndex = _lastNavigatedTocIndex!;
-        R2Log.d('skipToPrevious: using stored index $curIndex');
-      } else {
-        R2Log.d('skipToPrevious: stored index invalid (file changed)');
-        _lastNavigatedTocIndex = null;
-      }
-    }
-
-    // Priority 2: toc= fragment matching (sub-chapter granularity)
-    if (curIndex == -1) {
-      final currentHref = getTextLocatorHrefWithTocFragment(_currentLocator);
-      if (currentHref != null) {
-        curIndex = toc.indexWhere((l) => l.href == currentHref);
-      }
-    }
-
-    // Priority 3: path-based fallback (file-level granularity)
-    if (curIndex == -1) {
-      R2Log.d('skipToPrevious: toc= fragment matching failed, using fallback');
-      // Check if this is a PDF (page-based matching)
-      if (isPdfToc(toc)) {
-        curIndex = findTocIndexByPage(_currentLocator!, toc);
-        R2Log.d('skipToPrevious: PDF page matching returned index $curIndex');
-      } else {
-        curIndex = findTocIndexByPath(_currentLocator!, toc, lastMatch: false);
-      }
-    }
-
-    R2Log.d('skipToPrevious: curIndex=$curIndex, tocLength=${toc.length}');
-
-    // Use navigation helper to decide where to navigate
-    final decision = decideSkipToPrevious(
-      currentLocator: _currentLocator!,
-      toc: toc,
-      readingOrder: widget.publication.readingOrder,
-      currentTocIndex: curIndex,
-      publication: widget.publication,
-    );
-
-    if (!decision.canNavigate) {
-      R2Log.d('skipToPrevious: ${decision.reason}');
-      return;
-    }
-
-    // Navigate to the target
-    final targetLocator = widget.publication.locatorFromLink(
-      decision.targetLink!,
-    );
-    if (targetLocator != null) {
-      R2Log.d('skipToPrevious: navigating to ${decision.targetLink!.href}');
-      await _channel?.go(
-        targetLocator,
-        isAudioBookWithText: false,
-        animated: true,
+  Future<void> skipToPrevious({final bool animated = true}) =>
+      skipToPreviousChapter(
+        publication: widget.publication,
+        currentLocator: _currentLocator,
+        channel: _channel,
       );
-      _lastNavigatedTocIndex = decision.targetTocIndex;
-    }
-  }
 
   @override
   Future<Locator?> getLocatorFragments(final Locator locator) async {
     R2Log.d('getLocatorFragments: $locator');
 
-    await _awaitNativeViewReady();
+    try {
+      await _isReadyCompleter.future;
+    } on ReadiumError {
+      // The view was replaced by a publication swap before it reported a
+      // locator; there is no longer a channel that could answer this call.
+      return null;
+    }
 
-    return await _channel?.getLocatorFragments(locator);
+    return _channel?.getLocatorFragments(locator);
   }
 
   @override
@@ -354,12 +270,10 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
 
     R2Log.d(publication.identifier);
 
-    // Check if this is a PDF publication by looking at reading order media types
     final isPdf = publication.readingOrder.any(
       (link) => link.type?.contains('pdf') ?? false,
     );
 
-    // Use PDF preferences for PDF publications, EPUB preferences for others
     final defaultPreferences = isPdf
         ? _defaultPdfPreferences?.toJson()
         : _defaultPreferences?.toJson();
@@ -374,8 +288,11 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
 
     R2Log.d('creationParams=$creationParams');
 
+    final viewKey = ValueKey<int>(_viewGeneration);
+
     if (Platform.isAndroid) {
       return PlatformViewLink(
+        key: viewKey,
         viewType: _viewType,
         surfaceFactory: (final context, final controller) => AndroidViewSurface(
           controller: controller as AndroidViewController,
@@ -396,6 +313,7 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
       );
     } else if (Platform.isIOS) {
       return UiKitView(
+        key: viewKey,
         viewType: _viewType,
         layoutDirection: TextDirection.ltr,
         creationParams: creationParams,
@@ -404,6 +322,7 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
       );
     }
     return ColoredBox(
+      key: viewKey,
       color: const Color(0xffff00ff),
       child: Center(
         child: Text(
@@ -412,13 +331,6 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
       ),
     );
   }
-
-  Locator? _currentLocator;
-
-  /// Tracks the last TOC index navigated to via skipToNext/skipToPrevious.
-  /// Used as highest-priority source for determining current position,
-  /// since the JS-reported toc= heading may differ from the navigation target.
-  int? _lastNavigatedTocIndex;
 
   void _onPlatformViewCreated(final int id) {
     _channel = createReadiumReaderChannel(
@@ -464,25 +376,5 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
     _locatorDebugSub = nativeLocatorStream.listen((locator) {
       R2Log.d('ReaderWidget.LocatorChanged - $locator');
     });
-  }
-
-  Future _awaitNativeViewReady() {
-    return _isReadyCompleter.future;
-  }
-
-  /// Gets a Locator's href with toc fragment appended as identifier
-  String? getTextLocatorHrefWithTocFragment(Locator? locator) {
-    if (locator == null) {
-      return null;
-    }
-
-    final txtLoc = locator.toTextLocator();
-    final tocFragment = locator.locations?.fragments.firstWhereOrNull(
-      (f) => f.startsWith("toc="),
-    );
-    if (tocFragment == null) {
-      return null;
-    }
-    return '${txtLoc.toTextLocator().hrefPath}#${tocFragment.substring(4)}';
   }
 }

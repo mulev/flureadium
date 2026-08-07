@@ -412,4 +412,98 @@ void main() {
       expect(widget.loadingWidget, isA<Placeholder>());
     });
   });
+
+  group('ReadiumReaderWidget publication swap', () {
+    // On the test host `_buildNativeReader` returns the keyed fallback
+    // branch, so element replacement is directly observable.
+    final readerView = find.byWidgetPredicate(
+      (w) => w is ColoredBox && w.key is ValueKey<int>,
+    );
+
+    Widget host(Publication publication) =>
+        MaterialApp(home: ReadiumReaderWidget(publication: publication));
+
+    ReadiumReaderWidgetInterface readerOf(WidgetTester tester) =>
+        tester.state(find.byType(ReadiumReaderWidget))
+            as ReadiumReaderWidgetInterface;
+
+    testWidgets('swapping to a different publication replaces the view', (
+      tester,
+    ) async {
+      await tester.pumpWidget(host(createTestPublication()));
+      final before = tester.element(readerView);
+
+      await tester.pumpWidget(host(createTestPublication()));
+
+      expect(tester.element(readerView), isNot(same(before)));
+    });
+
+    testWidgets('passing the same publication instance does not rebuild', (
+      tester,
+    ) async {
+      final publication = createTestPublication();
+
+      await tester.pumpWidget(host(publication));
+      final before = tester.element(readerView);
+
+      await tester.pumpWidget(host(publication));
+
+      expect(tester.element(readerView), same(before));
+    });
+
+    testWidgets('a swap clears the registered reader widget', (tester) async {
+      await tester.pumpWidget(host(createTestPublication()));
+      // _onPlatformViewCreated never fires on the host, so stand in for the
+      // registration the native side would have made.
+      mockPlatform.currentReaderWidget = readerOf(tester);
+
+      await tester.pumpWidget(host(createTestPublication()));
+
+      expect(mockPlatform.currentReaderWidget, isNull);
+    });
+
+    testWidgets('a getLocatorFragments call in flight resolves to null', (
+      tester,
+    ) async {
+      await tester.pumpWidget(host(createTestPublication()));
+
+      // Recorded rather than awaited: before the fix this future never
+      // settles, and awaiting it would hang the suite instead of failing.
+      Object? outcome = 'never settled';
+      readerOf(tester)
+          .getLocatorFragments(
+            Locator(href: 'chapter1.xhtml', type: 'application/xhtml+xml'),
+          )
+          .then((value) => outcome = value, onError: (Object e) => outcome = e)
+          .ignore();
+
+      await tester.pumpWidget(host(createTestPublication()));
+      await tester.pump();
+
+      expect(outcome, isNull);
+    });
+
+    testWidgets('getLocatorFragments after dispose resolves to null', (
+      tester,
+    ) async {
+      await tester.pumpWidget(host(createTestPublication()));
+      final reader = readerOf(tester);
+
+      // Unmount the reader. A host that captured the interface can still call
+      // into it, and that call must settle rather than wait on a view that no
+      // longer exists.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+
+      Object? outcome = 'never settled';
+      reader
+          .getLocatorFragments(
+            Locator(href: 'chapter1.xhtml', type: 'application/xhtml+xml'),
+          )
+          .then((value) => outcome = value, onError: (Object e) => outcome = e)
+          .ignore();
+      await tester.pump();
+
+      expect(outcome, isNull);
+    });
+  });
 }

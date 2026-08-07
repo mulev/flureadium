@@ -211,6 +211,13 @@ status while no one is listening and delivers it once, when the first
 subscriber arrives. Only the latest one is held: reader status is a state, not
 a log, and a status already delivered is never replayed to a later subscriber.
 
+`ReaderStatusEventChannel` is the only one that buffers. `TextLocatorEventChannel`
+deliberately does not: a locator is a page turn that already happened, so
+holding one and handing it to a later subscriber would move a reader that never
+went there. A page change sent while nobody is listening is dropped. Both
+channels are recreated by `ReadiumReader.attach()`, and disposing either clears
+whatever it was holding, so nothing survives into the next Activity attach.
+
 ### Reader Kind
 
 `PublicationReaderKind` decides which reader can host an open publication, and

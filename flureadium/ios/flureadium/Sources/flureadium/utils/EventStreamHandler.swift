@@ -13,10 +13,10 @@ class EventStreamHandler: NSObject, FlutterStreamHandler, EventStreamSink {
 
   private let TAG: String
   private let streamName: String
-  private var channel: FlutterEventChannel
-  private var eventSink: FlutterEventSink?
+  private let channel: FlutterEventChannel
+  private(set) var eventSink: FlutterEventSink?
 
-  public func sendEvent(_ event: Any?) {
+  func sendEvent(_ event: Any?) {
     print(TAG, "sendEvent")
     eventSink?(event)
   }

@@ -52,6 +52,10 @@ final comic = await flureadium.openPublication('issue.cbz');
 ReadiumReaderWidget(publication: comic)
 ```
 
+Assigning a different `Publication` to a mounted widget rebuilds the native reader view for the new publication. The check is instance identity, not equality — `openPublication` returns a fresh `Publication` for every call, including reopening the same file, and each of those is a real swap because the native side has already released the previous publication's navigator. Passing the same instance again changes nothing.
+
+A swap resets the widget's per-view state: the reading position, the last-skipped chapter, and the reader-ready signal all start over. A `getLocatorFragments` call still in flight resolves to `null`.
+
 ### loadingWidget
 
 **Type:** `Widget`
@@ -196,7 +200,7 @@ ReadiumReaderWidget(
 
 **Type:** `VoidCallback?`
 
-Called once when the native platform view has been created and all EventChannel handlers are registered. This is the correct place to subscribe to `Flureadium.onReaderStatusChanged`, `Flureadium.onTextLocatorChanged`, and `Flureadium.onErrorEvent`.
+Called once per platform view, when the native view has been created and all EventChannel handlers are registered — on first mount, and again after each publication swap. This is the correct place to subscribe to `Flureadium.onReaderStatusChanged`, `Flureadium.onTextLocatorChanged`, and `Flureadium.onErrorEvent`.
 
 On iOS these channels are registered lazily inside `ReadiumReaderView.init()`, which runs just before `onReady` fires. Subscribing before `onReady` causes `MissingPluginException`, which permanently closes the stream's internal `StreamController` and silently drops all subsequent events. On Android and web the channels are always ready, but using `onReady` for consistency is recommended.
 

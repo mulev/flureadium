@@ -182,6 +182,7 @@ ios/Sources/flureadium/
 ├── ReadiumReaderView.swift      # EPUB reader view
 ├── PdfReaderView.swift          # PDF reader view
 ├── ImageReaderView.swift        # CBZ / DIVINA reader view
+├── AudioReaderView.swift        # Audio-only reader host (no navigator)
 ├── EdgeTapInterceptView.swift   # Edge tap and swipe overlay
 └── PageThumbnailExtractor.swift # Downscaled JPEG thumbnails for image resources
 ```
@@ -288,6 +289,43 @@ integration test stays iOS-skipped (it exercises a mid-stream truncation iOS doe
 not reliably report). `ReadiumReaderTimebasedErrorTest` covers the Android
 forwarding at the unit level; `LoadFailureObservingResourceTests` and
 `AudioResourceLoadFailureReporterTests` cover the iOS wrapper.
+
+### Audio-Only Reader Host
+
+An audio-only publication mounts `AudioReaderView`, not the EPUB reader view.
+`readerViewKind(for:)` resolves it after the PDF and image checks, using
+Readium's own predicate: `publication.conforms(to: .audiobook)` is
+`readingOrder.allAreAudio` behind a non-empty guard, so the kind follows the
+reading order rather than a manifest claim. A media-overlay EPUB is unaffected —
+its reading order is HTML, so it keeps the EPUB navigator and the karaoke path
+even when the manifest declares the audiobook profile. That is also why the
+audio branch does not consult `metadata.conformsTo`, unlike the PDF and DiViNa
+branches above it.
+
+`AudioReaderView` builds no navigator: no `EPUBNavigatorViewController`, no
+pagination view, no preload WKWebViews, no `httpServer.serve` routes, no
+ReadiumCSS transformer. Before this routing existed, a streamed audiobook paid
+for all of it — and the preloaded spreads fetched the same reading-order URLs
+AVFoundation was streaming.
+
+What the host does provide:
+
+| Concern | Behavior |
+|---------|----------|
+| Reader status | `loading` then `ready`, both from `init` — with no navigator there is no `locationDidChange` to report readiness later |
+| `text-locator` | Never sent on: there is no page |
+| `getLocatorFragments` | Echoes its argument — no DOM to resolve a fragment against |
+| `isReaderReady` / `isLocatorVisible` | `true` / `false` |
+| `getCurrentLocator` | `nil` |
+| Navigation, preferences, decorations | No-ops answering `nil` |
+| `dispose` | Sends `closed` and clears its method-call handler; the shared channels stay open, since the plugin owns them |
+
+`currentReaderView` stays `nil`, so the plugin paths that drive the visual
+reader — `reachedLocator`, `updateReaderViewTimebasedDecorations`, the TTS
+initial-location lookup — become no-ops instead of driving an invisible
+navigator across audio files. This matches Android, where `ReadiumReaderWidget`
+skips navigator setup for `PublicationReaderKind.AUDIO` and reports readiness
+the same way.
 
 ### Local Server
 
@@ -424,19 +462,48 @@ Readium's `EditingAction` support with
 
 Flureadium iOS uses `EventStreamHandler` to manage Flutter EventChannel streams (text locator, reader status, errors). The `"dispose"` method call from Dart is the single comprehensive cleanup point. `deinit` is a minimal safety net.
 
-The `error` channel is the exception to per-view ownership. `FlureadiumPlugin` owns it: the handler is created once in `register(with:)` and disposed only when the plugin's own `"dispose"` runs. Reader views forward resource-load failures through the plugin's `sendError(message:code:data:)` instead of holding their own `error` handler, so closing a reader view no longer end-streams the Dart subscription, and the audiobook player (which has no reader view) can send on the same channel. The PDF reader keeps its separate `pdf-error` channel.
+**`FlureadiumPlugin` owns every shared event channel** — `error`, `reader-status`,
+`text-locator` and `timebased-state`. Each handler is created once in
+`register(with:)` and disposed only when the plugin's own `"dispose"` runs.
+Reader views send through the plugin (`sendError`, `sendReaderStatus`,
+`sendTextLocator`) instead of holding their own handlers.
+
+That ownership is load-bearing, not tidiness. A reader view is shorter-lived
+than the Dart subscription: Flutter builds the replacement platform view before
+disposing the one it replaces, so a view that owned these channels would
+end-stream them on teardown. `MethodChannelFlureadium` memoizes both streams,
+so nothing re-opens them — one publication swap and the host stops receiving
+statuses and locators for the rest of the session. Android never had this
+problem; `ReaderStatusEventChannel` lives on the plugin there too. The PDF
+reader keeps its separate `pdf-*` channels, which have no Dart consumer.
+
+`reader-status` is the one stream that buffers. A reader view reports its status
+from `init`, while the platform view is still being created — that runs before
+Flutter replies to Dart, so before a host app can subscribe from
+`ReadiumReaderWidget.onReady`. A plain `EventStreamHandler` sends straight into
+its sink, which is still nil at that point, so the first status would be dropped
+and a host waiting for `ready` would wait forever. `ReaderStatusEventStream`
+(`utils/ReaderStatusEventStream.swift`) holds the latest status until a
+subscriber attaches, then replays it once. Only the latest is kept: status is a
+state, not a log, and nothing may accumulate while no one listens. This mirrors
+Android's `events/ReaderStatusEventChannel.kt`.
+
+`text-locator` deliberately does not buffer. A locator is a log, not a state,
+and replaying a stale one would move the reader.
 
 **dispose handler** owns all cleanup that needs a live Flutter engine:
 
 | Responsibility | Why in dispose |
 |----------------|----------------|
 | Send "closed" status event | Needs live Flutter engine |
-| Stream `.dispose()` (sends `FlutterEndOfEventStream`) | Needs live Flutter engine |
-| Nil stream handler references | Part of explicit teardown |
 | Nil channel method call handler | Prevents calls after dispose |
 | Remove subview | Idempotent, safe in both |
 | Nil delegate | Part of explicit teardown |
 | Nil global reference (identity-guarded) | Explicit lifecycle event |
+
+A reader view's dispose does **not** end-stream the shared channels — that is
+the plugin's job, and doing it here is the bug described above. The PDF reader
+still disposes its own `pdf-*` handlers, since it owns them.
 
 **deinit** retains only `removeFromSuperview()` — it handles the edge case where the native view is deallocated without the Dart `dispose` call being received (engine teardown, hot restart). All property nilling is removed because ARC handles it automatically when the object deallocates. `deinit` must not send messages on Flutter channels, as it may run during engine teardown when channels are already torn down.
 

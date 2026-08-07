@@ -31,6 +31,14 @@ void main() {
     timeout: timeout,
   );
 
+  // Every test here needs a real TTS engine, so every one carries the `native`
+  // tag CI excludes. The tag sits on each test because flutter_test's `group`
+  // drops `tags`, and the library-level `@Tags` above is ignored once an
+  // aggregator imports this file rather than running it — which is what CI
+  // does. Going through the wrapper keeps a new test tagged by construction.
+  void ttsTest(String description, WidgetTesterCallback body) =>
+      testWidgets(description, body, tags: 'native');
+
   group('EPUB TTS', () {
     tearDown(() async {
       // Stop TTS playback but leave the publication open. The next test's
@@ -40,7 +48,7 @@ void main() {
       await Flureadium().stop();
     });
 
-    testWidgets('ttsGetSystemVoices returns voices before TTS is enabled', (
+    ttsTest('ttsGetSystemVoices returns voices before TTS is enabled', (
       tester,
     ) async {
       await showEpub(tester);
@@ -52,7 +60,7 @@ void main() {
       expect(voices.first.language, isNotEmpty);
     });
 
-    testWidgets('TTS enable makes sentence nav buttons appear', (tester) async {
+    ttsTest('TTS enable makes sentence nav buttons appear', (tester) async {
       await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll every tick — iOS TTS starts in ~5s; Android emulator can take ~30s.
@@ -68,7 +76,7 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
     });
 
-    testWidgets('ttsCanSpeak returns true — TTS On enables without snackbar', (
+    ttsTest('ttsCanSpeak returns true — TTS On enables without snackbar', (
       tester,
     ) async {
       await showEpub(tester);
@@ -83,7 +91,7 @@ void main() {
       expect(find.text('TTS Off'), findsOneWidget);
     });
 
-    testWidgets('tts pause then resume restores playing state', (tester) async {
+    ttsTest('tts pause then resume restores playing state', (tester) async {
       await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll for 'Pause TTS' — requires _ttsPlaybackState == playing, which
@@ -112,7 +120,7 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
     });
 
-    testWidgets('tts next sentence does not crash', (tester) async {
+    ttsTest('tts next sentence does not crash', (tester) async {
       await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll for the sentence nav button — it appears once TTS is enabled.
@@ -127,7 +135,7 @@ void main() {
       expect(find.text('TTS Off'), findsOneWidget);
     });
 
-    testWidgets('tts previous sentence does not crash', (tester) async {
+    ttsTest('tts previous sentence does not crash', (tester) async {
       await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll for the sentence nav button — it appears once TTS is enabled.
@@ -142,7 +150,7 @@ void main() {
       expect(find.text('TTS Off'), findsOneWidget);
     });
 
-    testWidgets('tts voice cycling does not crash', (tester) async {
+    ttsTest('tts voice cycling does not crash', (tester) async {
       await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll for the Voice button. It renders only after ttsGetAvailableVoices()
@@ -161,7 +169,7 @@ void main() {
       expect(find.text('TTS Off'), findsOneWidget);
     });
 
-    testWidgets('tts disable and re-enable does not crash', (tester) async {
+    ttsTest('tts disable and re-enable does not crash', (tester) async {
       await showEpub(tester);
       // Enable TTS
       await tester.tap(find.text('TTS On'));
@@ -194,56 +202,51 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
     });
 
-    testWidgets(
-      'tts disable, navigate to next page, re-enable does not crash',
-      (tester) async {
-        await showEpub(tester);
-        // Enable TTS
-        await tester.tap(find.text('TTS On'));
-        await waitForText(
-          tester,
-          'Prev Sentence',
-          timeout: const Duration(seconds: 60),
-        );
-        expect(find.text('TTS Off'), findsOneWidget);
+    ttsTest('tts disable, navigate to next page, re-enable does not crash', (
+      tester,
+    ) async {
+      await showEpub(tester);
+      // Enable TTS
+      await tester.tap(find.text('TTS On'));
+      await waitForText(
+        tester,
+        'Prev Sentence',
+        timeout: const Duration(seconds: 60),
+      );
+      expect(find.text('TTS Off'), findsOneWidget);
 
-        // Advance one sentence so TTS has a locator to save
-        await tester.tap(find.text('Next Sentence'));
-        await tester.pump(const Duration(seconds: 2));
+      // Advance one sentence so TTS has a locator to save
+      await tester.tap(find.text('Next Sentence'));
+      await tester.pump(const Duration(seconds: 2));
 
-        // Disable TTS
-        await tester.tap(find.text('TTS Off'));
-        await waitForText(
-          tester,
-          'TTS On',
-          timeout: const Duration(seconds: 5),
-        );
-        expect(find.text('TTS On'), findsOneWidget);
+      // Disable TTS
+      await tester.tap(find.text('TTS Off'));
+      await waitForText(tester, 'TTS On', timeout: const Duration(seconds: 5));
+      expect(find.text('TTS On'), findsOneWidget);
 
-        // Navigate to next page — this changes the reader locator,
-        // triggering the navigation-aware re-enable path (fromLocator: null).
-        await tester.tap(find.text('→'));
-        // Wait for page turn to complete and locator to update.
-        await tester.pump(const Duration(seconds: 3));
+      // Navigate to next page — this changes the reader locator,
+      // triggering the navigation-aware re-enable path (fromLocator: null).
+      await tester.tap(find.text('→'));
+      // Wait for page turn to complete and locator to update.
+      await tester.pump(const Duration(seconds: 3));
 
-        // Re-enable TTS — should start from current (navigated-to) position.
-        // The native suppression logic prevents backward scrolling to the
-        // utterance's CSS selector on the previous page.
-        await tester.tap(find.text('TTS On'));
-        await waitForText(
-          tester,
-          'Prev Sentence',
-          timeout: const Duration(seconds: 60),
-        );
-        expect(find.text('TTS Off'), findsOneWidget);
-        expect(find.text('Prev Sentence'), findsOneWidget);
+      // Re-enable TTS — should start from current (navigated-to) position.
+      // The native suppression logic prevents backward scrolling to the
+      // utterance's CSS selector on the previous page.
+      await tester.tap(find.text('TTS On'));
+      await waitForText(
+        tester,
+        'Prev Sentence',
+        timeout: const Duration(seconds: 60),
+      );
+      expect(find.text('TTS Off'), findsOneWidget);
+      expect(find.text('Prev Sentence'), findsOneWidget);
 
-        // Let in-flight native play() settle before tearDown.
-        await tester.pump(const Duration(seconds: 2));
-      },
-    );
+      // Let in-flight native play() settle before tearDown.
+      await tester.pump(const Duration(seconds: 2));
+    });
 
-    testWidgets('tts off hides sentence nav buttons', (tester) async {
+    ttsTest('tts off hides sentence nav buttons', (tester) async {
       await showEpub(tester);
       await tester.tap(find.text('TTS On'));
       // Poll for the sentence nav button — it appears once TTS is enabled.

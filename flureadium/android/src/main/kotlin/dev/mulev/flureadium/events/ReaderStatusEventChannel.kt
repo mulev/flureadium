@@ -34,4 +34,14 @@ class ReaderStatusEventChannel(messenger: BinaryMessenger) :
             events?.success(status)
         }
     }
+
+    override fun dispose() {
+        // The channel is going away; a status buffered for a subscriber that
+        // never arrived is stale and must not surface on a later subscription.
+        // Harmless today because ReadiumReader.attach replaces the whole
+        // instance, but the buffer must not outlive its owner by accident.
+        // Matches ReaderStatusEventStream.dispose() on iOS.
+        pendingStatus = null
+        super.dispose()
+    }
 }

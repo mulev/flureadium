@@ -30,6 +30,13 @@ class ReadiumReaderViewFactory: NSObject, @preconcurrency FlutterPlatformViewFac
                     viewIdentifier: viewId,
                     arguments: args,
                     registrar: registrar!)
+            case .audio:
+                // No frame or arguments: the host renders nothing, and
+                // preferences and initialLocator only mean something to a
+                // navigator.
+                return AudioReaderView(
+                    viewIdentifier: viewId,
+                    messenger: registrar!.messenger())
             case .epub:
                 break
             }

@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flureadium_platform_interface/flureadium_platform_interface.dart';
 
 /// Strips leading '/' from a path for consistent comparison.
@@ -184,6 +185,76 @@ List<Link> flattenToc(List<Link> toc) {
     }
   }
   return result;
+}
+
+/// The href of [locator]'s text locator with its `toc=` fragment appended as
+/// an identifier, or null when the locator carries no `toc=` fragment.
+String? tocHrefWithFragment(Locator? locator) {
+  if (locator == null) {
+    return null;
+  }
+
+  const prefix = 'toc=';
+  final tocFragment = locator.locations?.fragments.firstWhereOrNull(
+    (f) => f.startsWith(prefix),
+  );
+  if (tocFragment == null) {
+    return null;
+  }
+
+  final identifier = tocFragment.substring(prefix.length);
+  return '${locator.toTextLocator().hrefPath}#$identifier';
+}
+
+/// Resolves [currentLocator]'s index in a flattened [toc].
+///
+/// Tries three sources in order: [lastNavigatedTocIndex] while it still points
+/// at the locator's file, then `toc=` fragment matching for sub-chapter
+/// granularity, then a page-based (PDF) or path-based fallback. Returns -1
+/// when nothing matches.
+///
+/// [lastMatch] picks the last path match rather than the first — skipping
+/// forward must clear all sub-sections of the current file, skipping backward
+/// must land before them.
+///
+/// `storedIndexStale` is true when [lastNavigatedTocIndex] was supplied but no
+/// longer points at the current file, so the caller can drop it.
+({int index, bool storedIndexStale}) resolveCurrentTocIndex({
+  required Locator currentLocator,
+  required List<Link> toc,
+  required int? lastNavigatedTocIndex,
+  required bool lastMatch,
+}) {
+  if (lastNavigatedTocIndex != null && lastNavigatedTocIndex < toc.length) {
+    final expectedPath = normalizePath(toc[lastNavigatedTocIndex].hrefPart);
+    if (normalizePath(currentLocator.hrefPath) == expectedPath) {
+      return (index: lastNavigatedTocIndex, storedIndexStale: false);
+    }
+    return (
+      index: _matchTocIndex(currentLocator, toc, lastMatch),
+      storedIndexStale: true,
+    );
+  }
+
+  return (
+    index: _matchTocIndex(currentLocator, toc, lastMatch),
+    storedIndexStale: false,
+  );
+}
+
+int _matchTocIndex(Locator currentLocator, List<Link> toc, bool lastMatch) {
+  final currentHref = tocHrefWithFragment(currentLocator);
+  if (currentHref != null) {
+    final index = toc.indexWhere((l) => l.href == currentHref);
+    if (index != -1) {
+      return index;
+    }
+  }
+
+  if (isPdfToc(toc)) {
+    return findTocIndexByPage(currentLocator, toc);
+  }
+  return findTocIndexByPath(currentLocator, toc, lastMatch: lastMatch);
 }
 
 /// Estimates current page from progression (0-1 ratio).

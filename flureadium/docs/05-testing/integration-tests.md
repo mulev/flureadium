@@ -6,15 +6,38 @@ Integration tests run the example app on a real device or simulator and assert w
 
 | File | Platforms | What it asserts |
 |---|---|---|
-| `all_tests.dart` | Android, iOS | Combined runner — imports all files below into a single compilation unit |
-| `all_tests_android_ci.dart` | Android (CI) | CI runner — excludes TTS, audiobook, and WebPub tests requiring hardware audio or network |
+| `all_tests.dart` | Android, iOS | The only mobile runner — imports every file below into a single compilation unit. CI narrows it with `--exclude-tags`, never with a second import list |
 | `all_tests_web.dart` | Web | Web-specific runner — only includes tests that pass on web (see note below) |
 | `launch_test.dart` | All | App starts, MaterialApp renders |
 | `epub_test.dart` | Android, iOS | EPUB auto-opens, navigation/prefs/highlight don't crash, TTS sentence nav buttons appear, close removes widget |
-| `audiobook_test.dart` | Android, iOS (`@Tags(['native'])`) | Audiobook opens, play changes button label, seek doesn't crash, pause/resume button labels cycle correctly, playing the last track to its end surfaces `TimebasedState.ended` |
+| `text_locator_test.dart` | Android, iOS | A page turn is pushed on the text-locator stream, the stream follows a publication swap, and a swap to audio leaves no locator behind |
+| `audiobook_host_test.dart` | Android, iOS | An audio-only publication mounts and reports `ready` from a host with no navigator. Split from `audiobook_test.dart` because it needs no player, so it runs where audio does not work |
+| `audiobook_test.dart` | Android, iOS (`native`) | Audiobook opens, play changes button label, seek doesn't crash, pause/resume button labels cycle correctly, playing the last track to its end surfaces `TimebasedState.ended` |
 | `cbz_test.dart` | Android, iOS | CBZ auto-opens, navigation works, `goToLocator` reaches an image page, `extractPageThumbnail` returns JPEG bytes/null as appropriate |
 | `divina_test.dart` | Android, iOS | DIVINA auto-opens, `ReadiumReaderWidget` present, left/right navigation works |
-| `webpub_test.dart` | Android, iOS | Remote WebPub manifest opens, `ReadiumReaderWidget` present |
+| `webpub_test.dart` | Android, iOS (`network`) | Remote WebPub manifest opens, `ReadiumReaderWidget` present |
+
+### Tags
+
+A test declares what it needs; a runner declares what it has. CI excludes on
+that, so a new test file is picked up by default.
+
+| Tag | Means | Excluded by |
+|---|---|---|
+| `native` | Needs a real audio or TTS engine | Android CI |
+| `network` | Needs the public internet | Android CI |
+
+Tags go on the test (or on a per-file wrapper around `testWidgets`), **not** as
+a library-level `@Tags` annotation. An annotation only reaches the runner when
+the file *is* the suite; once `all_tests.dart` imports it, it is ignored. The
+`@Tags` lines still at the top of `audiobook_test.dart` and `epub_tts_test.dart`
+apply when those files are run directly and nowhere else.
+
+Android CI ran a second aggregator with a hand-maintained import list until
+2026-08. Leaving a file out of it was invisible — no error, the tests simply
+never ran — and that is how the entire audiobook group, including the
+audio-only readiness regression, went unrun on Android for months
+(flureadium-29l).
 
 > **Always use `all_tests.dart` (mobile) or `all_tests_web.dart` (web) when running the full suite.** Running `flutter test integration_test/` without specifying a file compiles and installs each test file as a separate APK batch. On mobile this reinstalls the app mid-run, killing in-progress tests and causing "did not complete" failures for any tests that were running when the new APK landed.
 
@@ -197,8 +220,8 @@ same boot path and just pass their own button.
 The cold-boot arm only runs when the app is not already on screen, so the direct
 boot happens in a standalone `flutter test integration_test/audiobook_test.dart`
 run. In `all_tests.dart` the launch group boots first and the audiobook group
-takes the reuse path, and `all_tests_android_ci.dart` leaves the group out
-altogether — neither CI bundle exercises the audiobook boot (`flureadium-p1q`).
+takes the reuse path, and Android CI excludes the group by tag — so no CI leg
+exercises the audiobook boot (`flureadium-p1q`).
 
 This is applied to all four group test files (`audiobook`, `cbz`, `divina`,
 `epub_tts`) — each boots once per group and reuses the running app between tests.
@@ -300,10 +323,10 @@ flutter test integration_test/epub_test.dart -d <device-id>
 CI runs the full test matrix on every push and pull request to `main`:
 
 - **`test.yml`** — Dart unit tests for all three packages (`flutter test`), the Android Kotlin/Robolectric suite (`:flureadium:testDebugUnitTest`, JVM — no emulator), and the iOS Swift/XCTest suite (`RunnerTests` via `xcodebuild test` on a simulator).
-- **`integration-test.yml`** — the integration suites on real emulators/simulators: Android (`all_tests_android_ci.dart` on an API-33 emulator), iOS (`all_tests.dart` on a booted simulator), and Web (`all_tests_web.dart` via `flutter drive`). Runs on push and PRs, plus on demand via `workflow_dispatch`.
+- **`integration-test.yml`** — the integration suites on real emulators/simulators: Android (`all_tests.dart` with `--exclude-tags "native || network"` on an API-33 emulator), iOS (`all_tests.dart` on a booted simulator, no exclusions), and Web (`all_tests_web.dart` via `flutter drive`). Runs on push and PRs, plus on demand via `workflow_dispatch`.
 - **`build-android.yml` / `build-ios.yml` / `build-web.yml`** — compile-only build verification of the example app.
 
-The Android integration bundle (`all_tests_android_ci.dart`) intentionally omits the `@native` audiobook, EPUB-TTS, and WebPub tests because GitHub-hosted emulators lack reliable audio and network; those still run on the iOS leg and locally via `scripts/run_integration_tests.sh`. The web bundle (`all_tests_web.dart`) runs the launch smoke test live and bundles `epub_tts_web_test.dart` with its tests skipped in-file until the web-reader TTS plumbing lands (tracked in [Web Platform](../platform-specific/web.md)).
+Android CI drops the `native` and `network` tags because GitHub-hosted emulators have no audio or TTS engine and no route to the public internet. Those tests still run on the iOS leg and locally via `scripts/run_integration_tests.sh` — so a green Android CI run says nothing about them. The web bundle (`all_tests_web.dart`) runs the launch smoke test live and bundles `epub_tts_web_test.dart` with its tests skipped in-file until the web-reader TTS plumbing lands (tracked in [Web Platform](../platform-specific/web.md)).
 
 ### When the iOS job stalls before any test runs
 
@@ -397,7 +420,7 @@ The in-car browse/search/play surface is covered automatically as far as it can 
 - **Dart unit** (`flureadium_platform_interface/test/car/`) — the car value types, the `CarContentProvider` contract, and the `CarContentTransport` channel round-trip incl. the cold "app-not-ready" path.
 - **Android Robolectric** (`android/src/test/.../car/` + `PluginLibrarySessionCallbackTest`) — `NodeBrowseTree` node→`MediaItem` mapping, the `MethodChannelCarContentSource` decode + cold-start retry, and the `MediaLibraryService` callback (browse tree, `onSearch`/`notifySearchResultChanged`, chapter-seek vs library-play).
 - **iOS XCTest** (`example/ios/RunnerTests/Car*Tests.swift`) — the `CarTemplateRenderer`, `CarListItemFactory`, model decoders, and `CarPlayContentBridge` cold-start retry/decode.
-- **Integration** (`example/integration_test/car_transport_test.dart`) — a stub `CarContentProvider` driven through the real `dev.mulev.flureadium/car` channel on a device/simulator, asserting the end-to-end transport round-trip. Bundled into `all_tests.dart` and `all_tests_android_ci.dart`, so it runs on the CI Android emulator and iOS simulator.
+- **Integration** (`example/integration_test/car_transport_test.dart`) — a stub `CarContentProvider` driven through the real `dev.mulev.flureadium/car` channel on a device/simulator, asserting the end-to-end transport round-trip. Untagged, so it runs on the CI Android emulator and the iOS simulator.
 
 ### Manual device surfaces
 

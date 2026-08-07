@@ -34,8 +34,8 @@ func parseLocatorFragmentsResult(_ result: Any?) -> Locator? {
 class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, VisualNavigatorDelegate {
 
   private let channel: ReadiumReaderChannel
-  private var readerStatusStreamHandler: EventStreamHandler?
-  private var textLocatorStreamHandler: EventStreamHandler?
+  // reader-status and text-locator are owned by FlureadiumPlugin: this view is
+  // shorter-lived than the Dart subscription to them.
   private let _view: UIView
   private let readiumViewController: EPUBNavigatorViewController
   private var isVerticalScroll = false
@@ -95,10 +95,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
 
     channel = ReadiumReaderChannel(
       name: "\(readiumReaderViewType):\(viewId)", binaryMessenger: registrar.messenger())
-    textLocatorStreamHandler = EventStreamHandler(withName: "text-locator", messenger: registrar.messenger())
-    readerStatusStreamHandler = EventStreamHandler(withName: "reader-status", messenger: registrar.messenger())
-
-    readerStatusStreamHandler?.sendEvent(ReadiumReaderStatusLoading)
+    FlureadiumPlugin.shared?.sendReaderStatus(ReadiumReaderStatusLoading)
 
     print(TAG, "Publication: (identifier=\(String(describing: publication.metadata.identifier)),title=\(String(describing: publication.metadata.title)))")
     print(TAG, "Added publication at \(String(describing: publication.baseURL))")
@@ -216,7 +213,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     print(TAG, "didFailToLoadResourceAt: \(href). err: \(error)")
 
     // TODO: Should we send resource-load error like this?
-    self.readerStatusStreamHandler?.sendEvent(ReadiumReaderStatusError)
+    FlureadiumPlugin.shared?.sendReaderStatus(ReadiumReaderStatusError)
 
     // Route through the plugin, which owns the single "error" channel.
     FlureadiumPlugin.shared?.sendError(
@@ -251,7 +248,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     lastSpineItemLocator = locator
 
     if !hasSentReady {
-      self.readerStatusStreamHandler?.sendEvent(ReadiumReaderStatusReady)
+      FlureadiumPlugin.shared?.sendReaderStatus(ReadiumReaderStatusReady)
       hasSentReady = true
     }
     emitOnPageChanged(locator: locator)
@@ -390,12 +387,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       await MainActor.run {
         guard !self.isDisposed else { return }
         self.channel.onPageChanged(locator: locatorWithFragments)
-        guard let textLocatorStreamHandler = self.textLocatorStreamHandler else {
-          print(TAG, "emitOnPageChanged: textLocatorStreamHandler is nil!")
-          return
-        }
-
-        textLocatorStreamHandler.sendEvent(locatorWithFragments.jsonString)
+        FlureadiumPlugin.shared?.sendTextLocator(locatorWithFragments.jsonString)
       }
     }
   }
@@ -614,11 +606,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       isDisposed = true
       readiumViewController.view.removeFromSuperview()
       readiumViewController.delegate = nil
-      self.readerStatusStreamHandler?.sendEvent(ReadiumReaderStatusClosed)
-      textLocatorStreamHandler?.dispose()
-      textLocatorStreamHandler = nil
-      readerStatusStreamHandler?.dispose()
-      readerStatusStreamHandler = nil
+      FlureadiumPlugin.shared?.sendReaderStatus(ReadiumReaderStatusClosed)
       channel.setMethodCallHandler(nil)
       if currentReaderView === self { currentReaderView = nil }
       result(nil)

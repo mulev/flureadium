@@ -23,7 +23,17 @@ adb logcat -c > /dev/null 2>&1 || true
 adb logcat -v threadtime > "$diag/logcat.txt" 2>&1 &
 logcat_pid=$!
 
-flutter test integration_test/all_tests_android_ci.dart \
+# Tags, not a second aggregator: what the emulator cannot do is declared by the
+# test that needs it. GitHub-hosted emulators have no audio or TTS engine
+# (`native`) and no route to the public internet (`network`).
+#
+# A file left out of an import list is invisible — nothing fails, the tests
+# simply never run. That is how the whole audiobook group, including the
+# audio-only readiness regression, went unrun here for months
+# (flureadium-29l). A tag has to be written on the test, so a new file is
+# included by default.
+flutter test integration_test/all_tests.dart \
+  --exclude-tags "native || network" \
   --file-reporter "json:$diag/test-events.json"
 status=$?
 
