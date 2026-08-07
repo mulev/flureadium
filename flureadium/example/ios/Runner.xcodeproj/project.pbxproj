@@ -25,6 +25,7 @@
 		E1F2A3B4C5D6E7F800008002 /* EpubEditingActionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */; };
 		F1A2B3C4D5E6F7A800009002 /* ImageCacheURLProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */; };
 		A2B3C4D5E6F7A8B900010002 /* FlureadiumPluginGoToLocatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */; };
+		A2B3C4D5E6F7A8B900020002 /* FlureadiumPluginAudioEnableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */; };
 		A2B3C4D5E6F7A8B900011002 /* FlureadiumPluginErrorChannelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900011001 /* FlureadiumPluginErrorChannelTests.swift */; };
 		C4D5E6F7A8B9CADB00010002 /* FlureadiumPluginChapterNavTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D5E6F7A8B9CADB00010001 /* FlureadiumPluginChapterNavTests.swift */; };
 		B3C4D5E6F7A8B9CA00010002 /* PageThumbnailExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C4D5E6F7A8B9CA00010001 /* PageThumbnailExtractorTests.swift */; };
@@ -115,6 +116,7 @@
 		E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubEditingActionsTests.swift; sourceTree = "<group>"; };
 		F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheURLProtocolTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginGoToLocatorTests.swift; sourceTree = "<group>"; };
+		A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginAudioEnableTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900011001 /* FlureadiumPluginErrorChannelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginErrorChannelTests.swift; sourceTree = "<group>"; };
 		C4D5E6F7A8B9CADB00010001 /* FlureadiumPluginChapterNavTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginChapterNavTests.swift; sourceTree = "<group>"; };
 		B3C4D5E6F7A8B9CA00010001 /* PageThumbnailExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageThumbnailExtractorTests.swift; sourceTree = "<group>"; };
@@ -190,6 +192,7 @@
 				E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */,
 				F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */,
 				A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */,
+				A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */,
 				A2B3C4D5E6F7A8B900011001 /* FlureadiumPluginErrorChannelTests.swift */,
 				C4D5E6F7A8B9CADB00010001 /* FlureadiumPluginChapterNavTests.swift */,
 				B3C4D5E6F7A8B9CA00010001 /* PageThumbnailExtractorTests.swift */,
@@ -502,6 +505,7 @@
 				E1F2A3B4C5D6E7F800008002 /* EpubEditingActionsTests.swift in Sources */,
 				F1A2B3C4D5E6F7A800009002 /* ImageCacheURLProtocolTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900010002 /* FlureadiumPluginGoToLocatorTests.swift in Sources */,
+				A2B3C4D5E6F7A8B900020002 /* FlureadiumPluginAudioEnableTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900011002 /* FlureadiumPluginErrorChannelTests.swift in Sources */,
 				C4D5E6F7A8B9CADB00010002 /* FlureadiumPluginChapterNavTests.swift in Sources */,
 				B3C4D5E6F7A8B9CA00010002 /* PageThumbnailExtractorTests.swift in Sources */,

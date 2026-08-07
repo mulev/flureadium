@@ -499,48 +499,72 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
           details: nil))
       }
       Task.detached(priority: .high) {
-        // Get preferences via arg, or use defaults (empty map).
-        let prefsMap = args[0] as? Dictionary<String, Any>,
-            prefs = try FlutterAudioPreferences.init(fromMap: prefsMap ?? [:])
-        var locator: Locator? = nil
-        if let locatorJson = args[1] as? Dictionary<String, Any> {
-          locator = try? Locator(json: locatorJson, warnings: self)
-        }
-
-        if (publication.containsMediaOverlays) {
-          do {
-            // MediaOverlayNavigator will modify the Publication readingOrder, so we first load a modifiable copy.
-            let modifiablePublicationCopy = try await self.loadPublication(fromUrlStr: pubUrlStr).get()
-            await MainActor.run { [locator] in
-              self.timebasedNavigator = FlutterMediaOverlayNavigator(publication: modifiablePublicationCopy, preferences: prefs, initialLocator: locator)
-            }
-          } catch (let err) {
-            return result(FlutterError.init(
-              code: "Error",
-              message: "Failed to reload a modifiable publication copy from: \(pubUrlStr)",
-              details: err))
+        // Every throwing call below is answered. `initNavigator()` is declared
+        // `async throws` by FlutterTimebasedNavigator, and this Task's error is
+        // discarded, so without this the throw would leave Dart's audioEnable
+        // future uncompleted forever with no error event - the same hole the
+        // Android method-channel guard closed in flureadium-2xw.4. Neither
+        // conforming navigator throws today; the protocol allows it, which is
+        // enough for the call site to have to handle it.
+        do {
+          // Get preferences via arg, or use defaults (empty map).
+          let prefsMap = args[0] as? Dictionary<String, Any>,
+              prefs = try FlutterAudioPreferences.init(fromMap: prefsMap ?? [:])
+          var locator: Locator? = nil
+          if let locatorJson = args[1] as? Dictionary<String, Any> {
+            locator = try? Locator(json: locatorJson, warnings: self)
           }
-        } else {
-          if (!publication.conforms(to: Publication.Profile.audiobook)) {
-            return result(FlutterError.init(
-              code: "InvalidArgument",
-              message: "Publication does not contain MediaOverlays or conforms to AudioBook profile. Args: \(call.arguments.debugDescription)",
+
+          if (publication.containsMediaOverlays) {
+            do {
+              // MediaOverlayNavigator will modify the Publication readingOrder, so we first load a modifiable copy.
+              let modifiablePublicationCopy = try await self.loadPublication(fromUrlStr: pubUrlStr).get()
+              await MainActor.run { [locator] in
+                self.timebasedNavigator = FlutterMediaOverlayNavigator(publication: modifiablePublicationCopy, preferences: prefs, initialLocator: locator)
+              }
+            } catch (let err) {
+              return result(FlutterError.init(
+                code: "Error",
+                message: "Failed to reload a modifiable publication copy from: \(pubUrlStr)",
+                details: err))
+            }
+          } else {
+            if (!publication.conforms(to: Publication.Profile.audiobook)) {
+              return result(FlutterError.init(
+                code: "InvalidArgument",
+                message: "Publication does not contain MediaOverlays or conforms to AudioBook profile. Args: \(call.arguments.debugDescription)",
+                details: nil))
+            }
+            let audioNavigator = await FlutterAudioNavigator(publication: publication, preferences: prefs, initialLocator: locator)
+            self.timebasedNavigator = audioNavigator
+            CarPlayPlaybackBridge.shared.register(publication: publication) { [weak audioNavigator] selected in
+              Task { @MainActor in
+                await audioNavigator?.play(fromLocator: selected)
+              }
+            }
+          }
+
+          self.timebasedNavigator?.listener = self
+          try await self.timebasedNavigator?.initNavigator()
+
+          await MainActor.run {
+            result(nil)
+          }
+        } catch is CancellationError {
+          // A torn-down call answers nothing, matching Android: the Dart side
+          // is gone with the reader that made the call.
+          return
+        } catch {
+          await MainActor.run {
+            self.sendError(
+              message: error.localizedDescription,
+              code: "ReaderFailure",
+              data: String(describing: error))
+            result(FlutterError(
+              code: "ReaderFailure",
+              message: "audioEnable failed: \(error.localizedDescription)",
               details: nil))
           }
-          let audioNavigator = await FlutterAudioNavigator(publication: publication, preferences: prefs, initialLocator: locator)
-          self.timebasedNavigator = audioNavigator
-          CarPlayPlaybackBridge.shared.register(publication: publication) { [weak audioNavigator] selected in
-            Task { @MainActor in
-              await audioNavigator?.play(fromLocator: selected)
-            }
-          }
-        }
-
-        self.timebasedNavigator?.listener = self
-        try await self.timebasedNavigator?.initNavigator()
-
-        await MainActor.run {
-          result(nil)
         }
       }
     case "audioSetPreferences":
