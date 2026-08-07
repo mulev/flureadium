@@ -94,18 +94,36 @@ internal class ErrorEventChannelTest {
     @Test
     fun doesNotReplayADeliveredErrorToALaterSubscriber() {
         val channel = ErrorEventChannel(mock(BinaryMessenger::class.java))
+        channel.sendEvent(errorMap("boom"))
+
         val firstSink = RecordingSink()
         channel.onListen(null, firstSink)
-        channel.sendEvent(errorMap("boom"))
+        channel.onCancel(null)
 
         val secondSink = RecordingSink()
         channel.onListen(null, secondSink)
 
+        assertEquals(listOf(errorMap("boom")), firstSink.events)
         assertEquals(
             emptyList(),
             secondSink.events,
-            "a delivered error is drained, not retained"
+            "the replay removes as it delivers, so a re-subscribing host is not sent the error twice"
         )
+    }
+
+    @Test
+    fun queuesAgainForAnErrorSentBetweenSubscriptions() {
+        val channel = ErrorEventChannel(mock(BinaryMessenger::class.java))
+        val firstSink = RecordingSink()
+        channel.onListen(null, firstSink)
+        channel.onCancel(null)
+
+        channel.sendEvent(errorMap("boom"))
+        val secondSink = RecordingSink()
+        channel.onListen(null, secondSink)
+
+        assertEquals(emptyList(), firstSink.events, "the cancelled subscriber must receive nothing")
+        assertEquals(listOf(errorMap("boom")), secondSink.events, "queueing resumes once the sink is cleared")
     }
 
     @Test
