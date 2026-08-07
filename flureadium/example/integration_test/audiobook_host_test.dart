@@ -1,10 +1,10 @@
 import 'package:flureadium/flureadium.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'helpers/ensure_app_showing.dart';
 import 'helpers/pump_until.dart';
+import 'helpers/reader_status.dart';
 
 /// Hosting an audio-only publication, up to the point where playback starts.
 ///
@@ -15,12 +15,6 @@ import 'helpers/pump_until.dart';
 /// contract below would otherwise have no coverage at all.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-
-  // Reads the keyed latch the example updates from onReaderStatusChanged.
-  // The text is 'reader-status: <name>'; empty until a status arrives.
-  String readerStatus(WidgetTester tester) =>
-      (tester.widget<Text>(find.byKey(const Key('reader-status'))).data ?? '')
-          .replaceFirst('reader-status: ', '');
 
   Future<void> showAudiobook(WidgetTester tester) => ensureAppShowing(
     tester,

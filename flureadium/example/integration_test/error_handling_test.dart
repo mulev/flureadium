@@ -4,6 +4,10 @@ import 'package:flureadium/flureadium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
+import 'helpers/ensure_app_showing.dart';
+import 'helpers/pump_until.dart';
+import 'helpers/reader_status.dart';
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -47,5 +51,62 @@ void main() {
         throwsA(isA<ReadiumException>()),
       );
     });
+  });
+
+  group('Reader failure', () {
+    testWidgets(
+      'a failed native enable reports instead of killing the app',
+      (tester) async {
+        await ensureAppShowing(
+          tester,
+          initialAsset: 'assets/pubs/moby_dick.epub',
+          reopenButton: 'Open EPUB',
+        );
+
+        // Closing natively leaves _publication pointing at the same Dart object,
+        // so the remount is what asks native to enable a publication it has
+        // already closed.
+        await tester.tap(find.text('Close Native Only'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Remount Reader'));
+
+        await pumpUntil(
+          tester,
+          () => readerStatus(tester) == 'error',
+          timeout: const Duration(seconds: 15),
+        );
+
+        // Making this assertion at all is half the proof: the failure used to
+        // take the process down, and every later test reported "did not
+        // complete".
+        expect(
+          readerStatus(tester),
+          'error',
+          reason: 'reader status was "${readerStatus(tester)}"',
+        );
+
+        // Restore a working reader for the groups that follow. Opening hands the
+        // widget a different Publication instance, so didUpdateWidget rebuilds
+        // the native view by itself — a second remount tap would only throw away
+        // the view that just came up.
+        await tester.tap(find.text('Open EPUB'));
+        await tester.pumpAndSettle();
+        await pumpUntil(
+          tester,
+          () => readerStatus(tester) == 'ready',
+          timeout: const Duration(seconds: 30),
+        );
+        expect(
+          readerStatus(tester),
+          'ready',
+          reason: 'the reader must come back for the groups that follow',
+        );
+        // Skipped on iOS because the failure this forces is Android-specific:
+        // with no publication open, ReadiumReaderViewFactory.create falls through
+        // to ReadiumReaderView, which builds an empty EPUB navigator instead of
+        // throwing, so the status would go to ready. Not an iOS bug.
+      },
+      skip: Platform.isIOS,
+    );
   });
 }
