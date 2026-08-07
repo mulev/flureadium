@@ -16,6 +16,7 @@ Integration tests run the example app on a real device or simulator and assert w
 | `cbz_test.dart` | Android, iOS | CBZ auto-opens, navigation works, `goToLocator` reaches an image page, `extractPageThumbnail` returns JPEG bytes/null as appropriate |
 | `divina_test.dart` | Android, iOS | DIVINA auto-opens, `ReadiumReaderWidget` present, left/right navigation works |
 | `webpub_test.dart` | Android, iOS (`network`) | Remote WebPub manifest opens, `ReadiumReaderWidget` present |
+| `error_handling_test.dart` | Android, iOS | A corrupted file and a missing file both raise `ReadiumException`, and (Android only) a failed native enable reports `error` instead of killing the app — see [Forcing a reader failure](#forcing-a-reader-failure) |
 
 ### Tags
 
@@ -42,6 +43,39 @@ audio-only readiness regression, went unrun on Android for months
 > **Always use `all_tests.dart` (mobile) or `all_tests_web.dart` (web) when running the full suite.** Running `flutter test integration_test/` without specifying a file compiles and installs each test file as a separate APK batch. On mobile this reinstalls the app mid-run, killing in-progress tests and causing "did not complete" failures for any tests that were running when the new APK landed.
 
 > **Web test coverage is limited.** `epub_test.dart` and `webpub_test.dart` are excluded from `all_tests_web.dart` because publication loading on web is not yet reliable (see [Web Platform](../platform-specific/web.md)). The web suite currently covers app launch only. These tests will be added back as web support matures.
+
+## Forcing a reader failure
+
+`error_handling_test.dart`'s `Reader failure` group proves the app survives a
+failed native enable and tells the host about it. Nothing in the asset set
+fails on its own: an audiobook resolves to an audio host, a cbz or divina
+resolves to an image reader, and every EPUB opens. The failure has to be built
+from the outside, so the example app carries two debug buttons for it.
+
+**Close Native Only** closes the publication natively and leaves `_publication`
+alone, so the Dart reader widget stays mounted over a publication native has
+already dropped. The existing **Close** button cannot stand in for it: it also
+nulls `_publication`, which takes the reader out of the tree.
+
+**Remount Reader** bumps a counter used as the reader widget's `ValueKey`.
+`ReadiumReaderWidget.didUpdateWidget` rebuilds the native view whenever it gets
+a `Publication` that is not `identical` to the previous one, but here the
+instance has not changed, so it returns early and nothing reaches native.
+Changing the key replaces the element, which runs native `init` again — this
+time over a closed publication, where `epubEnable` throws "Publication not
+opened cannot enable epub".
+
+The group is untagged on purpose. It needs no audio engine and no network, so
+Android CI runs it, and Android is the only platform where the failure exists.
+On iOS, `ReadiumReaderViewFactory.create` with no publication open falls
+through to `ReadiumReaderView`, which builds an empty EPUB navigator instead of
+throwing, and the status would go to `ready` — hence `skip: Platform.isIOS`.
+
+The group reopens the EPUB before it finishes. The reader widget stays mounted
+between groups in `all_tests.dart`, and this file runs eighth of eleven, so
+leaving a dead reader behind would break everything after it. Reopening is
+enough on its own: the new publication is a different instance, so
+`didUpdateWidget` rebuilds the view without a second remount tap.
 
 ## Note on EventChannel streams
 
