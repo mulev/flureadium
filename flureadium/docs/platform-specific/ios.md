@@ -290,6 +290,27 @@ not reliably report). `ReadiumReaderTimebasedErrorTest` covers the Android
 forwarding at the unit level; `LoadFailureObservingResourceTests` and
 `AudioResourceLoadFailureReporterTests` cover the iOS wrapper.
 
+### A Failed audioEnable Answers Dart
+
+`audioEnable` runs its work in a detached `Task`, and the `Task<Void, Error>` it
+returns is discarded. An error thrown inside an unobserved Task is stored there
+and dropped, so before this the call would neither answer nor report: the Dart
+future waited forever with nothing on `onErrorEvent`.
+
+The body is wrapped now. A throw answers with a `ReaderFailure` `FlutterError`
+and reports the same code on the error channel; a `CancellationError` answers
+nothing, because a call cancelled with its reader has nobody waiting. This is
+the iOS counterpart of Android's method-channel guard.
+
+Neither `try` in that body can throw as the code stands —
+`FlutterAudioPreferences.init(fromMap:)` is declared `throws` but reads every
+value with a default, and both `FlutterAudioNavigator` and
+`FlutterMediaOverlayNavigator` declare `initNavigator()` as `async -> Void`. The
+`FlutterTimebasedNavigator` protocol declares it `async throws`, so a navigator
+added later can throw, and the call site answers for it either way.
+`FlureadiumPluginAudioEnableTests` covers the reachable half: the call answers,
+and answers exactly once.
+
 ### Audio-Only Reader Host
 
 An audio-only publication mounts `AudioReaderView`, not the EPUB reader view.

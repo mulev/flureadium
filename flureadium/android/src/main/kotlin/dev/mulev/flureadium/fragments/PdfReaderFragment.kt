@@ -12,11 +12,13 @@ import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.R
 import dev.mulev.flureadium.ReadiumReader
 import dev.mulev.flureadium.models.PdfReaderViewModel
+import dev.mulev.flureadium.readerCoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 import org.readium.adapter.pdfium.navigator.PdfiumPreferences
 import org.readium.adapter.pdfium.navigator.PdfiumSettings
 import org.readium.r2.navigator.pdf.PdfNavigatorFragment
@@ -31,7 +33,7 @@ private var instanceNo = 0
 @ExperimentalCoroutinesApi
 @OptIn(ExperimentalReadiumApi::class)
 class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
-    CoroutineScope by MainScope() {
+    CoroutineScope by (MainScope() + readerCoroutineExceptionHandler(TAG)) {
 
     interface Listener {
         /**

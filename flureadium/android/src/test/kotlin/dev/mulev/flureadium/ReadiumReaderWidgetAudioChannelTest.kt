@@ -1,24 +1,20 @@
 package dev.mulev.flureadium
 
-import android.content.ContextWrapper
 import android.os.Build
-import androidx.fragment.app.FragmentActivity
-import dev.mulev.flureadium.events.ReaderStatusEventChannel
-import io.flutter.plugin.common.BinaryMessenger
-import io.flutter.plugin.common.EventChannel
+import dev.mulev.flureadium.navigators.EpubNavigator
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.runner.RunWith
-import org.mockito.Mockito.`when`
+import org.mockito.Mockito.doAnswer
 import org.mockito.Mockito.mock
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Publication
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.AfterTest
@@ -26,6 +22,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -51,31 +48,32 @@ internal class ReadiumReaderWidgetAudioChannelTest {
 
     private val testDispatcher = UnconfinedTestDispatcher()
 
+    // Stands in for Android's kill handler: a throw that still reaches the
+    // thread's default handler is what used to take the process down.
+    private val uncaught = mutableListOf<Throwable>()
+    private var previousHandler: Thread.UncaughtExceptionHandler? = null
+
     @BeforeTest
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         resetReaderState()
-        setReaderField("_currentPublication", audiobookPublication())
+        setReaderField("_currentPublication", publicationConformingTo(Publication.Profile.AUDIOBOOK))
+        previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { _, throwable -> uncaught.add(throwable) }
     }
 
     @AfterTest
     fun tearDown() {
+        Thread.setDefaultUncaughtExceptionHandler(previousHandler)
         Dispatchers.resetMain()
         resetReaderState()
-    }
-
-    private fun resetReaderState() {
-        setReaderField("_currentPublication", null)
-        setReaderField("isReadyEventChannel", null)
-        setReaderField("readerStatusEventChannel", null)
-        ReadiumReader.currentReaderWidget = null
     }
 
     // MARK: - Queries
 
     @Test
     fun getLocatorFragmentsEchoesItsArgument() {
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("getLocatorFragments", LOCATOR_JSON), result)
@@ -85,7 +83,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
 
     @Test
     fun isReaderReadyIsTrue() {
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("isReaderReady", null), result)
@@ -95,7 +93,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
 
     @Test
     fun isLocatorVisibleIsFalse() {
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("isLocatorVisible", LOCATOR_JSON), result)
@@ -105,7 +103,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
 
     @Test
     fun getCurrentLocatorIsNull() {
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("getCurrentLocator", null), result)
@@ -119,7 +117,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
     @Test
     fun navigationAndStylingCallsAreSilentNoOps() {
         val statuses = subscribeToReaderStatus()
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val statusesAfterInit = statuses.size
 
         val calls = listOf(
@@ -152,7 +150,7 @@ internal class ReadiumReaderWidgetAudioChannelTest {
     @Test
     fun disposeReportsClosed() {
         val statuses = subscribeToReaderStatus()
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("dispose", null), result)
@@ -165,13 +163,76 @@ internal class ReadiumReaderWidgetAudioChannelTest {
 
     @Test
     fun unknownMethodIsNotImplemented() {
-        val widget = buildAudioHostWidget()
+        val widget = buildReaderWidget()
         val result = RecordingResult()
 
         widget.onMethodCall(MethodCall("somethingElse", null), result)
 
         assertTrue(result.notImplemented, "an unknown method must reach Dart's MissingPluginException")
         assertFalse(result.succeeded)
+    }
+
+    // MARK: - Failures
+
+    @Test
+    fun aMalformedGoCallRepliesAnError() {
+        val widget = buildReaderWidget()
+        val result = RecordingResult()
+
+        widget.onMethodCall(MethodCall("go", listOf("not-json", true, false)), result)
+
+        assertEquals(1, result.errorCount, "an unparseable payload must answer Dart exactly once")
+        assertNotNull(result.errorCode, "a Dart PlatformException needs a code")
+        assertNotNull(result.errorDetails, "the stack trace is what makes the failure diagnosable")
+        assertFalse(result.succeeded, "a failed call must not also look like a success")
+    }
+
+    @Test
+    fun aMalformedGoCallDoesNotReachTheDefaultUncaughtHandler() {
+        val widget = buildReaderWidget()
+
+        widget.onMethodCall(MethodCall("go", listOf("not-json", true, false)), RecordingResult())
+
+        assertEquals(emptyList(), uncaught, "reaching the default handler is what killed the process")
+    }
+
+    @Test
+    fun aSucceedingCallStillReplies() {
+        val widget = buildReaderWidget()
+        val result = RecordingResult()
+
+        widget.onMethodCall(MethodCall("isReaderReady", null), result)
+
+        assertEquals(true, result.value)
+        assertTrue(result.succeeded)
+        assertEquals(0, result.errorCount, "the guard must not answer a call that already succeeded")
+    }
+
+    @Test
+    fun aCallCancelledMidFlightIsNotAnswered() {
+        // The case the guard rethrows for: Flutter disposes the platform view
+        // while a call is still in flight, so the call unwinds with the scope's
+        // CancellationException. Answering it would hand the host a phantom
+        // PlatformException on a future it has already dropped, and reporting it
+        // would flip a torn-down reader to "error".
+        val navigator = mock(EpubNavigator::class.java)
+        setReaderField("epubNavigator", navigator)
+        val statuses = subscribeToReaderStatus()
+        val errors = subscribeToErrorEvents()
+        val widget = buildReaderWidget()
+        val result = RecordingResult()
+        doAnswer {
+            widget.dispose()
+            throw CancellationException("platform view disposed mid-call")
+        }.`when`(navigator).clearPendingScrollTarget()
+
+        widget.onMethodCall(MethodCall("go", listOf(LOCATOR_JSON, false, false)), result)
+
+        assertFalse(result.succeeded, "a cancelled call has nobody left to answer")
+        assertEquals(0, result.errorCount, "cancellation must not surface as a PlatformException")
+        assertTrue(errors.isEmpty(), "cancelling a call is not a failure")
+        assertFalse(statuses.contains("error"), "teardown must not flip the reader to error")
+        assertEquals(emptyList(), uncaught)
     }
 
     // MARK: - Harness
@@ -182,6 +243,8 @@ internal class ReadiumReaderWidgetAudioChannelTest {
         var succeeded = false
         var errorCode: String? = null
         var errorMessage: String? = null
+        var errorDetails: Any? = null
+        var errorCount = 0
         var notImplemented = false
 
         override fun success(result: Any?) {
@@ -192,47 +255,13 @@ internal class ReadiumReaderWidgetAudioChannelTest {
         override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
             this.errorCode = errorCode
             this.errorMessage = errorMessage
+            this.errorDetails = errorDetails
+            errorCount++
         }
 
         override fun notImplemented() {
             notImplemented = true
         }
-    }
-
-    /** Attaches a listener to the reader-status channel and records what it receives. */
-    private fun subscribeToReaderStatus(): List<String> {
-        val received = mutableListOf<String>()
-        val channel = ReaderStatusEventChannel(mock(BinaryMessenger::class.java))
-        setReaderField("readerStatusEventChannel", channel)
-        channel.onListen(
-            null,
-            object : EventChannel.EventSink {
-                override fun success(event: Any?) {
-                    received.add(event as String)
-                }
-
-                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) = Unit
-
-                override fun endOfStream() = Unit
-            }
-        )
-        return received
-    }
-
-    private fun buildAudioHostWidget(): ReadiumReaderWidget {
-        val activity = Robolectric.buildActivity(FragmentActivity::class.java).setup().get()
-        return ReadiumReaderWidget(
-            ContextWrapper(activity),
-            1,
-            emptyMap(),
-            mock(BinaryMessenger::class.java)
-        )
-    }
-
-    private fun audiobookPublication(): Publication {
-        val publication = mock(Publication::class.java)
-        `when`(publication.conformsTo(Publication.Profile.AUDIOBOOK)).thenReturn(true)
-        return publication
     }
 
     private companion object {

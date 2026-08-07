@@ -180,6 +180,43 @@ surfaces an error event` integration test asserts the load-time path end-to-end
 on both platforms. The `partial stream failure surfaces an error event` test
 stays iOS-skipped (mid-stream truncation is best-effort on iOS).
 
+### Native reader failures
+
+A reader coroutine that fails on Android — a navigator that cannot be built, an
+enable against a publication that was closed, a fragment transaction on a dead
+activity — reports on this stream with `code: "ReaderFailure"`, `message` taken
+from the exception, and `data` set to the native stack trace. Reader status goes
+to `error` at the same moment, so a host can react to either signal.
+
+iOS sends the same code from one place: a throw inside `audioEnable`. That call
+answers Dart with a `ReaderFailure` `FlutterError` as well as reporting here, so
+the future completes either way rather than hanging. A call cancelled with its
+reader reports nothing, matching Android.
+
+The report can arrive before you subscribe. The widget dispatches its enable
+from `init`, which runs inside the platform-view `create` call, so a failure
+there leaves native before Flutter replies to Dart and before `onReady` fires.
+The native error channel holds errors sent while nobody is listening and
+delivers them in order to the first subscriber, so subscribing from
+`ReadiumReaderWidget.onReady` is still early enough.
+
+What it does not do: recover. A failed enable leaves the widget mounted with no
+navigator, so the reader keeps showing its `loadingWidget` forever. The `error`
+status is the signal to act on — show a message, remount the reader, or open a
+different publication. Nothing will change on its own.
+
+A reader method call that fails natively now completes with a `PlatformException`
+carrying the exception class, its message and the stack trace — the same shape
+the publication channel already returns. It used to leave the Dart future
+pending forever.
+
+Coverage: `ErrorEventChannelTest`, `ReaderCoroutineFailureTest`,
+`ReadiumReaderWidgetEnableFailureTest`, `ReadiumReaderScopeHandlerTest`,
+`ReadiumReaderEnableGuardTest` and the failure cases in
+`ReadiumReaderWidgetAudioChannelTest` (Android JVM), plus the `Reader failure`
+integration group in `example/integration_test/error_handling_test.dart`, which
+proves the app is still running to report at all.
+
 ---
 
 ## Logging System: `R2Log`

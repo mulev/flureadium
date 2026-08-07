@@ -401,6 +401,41 @@ The app dies outright, with no Dart error and no exception reaching your code. C
 **Fix (applied):**
 Resources are wrapped at open time in a guard that reports a read against a closed container as `ReadError.Access`, which is what readium's own `read()` signature promises. The page render fails and the fragment is torn down regardless, so nothing is lost. The guard matches the two exact messages above and nothing else, so a genuine null dereference in a transformer still surfaces, and it re-throws `CancellationException` first, since that subclasses `IllegalStateException`. The race itself is upstream in readium and unchanged.
 
+### Android: App Killed by Any Reader Exception, With Nothing Reaching Dart
+
+**Symptom:**
+```
+FATAL EXCEPTION: main
+java.lang.Exception: Publication is not an EPUB, cannot enable epub navigator
+	at dev.mulev.flureadium.ReadiumReader.epubEnable(ReadiumReader.kt:783)
+```
+The app dies. No error event, no `error` reader status, nothing thrown into
+Dart. In an integration run everything after it reports `did not complete`,
+which makes the first failure look like a suite-wide collapse.
+
+**Cause:**
+Every reader scope was `CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)`
+with no `CoroutineExceptionHandler`. A supervisor's direct children are root
+coroutines, so a failure had nowhere to go: `handleCoroutineException` found no
+handler in the context and fell through to the thread's uncaught handler, which
+on Android is `RuntimeInit.KillApplicationHandler` and calls
+`Process.killProcess`. `SupervisorJob` keeps a failing child from cancelling its
+siblings; it does not handle the exception.
+
+**Fix (applied):**
+`readerCoroutineExceptionHandler` is installed on all three reader scopes — the
+widget, the `ReadiumReader` singleton, and `BaseNavigator`. It logs the
+throwable, sets reader status to `error`, and sends an error event with code
+`ReaderFailure`, the exception message, and the stack trace as `data`. A widget
+only reports while it still owns the reader registration, so a stale platform
+view's failure cannot describe the session that replaced it. Cancellation is
+never handed to a handler, so `dispose()` and `detach()` stay silent.
+
+Two adjacent holes closed with it: the reader method channel answers a failed
+call with `result.error` instead of leaving the Dart future pending, and the
+error channel holds errors sent before Dart subscribes, so a failure reported
+during platform-view creation still reaches the first subscriber.
+
 ## Platform-Specific Issues
 
 ### iOS: Localhost Connection Failed

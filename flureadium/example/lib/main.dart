@@ -91,6 +91,11 @@ class _ReaderPageState extends State<ReaderPage> {
   // reported readiness. For an audio-only publication this is the only
   // readiness signal there is: the host has no navigator to report a page.
   String _readerStatus = '';
+  // Bumped by 'Remount Reader' to change the reader widget's key. The plugin
+  // rebuilds the native view by itself when it receives a different
+  // Publication instance, but not when the instance is unchanged, which is
+  // exactly the case 'Close Native Only' sets up.
+  int _readerMountGeneration = 0;
 
   StreamSubscription<ReadiumReaderStatus>? _statusSub;
   StreamSubscription<Locator>? _locatorSub;
@@ -458,6 +463,20 @@ class _ReaderPageState extends State<ReaderPage> {
     });
   }
 
+  /// Closes the publication natively while the Dart reader widget stays
+  /// mounted, so the next remount asks native to host a publication that is no
+  /// longer open. Reproduces a host app mounting the reader after a close —
+  /// the enable failure that used to kill the Android process.
+  Future<void> _closeNativeOnly() async {
+    await _flureadium.closePublication();
+  }
+
+  /// Replaces the reader element so native `init` runs again over a
+  /// publication Dart still holds. `_publication` is untouched, so
+  /// `ReadiumReaderWidget.didUpdateWidget` returns early and only the key
+  /// change reaches native.
+  void _remountReader() => setState(() => _readerMountGeneration++);
+
   Future<void> _setNightPreferences() async {
     await _flureadium.setEPUBPreferences(
       EPUBPreferences(
@@ -656,6 +675,7 @@ class _ReaderPageState extends State<ReaderPage> {
         children: [
           if (pub != null)
             ReadiumReaderWidget(
+              key: ValueKey('reader-$_readerMountGeneration'),
               publication: pub,
               onTap: () => setState(() => _controlsVisible = !_controlsVisible),
               onReady: _subscribeToChannels,
@@ -940,6 +960,14 @@ class _ReaderPageState extends State<ReaderPage> {
                             onPressed: _nextChapter,
                             child: const Text('Audio Next Chapter'),
                           ),
+                        TextButton(
+                          onPressed: _closeNativeOnly,
+                          child: const Text('Close Native Only'),
+                        ),
+                        TextButton(
+                          onPressed: _remountReader,
+                          child: const Text('Remount Reader'),
+                        ),
                       ],
                     ),
                   ],

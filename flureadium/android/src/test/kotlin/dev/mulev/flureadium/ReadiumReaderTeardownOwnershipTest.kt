@@ -1,28 +1,22 @@
 package dev.mulev.flureadium
 
-import android.content.ContextWrapper
 import android.os.Build
-import androidx.fragment.app.FragmentActivity
 import dev.mulev.flureadium.events.EpubIsReadyEventChannel
-import dev.mulev.flureadium.events.ReaderStatusEventChannel
 import dev.mulev.flureadium.navigators.EpubNavigator
 import dev.mulev.flureadium.navigators.ImageNavigator
 import dev.mulev.flureadium.navigators.PdfNavigator
 import io.flutter.plugin.common.BinaryMessenger
-import io.flutter.plugin.common.EventChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.runner.RunWith
-import org.mockito.Mockito.`when`
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Publication
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.AfterTest
@@ -229,7 +223,7 @@ internal class ReadiumReaderTeardownOwnershipTest {
     ) {
         setReaderField("_currentPublication", publicationConformingTo(profile))
         setReaderField(navigatorField, navigator)
-        val staleWidget = buildWidget()
+        val staleWidget = buildReaderWidget()
         val isReadyChannel = assertNotNull(getReaderField("isReadyEventChannel"))
         val newerWidget = mock(ReadiumReaderWidget::class.java)
         ReadiumReader.currentReaderWidget = newerWidget
@@ -249,7 +243,7 @@ internal class ReadiumReaderTeardownOwnershipTest {
         setReaderField("_currentPublication", publicationConformingTo(profile))
         setReaderField(navigatorField, navigator)
         val statuses = subscribeToReaderStatus()
-        val widget = buildWidget()
+        val widget = buildReaderWidget()
 
         widget.dispose()
 
@@ -257,51 +251,5 @@ internal class ReadiumReaderTeardownOwnershipTest {
         assertNull(getReaderField(navigatorField))
         assertNull(getReaderField("isReadyEventChannel"))
         return statuses
-    }
-
-    private fun resetReaderState() {
-        setReaderField("_currentPublication", null)
-        setReaderField("epubNavigator", null)
-        setReaderField("imageNavigator", null)
-        setReaderField("pdfNavigator", null)
-        setReaderField("isReadyEventChannel", null)
-        setReaderField("readerStatusEventChannel", null)
-        ReadiumReader.currentReaderWidget = null
-    }
-
-    /** Attaches a listener to the reader-status channel and records what it receives. */
-    private fun subscribeToReaderStatus(): List<String> {
-        val received = mutableListOf<String>()
-        val channel = ReaderStatusEventChannel(mock(BinaryMessenger::class.java))
-        setReaderField("readerStatusEventChannel", channel)
-        channel.onListen(
-            null,
-            object : EventChannel.EventSink {
-                override fun success(event: Any?) {
-                    received.add(event as String)
-                }
-
-                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) = Unit
-
-                override fun endOfStream() = Unit
-            }
-        )
-        return received
-    }
-
-    private fun buildWidget(): ReadiumReaderWidget {
-        val activity = Robolectric.buildActivity(FragmentActivity::class.java).setup().get()
-        return ReadiumReaderWidget(
-            ContextWrapper(activity),
-            1,
-            emptyMap(),
-            mock(BinaryMessenger::class.java)
-        )
-    }
-
-    private fun publicationConformingTo(profile: Publication.Profile): Publication {
-        val publication = mock(Publication::class.java)
-        `when`(publication.conformsTo(profile)).thenReturn(true)
-        return publication
     }
 }

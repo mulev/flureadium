@@ -19,6 +19,7 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -56,8 +57,13 @@ class ReadiumReaderWidget(
     private val fragmentManager
         get() = activity.supportFragmentManager
 
-    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Only the widget that still owns the registration may report a failure, the
+    // same identity rule dispose() follows below: a stale widget's enable can
+    // still be in flight while its replacement is mounting.
+    private val mainScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate +
+            readerCoroutineExceptionHandler(TAG) { ReadiumReader.currentReaderWidget === this }
+    )
 
     // Fixed for this widget's lifetime. As a getter over the mutable
     // ReadiumReader.currentPublication, a publication swap under a live
@@ -646,200 +652,209 @@ class ReadiumReaderWidget(
         // when affecting readerView or returning a result.
         mainScope.launch {
             Log.d(TAG, "::onMethodCall ${call.method}")
-            when (call.method) {
-                "setPreferences" -> {
-                    @Suppress("UNCHECKED_CAST")
-                    val prefsMap = call.arguments as Map<String, String>
-                    try {
-                        if (isPdf) {
-                            val pdfPrefs = FlutterPdfPreferences.fromMap(prefsMap)
-                            ReadiumReader.pdfUpdatePreferences(pdfPrefs)
-                        } else if (isImage) {
-                            result.success(null)
-                            return@launch
-                        } else {
-                            setPreferencesFromMap(prefsMap)
-                            val isScrollMode = prefsMap["verticalScroll"]?.toBoolean() == true
-                            ReadiumReader.epubSetScrollMode(isScrollMode)
-                        }
-                        result.success(null)
-                    } catch (ex: Exception) {
-                        result.error("Flureadium", "Failed to set preferences", ex.message)
-                    }
-                }
-
-                "setNavigationConfig" -> {
-                    @Suppress("UNCHECKED_CAST")
-                    val args = call.arguments as? Map<*, *>
-                    val config = FlutterNavigationConfig.fromMap(args)
-                    applyNavigationConfig(config)
-                    result.success(null)
-                }
-
-                "go" -> {
-                    val args = call.arguments as List<*>
-                    val locatorJson = JSONObject(args[0] as String)
-                    val animated = args[1] as Boolean
-                    val isAudioBookWithText = args[2] as Boolean
-                    val isLikelyInitialRestore = !isAudioBookWithText && !animated
-                    if (locatorJson.optString("type") == "") {
-                        locatorJson.put("type", " ")
-                        Log.e(
-                            TAG,
-                            "Got locator with empty type! This shouldn't happen. $locatorJson"
-                        )
-                    }
-                    val locator = Locator.fromJSON(locatorJson)!!
-                    if (isPdf) {
-                        ReadiumReader.pdfGoToLocator(locator, animated)
-                    } else if (isImage) {
-                        ReadiumReader.imageGoToLocator(locator, animated)
-                    } else {
-                        if (!isAudioBookWithText) {
-                            // Avoid stale startup pending-scroll overriding an explicit go() call.
-                            ReadiumReader.epubClearPendingScrollTarget()
-                        }
-                        if (isLikelyInitialRestore) {
-                            markInitialEpubRestoreStarted(locator)
-                        }
-                        ReadiumReader.epubGoToLocator(locator, animated)
-                        if (isAudioBookWithText && canApplyJsSetLocation(locator)) {
-                            try {
-                                setLocation(locator, isAudioBookWithText)
-                            } catch (e: Exception) {
-                                Log.w(
-                                    TAG,
-                                    "go: JS setLocation failed after native locator navigation, keeping native result",
-                                    e
-                                )
+            try {
+                when (call.method) {
+                    "setPreferences" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val prefsMap = call.arguments as Map<String, String>
+                        try {
+                            if (isPdf) {
+                                val pdfPrefs = FlutterPdfPreferences.fromMap(prefsMap)
+                                ReadiumReader.pdfUpdatePreferences(pdfPrefs)
+                            } else if (isImage) {
+                                result.success(null)
+                                return@launch
+                            } else {
+                                setPreferencesFromMap(prefsMap)
+                                val isScrollMode = prefsMap["verticalScroll"]?.toBoolean() == true
+                                ReadiumReader.epubSetScrollMode(isScrollMode)
                             }
-                        } else {
-                            Log.d(
+                            result.success(null)
+                        } catch (ex: Exception) {
+                            result.error("Flureadium", "Failed to set preferences", ex.message)
+                        }
+                    }
+
+                    "setNavigationConfig" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val args = call.arguments as? Map<*, *>
+                        val config = FlutterNavigationConfig.fromMap(args)
+                        applyNavigationConfig(config)
+                        result.success(null)
+                    }
+
+                    "go" -> {
+                        val args = call.arguments as List<*>
+                        val locatorJson = JSONObject(args[0] as String)
+                        val animated = args[1] as Boolean
+                        val isAudioBookWithText = args[2] as Boolean
+                        val isLikelyInitialRestore = !isAudioBookWithText && !animated
+                        if (locatorJson.optString("type") == "") {
+                            locatorJson.put("type", " ")
+                            Log.e(
                                 TAG,
-                                "go: Skipping JS setLocation for non-audiobook restore or locator without cssSelector/domRange.start"
+                                "Got locator with empty type! This shouldn't happen. $locatorJson"
                             )
                         }
+                        val locator = Locator.fromJSON(locatorJson)!!
+                        if (isPdf) {
+                            ReadiumReader.pdfGoToLocator(locator, animated)
+                        } else if (isImage) {
+                            ReadiumReader.imageGoToLocator(locator, animated)
+                        } else {
+                            if (!isAudioBookWithText) {
+                                // Avoid stale startup pending-scroll overriding an explicit go() call.
+                                ReadiumReader.epubClearPendingScrollTarget()
+                            }
+                            if (isLikelyInitialRestore) {
+                                markInitialEpubRestoreStarted(locator)
+                            }
+                            ReadiumReader.epubGoToLocator(locator, animated)
+                            if (isAudioBookWithText && canApplyJsSetLocation(locator)) {
+                                try {
+                                    setLocation(locator, isAudioBookWithText)
+                                } catch (e: Exception) {
+                                    Log.w(
+                                        TAG,
+                                        "go: JS setLocation failed after native locator navigation, keeping native result",
+                                        e
+                                    )
+                                }
+                            } else {
+                                Log.d(
+                                    TAG,
+                                    "go: Skipping JS setLocation for non-audiobook restore or locator without cssSelector/domRange.start"
+                                )
+                            }
+                        }
+                        result.success(null)
                     }
-                    result.success(null)
-                }
 
-                "goLeft" -> {
-                    val animated = call.arguments as Boolean
-                    if (isPdf) {
-                        ReadiumReader.pdfGoLeft(animated)
-                    } else if (isImage) {
-                        ReadiumReader.imageGoLeft(animated)
-                    } else {
-                        goLeft(animated)
+                    "goLeft" -> {
+                        val animated = call.arguments as Boolean
+                        if (isPdf) {
+                            ReadiumReader.pdfGoLeft(animated)
+                        } else if (isImage) {
+                            ReadiumReader.imageGoLeft(animated)
+                        } else {
+                            goLeft(animated)
+                        }
+                        result.success(null)
                     }
-                    result.success(null)
-                }
 
-                "goRight" -> {
-                    val animated = call.arguments as Boolean
-                    if (isPdf) {
-                        ReadiumReader.pdfGoRight(animated)
-                    } else if (isImage) {
-                        ReadiumReader.imageGoRight(animated)
-                    } else {
-                        goRight(animated)
+                    "goRight" -> {
+                        val animated = call.arguments as Boolean
+                        if (isPdf) {
+                            ReadiumReader.pdfGoRight(animated)
+                        } else if (isImage) {
+                            ReadiumReader.imageGoRight(animated)
+                        } else {
+                            goRight(animated)
+                        }
+                        result.success(null)
                     }
-                    result.success(null)
-                }
 
-                "setLocation" -> {
-                    val args = call.arguments as List<*>
-                    val locatorJson = JSONObject(args[0] as String)
-                    val isAudioBookWithText = args[1] as Boolean
-                    val locator = Locator.fromJSON(locatorJson)!!
-                    setLocation(locator, isAudioBookWithText)
-                    result.success(null)
-                }
-
-                "isLocatorVisible" -> {
-                    if (!isEpub) {
-                        result.success(false)
-                        return@launch
+                    "setLocation" -> {
+                        val args = call.arguments as List<*>
+                        val locatorJson = JSONObject(args[0] as String)
+                        val isAudioBookWithText = args[1] as Boolean
+                        val locator = Locator.fromJSON(locatorJson)!!
+                        setLocation(locator, isAudioBookWithText)
+                        result.success(null)
                     }
-                    val args = call.arguments as String
-                    val locatorJson = JSONObject(args)
-                    val locator = Locator.fromJSON(locatorJson)!!
-                    var visible = locator.href == ReadiumReader.epubCurrentLocator?.href
-                    if (visible) {
-                        val jsonRes =
-                            evaluateJavascript("window.epubPage.isLocatorVisible($args);")
-                                ?: "false"
+
+                    "isLocatorVisible" -> {
+                        if (!isEpub) {
+                            result.success(false)
+                            return@launch
+                        }
+                        val args = call.arguments as String
+                        val locatorJson = JSONObject(args)
+                        val locator = Locator.fromJSON(locatorJson)!!
+                        var visible = locator.href == ReadiumReader.epubCurrentLocator?.href
+                        if (visible) {
+                            val jsonRes =
+                                evaluateJavascript("window.epubPage.isLocatorVisible($args);")
+                                    ?: "false"
+                            try {
+                                visible = jsonDecode(jsonRes) as Boolean
+                            } catch (e: Error) {
+                                Log.e(TAG, "::isLocatorVisible - invalid response:$jsonRes - e:$e")
+                                visible = false
+                            }
+                        }
+                        result.success(visible)
+                    }
+
+                    "isReaderReady" -> {
                         try {
-                            visible = jsonDecode(jsonRes) as Boolean
+                            result.success(if (isEpub) ReadiumReader.epubIsReaderReady() else true)
                         } catch (e: Error) {
-                            Log.e(TAG, "::isLocatorVisible - invalid response:$jsonRes - e:$e")
-                            visible = false
+                            Log.e(TAG, "::isReaderReady - error getting state - $e")
+                            result.success(false)
                         }
                     }
-                    result.success(visible)
-                }
 
-                "isReaderReady" -> {
-                    try {
-                        result.success(if (isEpub) ReadiumReader.epubIsReaderReady() else true)
-                    } catch (e: Error) {
-                        Log.e(TAG, "::isReaderReady - error getting state - $e")
-                        result.success(false)
-                    }
-                }
-
-                "getLocatorFragments" -> {
-                    val args = call.arguments as String?
-                    if (!isEpub) {
-                        result.success(args)
-                        return@launch
-                    }
-                    Log.d(TAG, "::====== $args")
-                    val locatorJson = JSONObject(args!!)
-                    Log.d(TAG, "::====== $locatorJson")
-
-                    val locator =
-                        ReadiumReader.epubGetLocatorFragments(Locator.fromJSON(locatorJson)!!)
-                    Log.d(TAG, "::====== $locator")
-
-                    result.success(jsonEncode(locator?.toJSON()))
-                }
-
-                "applyDecorations" -> {
-                    val args = call.arguments as List<*>
-                    val groupId = args[0] as String
-
-                    @Suppress("UNCHECKED_CAST")
-                    val decorationListStr = args[1] as List<Map<String, String>>
-                    val decorations = decorationListStr.mapNotNull { decorationFromMap(it) }
-
-                    ReadiumReader.applyDecorations(decorations, groupId)
-                    result.success(null)
-                }
-
-                "dispose" -> {
-                    dispose()
-                    result.success(null)
-                }
-
-                "getCurrentLocator" -> {
-                    val locator =
-                        when {
-                            isPdf -> ReadiumReader.pdfCurrentLocator
-                            isImage -> ReadiumReader.imageCurrentLocator
-                            else -> getBestEpubCurrentLocator()
+                    "getLocatorFragments" -> {
+                        val args = call.arguments as String?
+                        if (!isEpub) {
+                            result.success(args)
+                            return@launch
                         }
-                    Log.d(
-                        TAG,
-                        "getCurrentLocator: result=${locator?.let(::locatorDebugSummary)}"
-                    )
-                    result.success(locator?.let { jsonEncode(it.toJSON()) })
-                }
+                        Log.d(TAG, "::====== $args")
+                        val locatorJson = JSONObject(args!!)
+                        Log.d(TAG, "::====== $locatorJson")
 
-                else -> {
-                    Log.e(TAG, "Unhandled call ${call.method}")
-                    result.notImplemented()
+                        val locator =
+                            ReadiumReader.epubGetLocatorFragments(Locator.fromJSON(locatorJson)!!)
+                        Log.d(TAG, "::====== $locator")
+
+                        result.success(jsonEncode(locator?.toJSON()))
+                    }
+
+                    "applyDecorations" -> {
+                        val args = call.arguments as List<*>
+                        val groupId = args[0] as String
+
+                        @Suppress("UNCHECKED_CAST")
+                        val decorationListStr = args[1] as List<Map<String, String>>
+                        val decorations = decorationListStr.mapNotNull { decorationFromMap(it) }
+
+                        ReadiumReader.applyDecorations(decorations, groupId)
+                        result.success(null)
+                    }
+
+                    "dispose" -> {
+                        dispose()
+                        result.success(null)
+                    }
+
+                    "getCurrentLocator" -> {
+                        val locator =
+                            when {
+                                isPdf -> ReadiumReader.pdfCurrentLocator
+                                isImage -> ReadiumReader.imageCurrentLocator
+                                else -> getBestEpubCurrentLocator()
+                            }
+                        Log.d(
+                            TAG,
+                            "getCurrentLocator: result=${locator?.let(::locatorDebugSummary)}"
+                        )
+                        result.success(locator?.let { jsonEncode(it.toJSON()) })
+                    }
+
+                    else -> {
+                        Log.e(TAG, "Unhandled call ${call.method}")
+                        result.notImplemented()
+                    }
                 }
+            } catch (e: CancellationException) {
+                // A call still in flight when the platform view is disposed must
+                // unwind normally, not reach Dart as a failure.
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "::onMethodCall ${call.method} failed", e)
+                result.error(e.javaClass.toString(), e.toString(), e.stackTraceToString())
             }
         }
     }
