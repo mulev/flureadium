@@ -1,11 +1,14 @@
 package dev.mulev.flureadium.events
 
+import dev.mulev.flureadium.channelCoroutineExceptionHandler
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
+
+private const val TAG = "EventChannelWrapper"
 
 /**
  * A wrapper around EventChannel to simplify event sending from Kotlin to Flutter.
@@ -18,8 +21,16 @@ abstract class EventChannelWrapper<T>(messenger: BinaryMessenger, name: String) 
     private val eventChannel: EventChannel = EventChannel(messenger, name)
     protected var eventSink: EventChannel.EventSink? = null
 
-    protected val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-
+    /**
+     * Sends run here, so a send that throws would reach Android's kill handler
+     * without a handler of its own — the failure flureadium-2xw fixed for the
+     * reader scopes. This one logs instead of reporting; see
+     * [channelCoroutineExceptionHandler] for why a channel cannot report its
+     * own failure.
+     */
+    protected val mainScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate + channelCoroutineExceptionHandler(TAG)
+    )
 
     init {
         eventChannel.setStreamHandler(this)

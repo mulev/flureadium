@@ -30,6 +30,9 @@ internal const val readerFailureErrorCode = "ReaderFailure"
  * over a failure that belongs to a session the host has already dropped. The
  * log line is written either way, because a swallowed failure still has to be
  * findable.
+ *
+ * A scope whose own failure would travel through the reporting path must use
+ * [channelCoroutineExceptionHandler] instead — see the note there.
  */
 internal fun readerCoroutineExceptionHandler(
     tag: String,
@@ -44,4 +47,22 @@ internal fun readerCoroutineExceptionHandler(
             code = readerFailureErrorCode,
             data = throwable.stackTraceToString(),
         )
+    }
+
+/**
+ * Handler for the scopes the report itself runs through.
+ *
+ * Reporting a failure means sending on the reader-status and error channels, and
+ * those sends run in the channel's own scope. A channel that reported its own
+ * failure would send again, fail again, and never stop — and because the send is
+ * dispatched rather than nested, the loop spins forever instead of overflowing
+ * the stack. There is no flag that fixes that; the cycle has to not exist.
+ *
+ * So a channel failure is logged and goes no further. The process stays alive,
+ * which is the point, and logcat still has the throwable. Anything a host app
+ * needs to know about a broken channel it will learn from the missing events.
+ */
+internal fun channelCoroutineExceptionHandler(tag: String): CoroutineExceptionHandler =
+    CoroutineExceptionHandler { _, throwable ->
+        Log.e(tag, "Uncaught event channel failure", throwable)
     }
