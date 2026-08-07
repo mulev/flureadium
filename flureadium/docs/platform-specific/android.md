@@ -225,9 +225,14 @@ Activity attach.
 
 ### Coroutine Failure Reporting
 
-Three scopes are owned by the reader: `ReadiumReaderWidget.mainScope`,
-`ReadiumReader.mainScope`, and `BaseNavigator.mainScope`, which every navigator
-inherits. All three carry `readerCoroutineExceptionHandler`.
+Every coroutine scope in the plugin either reports its failures or says in a
+`// no-handler:` comment why it does not need to, and
+`CoroutineScopeHandlerConventionTest` fails the build when a new scope does
+neither. Four scopes report through `readerCoroutineExceptionHandler`:
+`ReadiumReaderWidget.mainScope`, `ReadiumReader.mainScope`,
+`BaseNavigator.mainScope` (which every navigator inherits), and the
+`PluginLibrarySessionCallback` scope that runs the notification and car
+transport commands.
 
 They need it because of how a supervisor works. Each scope is built on a
 `SupervisorJob`, and a supervisor's direct children are root coroutines, so a
@@ -245,11 +250,17 @@ replaces, so a stale widget's enable can still be in flight while a newer widget
 owns the reader, and its failure must not describe a session the host has
 already dropped.
 
-Two deliberate exclusions:
+Three deliberate exclusions:
 
-- `EventChannelWrapper.mainScope` has no reporting handler. It owns the channel
-  a report travels on, so reporting a failure from there could re-enter
-  `sendError` and loop.
+- `EventChannelWrapper.mainScope` logs its failures and reports nothing, through
+  `channelCoroutineExceptionHandler`. It owns the channels a report travels on,
+  so a channel that reported its own failure would send again, fail again, and
+  never stop; the send is dispatched rather than nested, so that loop spins
+  forever instead of overflowing the stack. The process survives, and the
+  throwable is in logcat.
+- `PublicationMethodCallHandler.onMethodCall` needs no handler. Its coroutine
+  body is one `dispatchGuarded` call, which catches every exception and answers
+  the call with `result.error`.
 - Cancellation reports nothing. A coroutine cancelled by widget `dispose()` or
   engine `detach()` completes with a `CancellationException`, which coroutines
   never hand to a handler, so teardown stays silent by construction.
