@@ -1,5 +1,7 @@
 package dev.mulev.flureadium
 
+import dev.mulev.flureadium.fragments.EpubReaderFragment
+import dev.mulev.flureadium.fragments.PdfReaderFragment
 import dev.mulev.flureadium.navigators.BaseNavigator
 import dev.mulev.flureadium.navigators.ImageNavigator
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -14,6 +16,7 @@ import org.mockito.Mockito.mock
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Publication
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.AfterTest
@@ -23,12 +26,14 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 /**
- * Checks that the two reader-owned scopes outside the widget carry a reporting
+ * Checks that the reader-owned scopes outside the widget carry a reporting
  * handler.
  *
  * Holding the element is only half the claim — an inert handler would satisfy
  * it while a failure still went unreported — so each case invokes the handler
- * it found and asserts the host app hears about the failure.
+ * it found and asserts the host app hears about the failure. That is also what
+ * separates these cases from `CoroutineScopeHandlerConventionTest`, which reads
+ * source text and cannot tell a working handler from a stub.
  */
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalReadiumApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -76,6 +81,40 @@ internal class ReadiumReaderScopeHandlerTest {
         assertReported(statuses, errors)
     }
 
+    @Test
+    fun facadeScopeReportsAnUncaughtFailure() {
+        val statuses = subscribeToReaderStatus()
+        val errors = subscribeToErrorEvents()
+        val facade = PluginMediaServiceFacade(RuntimeEnvironment.getApplication())
+
+        handlerOf(facade.scopeForTest())
+            .handleException(EmptyCoroutineContext, Exception("boom"))
+
+        assertReported(statuses, errors)
+    }
+
+    @Test
+    fun epubFragmentScopeReportsAnUncaughtFailure() {
+        val statuses = subscribeToReaderStatus()
+        val errors = subscribeToErrorEvents()
+
+        handlerOf(EpubReaderFragment())
+            .handleException(EmptyCoroutineContext, Exception("boom"))
+
+        assertReported(statuses, errors)
+    }
+
+    @Test
+    fun pdfFragmentScopeReportsAnUncaughtFailure() {
+        val statuses = subscribeToReaderStatus()
+        val errors = subscribeToErrorEvents()
+
+        handlerOf(PdfReaderFragment())
+            .handleException(EmptyCoroutineContext, Exception("boom"))
+
+        assertReported(statuses, errors)
+    }
+
     private fun assertReported(statuses: List<String>, errors: List<Map<String, Any?>>) {
         assertEquals(listOf("error"), statuses)
         val errorEvent = errors.single()
@@ -91,6 +130,12 @@ internal class ReadiumReaderScopeHandlerTest {
 
     private fun BaseNavigator.mainScopeForTest(): CoroutineScope {
         val field = BaseNavigator::class.java.getDeclaredField("mainScope")
+        field.isAccessible = true
+        return field.get(this) as CoroutineScope
+    }
+
+    private fun PluginMediaServiceFacade.scopeForTest(): CoroutineScope {
+        val field = PluginMediaServiceFacade::class.java.getDeclaredField("coroutineScope")
         field.isAccessible = true
         return field.get(this) as CoroutineScope
     }

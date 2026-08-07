@@ -77,21 +77,39 @@ internal class PluginLibrarySessionCallbackFailureTest {
         assertEquals(SessionResult.RESULT_SUCCESS, result, "the button still answers the session")
     }
 
-    private fun rewind(): Int =
+    @Test
+    fun aFailedForwardReportsInsteadOfVanishing() {
+        val errors = subscribeToErrorEvents()
+        seedFailingAudiobookNavigator()
+
+        val result = sendCommand(NotificationPlayerCustomCommandButton.FORWARD)
+
+        val errorEvent = errors.single()
+        assertEquals("no audio session", errorEvent["message"])
+        assertEquals("ReaderFailure", errorEvent["code"])
+        assertTrue(uncaught.isEmpty(), "the failure must be reported, not thrown at the process")
+        assertEquals(SessionResult.RESULT_SUCCESS, result, "the button still answers the session")
+    }
+
+    private fun rewind(): Int = sendCommand(NotificationPlayerCustomCommandButton.REWIND)
+
+    private fun sendCommand(button: NotificationPlayerCustomCommandButton): Int =
         PluginLibrarySessionCallback(
             sourceProvider = { null },
             publicationProvider = { null },
         ).onCustomCommand(
             session,
             browser,
-            SessionCommand(NotificationPlayerCustomCommandButton.REWIND.customAction, Bundle()),
+            SessionCommand(button.customAction, Bundle()),
             Bundle(),
         ).get().resultCode
 
-    /** Seeds a navigator whose `goBack()` fails, which is what a rewind calls. */
+    /** Seeds a navigator that fails both ways: rewind calls `goBack`, forward calls `goForward`. */
     private fun seedFailingAudiobookNavigator() {
         val navigator = mock(AudiobookNavigator::class.java)
         `when`(runBlocking { navigator.goBack() })
+            .thenThrow(IllegalStateException("no audio session"))
+        `when`(runBlocking { navigator.goForward() })
             .thenThrow(IllegalStateException("no audio session"))
         setReaderField("audiobookNavigator", navigator)
     }
