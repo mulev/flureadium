@@ -19,8 +19,11 @@ import dev.mulev.flureadium.car.CarContentSource
 import dev.mulev.flureadium.car.NodeBrowseTree
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.readium.r2.shared.publication.Publication
+
+private const val TAG = "PluginLibrarySessionCallback"
 
 private const val CUSTOM_COMMAND_REWIND_ACTION_ID = "REWIND_CUSTOM"
 private const val CUSTOM_COMMAND_FORWARD_ACTION_ID = "FORWARD_CUSTOM"
@@ -82,6 +85,18 @@ class PluginLibrarySessionCallback(
     val commandButtons: List<CommandButton> =
         NotificationPlayerCustomCommandButton.entries.map { it.commandButton }
 
+    /**
+     * Runs the transport commands the notification and the car send.
+     *
+     * These used to go into a throwaway scope with `async`, whose Deferred
+     * nobody read, so a failed rewind was neither reported nor logged. The
+     * session is answered immediately either way — the command is fire and
+     * forget by design — but the failure now reaches the host app.
+     */
+    private val commandScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main + readerCoroutineExceptionHandler(TAG)
+    )
+
     override fun onConnect(
         session: MediaSession,
         controller: MediaSession.ControllerInfo
@@ -118,14 +133,10 @@ class PluginLibrarySessionCallback(
     ): ListenableFuture<SessionResult> {
         /* Handle custom command buttons from player notification. */
         if (customCommand.customAction == NotificationPlayerCustomCommandButton.REWIND.customAction) {
-            CoroutineScope(Dispatchers.Main).async {
-                ReadiumReader.previous()
-            }
+            commandScope.launch { ReadiumReader.previous() }
         }
         if (customCommand.customAction == NotificationPlayerCustomCommandButton.FORWARD.customAction) {
-            CoroutineScope(Dispatchers.Main).async {
-                ReadiumReader.next()
-            }
+            commandScope.launch { ReadiumReader.next() }
         }
         if (customCommand.customAction == NotificationPlayerCustomCommandButton.BOOKMARK.customAction) {
             sourceProvider()?.addBookmark()
