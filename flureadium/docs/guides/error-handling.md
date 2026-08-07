@@ -180,13 +180,18 @@ surfaces an error event` integration test asserts the load-time path end-to-end
 on both platforms. The `partial stream failure surfaces an error event` test
 stays iOS-skipped (mid-stream truncation is best-effort on iOS).
 
-### Native reader failures (Android)
+### Native reader failures
 
-A reader coroutine that fails — a navigator that cannot be built, an enable
-against a publication that was closed, a fragment transaction on a dead
+A reader coroutine that fails on Android — a navigator that cannot be built, an
+enable against a publication that was closed, a fragment transaction on a dead
 activity — reports on this stream with `code: "ReaderFailure"`, `message` taken
 from the exception, and `data` set to the native stack trace. Reader status goes
 to `error` at the same moment, so a host can react to either signal.
+
+iOS sends the same code from one place: a throw inside `audioEnable`. That call
+answers Dart with a `ReaderFailure` `FlutterError` as well as reporting here, so
+the future completes either way rather than hanging. A call cancelled with its
+reader reports nothing, matching Android.
 
 The report can arrive before you subscribe. The widget dispatches its enable
 from `init`, which runs inside the platform-view `create` call, so a failure
