@@ -1,3 +1,24 @@
+## 0.16.6
+
+### Bug Fixes
+
+- **Android engine teardown can no longer cancel the publication close it starts**: `ReadiumReader.detach()` launched `closePublication()` on `mainScope` and then, as its last three statements, cancelled `jobs` and `mainScope`'s children. Teardown was published as a child of the scope the same function cancels. Nothing broke from it, and the reason is narrow: `detach()` nulls the epub, image and pdf navigators before the launch, and those three are the ones whose `release()` suspends on a plain `withContext(Dispatchers.Main)`. Only the audio and TTS releases were left, both on `withContext(Dispatchers.Main.immediate)`, so on the platform thread the close ran inline and finished before the cancel below it was reached. That held only while every `release()` left on the path kept not suspending, and only while the three closes kept running first. The cancel now runs before any teardown statement: the launch is issued after it, and `cancelChildren()` cancels the children the scope has while leaving its `SupervisorJob` active, so the work started afterwards still runs.
+
+### Documentation
+
+- `docs/platform-specific/android.md` stated that the launched `closePublication()` "suspends inside each navigator's `release()`, and the `cancelChildren()` at the end of `detach()` cancels it there". It did not, and that sentence is what the bug was originally filed on. The teardown-ownership section now gives the order `detach()` uses, and says which navigators had to be closed first for the old order to survive.
+
+### Testing
+
+- `ReadiumReaderDetachOrderingTest` pins both halves of the order. One case checks that the launched close survives `detach()` and runs to completion. The other checks that the cancel block has already finished when the first teardown statement runs, read from inside a stubbed `EpubNavigator.dispose()`. The second case exists because the first one passes with the cancel sitting between `pdfClose()` and the launch, which is neither the old order nor the new one.
+- `ReadiumReader.mainScope` is a `var` now. It resolves `Dispatchers.Main.immediate` once, when the object initialises, and the singleton outlives every test class in a JVM run, so whichever class touches it first fixes that dispatcher for the whole run and `Dispatchers.setMain` cannot reach it afterwards. The first version of the ordering test went red on its own and green in the full suite against the broken order. It swaps the whole scope by reflection instead, and a `val` compiles to a static final field that reflection cannot write.
+- The comment above the three synchronous-close cases in `ReadiumReaderTeardownOwnershipTest` repeated the same claim the docs made.
+- The `jobs` list had no coverage anywhere in the suite, so the cancel-and-clear half of `detach()` was unpinned. Both new cases were checked by mutation: reverting the statement each defends is what turns it red.
+
+### Continuous integration
+
+- The example's lockfile stayed on 0.16.4 through the 0.16.5 bump. Every suite the runner drives through the example resolves with `--enforce-lockfile`, so the example unit tests and the entire integration run failed on "Unable to satisfy `pubspec.yaml` using `pubspec.lock`" before a single test executed. It moves with `pubspec.yaml` now, alongside the three install snippets that were added to that list one release ago.
+
 ## 0.16.5
 
 ### Bug Fixes
