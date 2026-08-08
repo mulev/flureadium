@@ -97,7 +97,14 @@ private const val decorationStyleKey = "decorationStyle"
 @ExperimentalCoroutinesApi
 @OptIn(ExperimentalReadiumApi::class)
 object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.VisualListener, ImageNavigator.VisualListener, PdfNavigator.VisualListener {
-    private val mainScope = CoroutineScope(
+    // var, not val: nothing here reassigns it, but the JVM suite has to. This
+    // scope resolves Dispatchers.Main.immediate once, when the object
+    // initialises, and the object outlives every test class in a run, so
+    // Dispatchers.setMain cannot reach it afterwards. To drive detach() on a
+    // dispatcher that has to dispatch, ReadiumReaderDetachOrderingTest swaps
+    // the whole scope by reflection — and a val compiles to a static final
+    // field, which reflection cannot write.
+    private var mainScope = CoroutineScope(
         SupervisorJob() + Dispatchers.Main.immediate + readerCoroutineExceptionHandler(TAG)
     )
 
@@ -425,13 +432,23 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
      * shared across engines and still cleared.
      */
     fun detach() {
+        // Cancel this session's coroutines first. Everything below is teardown,
+        // and teardown must not be a child the cancel can reach: the
+        // closePublication() launch below would be exactly that. A launch
+        // issued after cancelChildren() survives it, because cancelChildren()
+        // cancels the current children and leaves the scope's SupervisorJob
+        // active. BaseNavigator.dispose() cancels in this same order, before
+        // its subclasses launch their release work.
+        jobs.forEach { it.cancel() }
+        jobs.clear()
+        mainScope.coroutineContext.cancelChildren()
+
         // Release the visual navigators and the is-ready channel here, on the
-        // synchronous path. Neither of the two paths that would otherwise do it
-        // survives engine teardown: the mounted widget's dispose() only tears
-        // down what it still owns, and clearing readerViewRef below drops its
-        // registration; closePublication() suspends inside each navigator's
-        // release(), which the cancelChildren() at the end of this function
-        // cancels. Leaving a navigator behind would leak it and its publication
+        // synchronous path. Their release() removes the fragment inside
+        // withContext(Dispatchers.Main), which resumes a looper turn later
+        // against a FragmentManager whose Activity is already going away, and
+        // clearing readerViewRef below means no widget dispose will do it
+        // either. Leaving a navigator behind would leak it and its publication
         // into the next engine in this process, where *Enable would attach to
         // the dead one instead of building a fresh navigator.
         epubClose()
@@ -462,10 +479,6 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
 
         textLocatorEventChannel?.dispose()
         textLocatorEventChannel = null
-
-        jobs.forEach { it.cancel() }
-        jobs.clear()
-        mainScope.coroutineContext.cancelChildren()
     }
 
     fun sendReaderStatus(status: String) {
