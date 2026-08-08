@@ -354,10 +354,14 @@ In the old order it never actually cancelled anything.
 `PdfNavigator.release()` all suspend on a plain `withContext(Dispatchers.Main)`,
 so `closePublication()` does have suspension points. The three closes above
 take them out of play: they null those navigators before the launch, leaving
-only the audio and TTS releases, which use
-`withContext(Dispatchers.Main.immediate)`. On the platform thread the whole
-close therefore completed inline, before the cancel that used to sit at the
-bottom of `detach()` was reached.
+the three time-based ones — `ttsNavigator`, `audiobookNavigator` and
+`syncAudiobookNavigator`. Those resolve to two `release()` bodies, since
+`SyncAudiobookNavigator` extends `AudiobookNavigator` and does not override it,
+and both switch with `withContext(Dispatchers.Main.immediate)`, which does not
+dispatch when it is already on the main thread. `closeSession()` is not a
+suspending call either; it launches onto the facade's queue and returns. On the
+platform thread the whole close therefore completed inline, before the cancel
+that used to sit at the bottom of `detach()` was reached.
 
 That is a thin thing to rely on. It holds only while every `release()` left on
 the path keeps not suspending, and while the three closes keep running first.
