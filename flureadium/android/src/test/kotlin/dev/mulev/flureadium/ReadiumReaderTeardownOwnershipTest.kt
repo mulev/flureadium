@@ -164,11 +164,11 @@ internal class ReadiumReaderTeardownOwnershipTest {
     }
 
     // detach() clears the widget registration itself, so the mounted widget's
-    // identity-guarded dispose() can no longer release anything shared, and the
-    // closePublication() detach() launches suspends inside each navigator's
-    // release() and is cancelled by the cancelChildren() at the end of detach().
-    // Engine teardown therefore has to release the navigators itself, on the
-    // synchronous path: dispose(), not release().
+    // identity-guarded dispose() can no longer release anything shared, and a
+    // navigator's release() would only remove its fragment a looper turn later,
+    // against a FragmentManager whose Activity is already gone. Engine teardown
+    // therefore has to release the visual navigators itself, on the synchronous
+    // path: dispose(), not release().
 
     @Test
     fun detachDisposesEpubNavigatorSynchronously() {

@@ -335,12 +335,35 @@ its view group — is released unconditionally, guard or no guard.
 The flip side is that engine teardown can no longer lean on a widget dispose.
 `ReadiumReader.detach()` clears `readerViewRef` itself, so any dispose that
 arrives afterwards fails the identity check and releases nothing shared. It
-therefore calls `epubClose()`, `imageClose()` and `pdfClose()` up front. The
-`closePublication()` it launches is not a substitute: that suspends inside each
-navigator's `release()`, and the `cancelChildren()` at the end of `detach()`
-cancels it there. A navigator left behind would outlive the engine, because
-`ReadiumReader` is process-scoped — and the next engine's `*Enable` would
-attach to the dead one instead of building a fresh navigator.
+therefore calls `epubClose()`, `imageClose()` and `pdfClose()` up front, on the
+synchronous path. The `closePublication()` it launches is not a substitute for
+that: a navigator's `release()` removes its fragment inside
+`withContext(Dispatchers.Main)`, which resumes a looper turn later, against a
+`FragmentManager` whose Activity is already going away. A navigator left behind
+would outlive the engine, because `ReadiumReader` is process-scoped — and the
+next engine's `*Enable` would attach to the dead one instead of building a
+fresh navigator.
+
+`detach()` cancels its own coroutines before any of that runs: `jobs` and
+`mainScope`'s children first, teardown second. The order matters because the
+publication close is launched on `mainScope`. A cancel placed after that launch
+would be the function cancelling its own teardown.
+
+In the old order it never actually cancelled anything.
+`EpubNavigator.release()`, `ImageNavigator.release()` and
+`PdfNavigator.release()` all suspend on a plain `withContext(Dispatchers.Main)`,
+so `closePublication()` does have suspension points. The three closes above
+take them out of play: they null those navigators before the launch, leaving
+only the audio and TTS releases, which use
+`withContext(Dispatchers.Main.immediate)`. On the platform thread the whole
+close therefore completed inline, before the cancel that used to sit at the
+bottom of `detach()` was reached.
+
+That is a thin thing to rely on. It holds only while every `release()` left on
+the path keeps not suspending, and while the three closes keep running first.
+Cancelling up front removes the dependency: `cancelChildren()` cancels the
+children the scope has and leaves its `SupervisorJob` active, so anything
+launched afterwards still runs.
 
 ### Readium Integration
 
