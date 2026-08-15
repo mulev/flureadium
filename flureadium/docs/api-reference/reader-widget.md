@@ -108,11 +108,16 @@ fire `onTap` — you get taps on plain content only, so a host can toggle its
 chrome on a single tap without swallowing links.
 
 That filter is WebView-specific. PDF and CBZ have no equivalent, so a tap on a
-PDF link annotation both follows the link and reports a tap. See
-[iOS notes](../platform-specific/ios.md).
+PDF link annotation both follows the link and reports a tap. This holds on iOS
+and Android alike.
 
-Which regions of the page mean what is a host decision. The plugin reports
-where the tap landed and nothing more.
+One region is not yours: the left and right edge strips, `edgeTapAreaPoints`
+wide, are claimed by the native edge-tap overlay before Readium sees the touch,
+so `onTap` never fires there. In paginated EPUB the overlay absorbs them
+whether or not edge-tap navigation is enabled. Everywhere else on the page,
+what a region means is a host decision — the plugin reports where the tap
+landed and nothing more. See
+[Edge Tap and Swipe Navigation](../platform-specific/ios.md#edge-tap-and-swipe-navigation).
 
 ```dart
 ReadiumReaderWidget(

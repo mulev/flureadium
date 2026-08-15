@@ -36,7 +36,9 @@ class ReadiumReaderChannel extends MethodChannel {
   /// Called when the user taps the content and Readium handled nothing
   /// internally — no hyperlink, no footnote, no interactive element.
   ///
-  /// The position is in logical pixels, relative to the navigator view.
+  /// The position is in logical pixels, relative to the top-left of the
+  /// platform view. Senders on Android must divide `MotionEvent` coordinates
+  /// by `displayMetrics.density` before posting them.
   void Function(Offset)? onTap;
 
   /// Go e.g. navigate to a specific locator in the publication.

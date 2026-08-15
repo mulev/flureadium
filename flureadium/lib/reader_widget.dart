@@ -51,7 +51,14 @@ class ReadiumReaderWidget extends StatefulWidget {
   /// Called when the user taps the content and Readium handled nothing
   /// internally — no hyperlink, no footnote, no interactive element.
   ///
-  /// The position is in logical pixels, relative to the reader view.
+  /// That filter is WebView-only. PDF and CBZ have no equivalent, so a tap on
+  /// a PDF link annotation both follows the link and fires this callback.
+  ///
+  /// Never fires in the left and right edge strips: the native edge-tap
+  /// overlay claims those before Readium sees the touch.
+  ///
+  /// The position is in logical pixels, relative to the top-left of the
+  /// platform view.
   final void Function(Offset position)? onTap;
 
   final Function(String)? onExternalLinkActivated;
