@@ -21,11 +21,13 @@ ReadiumReaderChannel createReadiumReaderChannel(
   int id, {
   required ValueChanged<Locator> onPageChanged,
   ValueChanged<String>? onExternalLinkActivated,
+  void Function(Offset)? onTap,
 }) {
   return ReadiumReaderChannel(
     '$_viewType:$id',
     onPageChanged: onPageChanged,
     onExternalLinkActivated: onExternalLinkActivated,
+    onTap: onTap,
   );
 }
 
@@ -36,9 +38,6 @@ class ReadiumReaderWidget extends StatefulWidget {
     this.loadingWidget = const Center(child: CircularProgressIndicator()),
     this.initialLocator,
     this.onTap,
-    this.onGoLeft,
-    this.onGoRight,
-    this.onSwipe,
     this.onExternalLinkActivated,
     this.onLocatorChanged,
     this.onReady,
@@ -48,10 +47,13 @@ class ReadiumReaderWidget extends StatefulWidget {
   final Publication publication;
   final Widget loadingWidget;
   final Locator? initialLocator;
-  final VoidCallback? onTap;
-  final VoidCallback? onGoLeft;
-  final VoidCallback? onGoRight;
-  final VoidCallback? onSwipe;
+
+  /// Called when the user taps the content and Readium handled nothing
+  /// internally — no hyperlink, no footnote, no interactive element.
+  ///
+  /// The position is in logical pixels, relative to the reader view.
+  final void Function(Offset position)? onTap;
+
   final Function(String)? onExternalLinkActivated;
   final void Function(Locator)? onLocatorChanged;
 
@@ -352,6 +354,7 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
         }
       },
       onExternalLinkActivated: widget.onExternalLinkActivated,
+      onTap: widget.onTap,
     );
 
     // Register as current widget only after _channel is assigned.

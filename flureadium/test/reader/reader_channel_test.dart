@@ -171,5 +171,48 @@ void main() {
 
       expect(seen, 'https://example.com');
     });
+
+    test('forwards tap position from native method call', () async {
+      Offset? seen;
+      channel = ReadiumReaderChannel(
+        channelName,
+        onPageChanged: (_) {},
+        onTap: (position) => seen = position,
+      );
+
+      await channel.onMethodCall(
+        const MethodCall('onTap', {'x': 12.5, 'y': 30.0}),
+      );
+
+      expect(seen, const Offset(12.5, 30.0));
+    });
+
+    test('decodes an integer tap payload', () async {
+      Offset? seen;
+      channel = ReadiumReaderChannel(
+        channelName,
+        onPageChanged: (_) {},
+        onTap: (position) => seen = position,
+      );
+
+      await channel.onMethodCall(const MethodCall('onTap', {'x': 10, 'y': 20}));
+
+      expect(seen, const Offset(10, 20));
+    });
+
+    test('swallows a malformed tap payload without calling back', () async {
+      var called = false;
+      channel = ReadiumReaderChannel(
+        channelName,
+        onPageChanged: (_) {},
+        onTap: (_) => called = true,
+      );
+
+      await expectLater(
+        channel.onMethodCall(const MethodCall('onTap', {'x': 'left'})),
+        completes,
+      );
+      expect(called, isFalse);
+    });
   });
 }

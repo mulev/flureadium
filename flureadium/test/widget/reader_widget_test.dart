@@ -67,19 +67,13 @@ void main() {
           publication: publication,
           initialLocator: locator,
           loadingWidget: customLoading,
-          onTap: () {},
-          onGoLeft: () {},
-          onGoRight: () {},
-          onSwipe: () {},
+          onTap: (_) {},
         );
 
         expect(widget.publication, equals(publication));
         expect(widget.initialLocator, equals(locator));
         expect(widget.loadingWidget, equals(customLoading));
         expect(widget.onTap, isNotNull);
-        expect(widget.onGoLeft, isNotNull);
-        expect(widget.onGoRight, isNotNull);
-        expect(widget.onSwipe, isNotNull);
       });
     });
 
@@ -168,54 +162,28 @@ void main() {
         final widget = ReadiumReaderWidget(
           publication: publication,
           onReady: () => readyCalled = true,
-          onTap: () => tappedCalled = true,
+          onTap: (_) => tappedCalled = true,
         );
 
         widget.onReady!();
-        widget.onTap!();
+        widget.onTap!(Offset.zero);
         expect(readyCalled, isTrue);
         expect(tappedCalled, isTrue);
       });
     });
 
     group('callbacks', () {
-      test('onTap callback is stored', () {
-        var tapped = false;
+      test('onTap callback is stored and receives the tap position', () {
+        Offset? tapped;
         final publication = createTestPublication();
 
         final widget = ReadiumReaderWidget(
           publication: publication,
-          onTap: () => tapped = true,
+          onTap: (position) => tapped = position,
         );
 
-        widget.onTap!();
-        expect(tapped, isTrue);
-      });
-
-      test('onGoLeft callback is stored', () {
-        var wentLeft = false;
-        final publication = createTestPublication();
-
-        final widget = ReadiumReaderWidget(
-          publication: publication,
-          onGoLeft: () => wentLeft = true,
-        );
-
-        widget.onGoLeft!();
-        expect(wentLeft, isTrue);
-      });
-
-      test('onGoRight callback is stored', () {
-        var wentRight = false;
-        final publication = createTestPublication();
-
-        final widget = ReadiumReaderWidget(
-          publication: publication,
-          onGoRight: () => wentRight = true,
-        );
-
-        widget.onGoRight!();
-        expect(wentRight, isTrue);
+        widget.onTap!(const Offset(4, 8));
+        expect(tapped, const Offset(4, 8));
       });
 
       test('createReadiumReaderChannel carries onExternalLinkActivated', () {
@@ -228,6 +196,18 @@ void main() {
         );
 
         expect(channel.onExternalLinkActivated, same(onExternalLink));
+      });
+
+      test('createReadiumReaderChannel carries onTap', () {
+        void onTap(Offset _) {}
+
+        final channel = createReadiumReaderChannel(
+          43,
+          onPageChanged: (_) {},
+          onTap: onTap,
+        );
+
+        expect(channel.onTap, same(onTap));
       });
     });
 
