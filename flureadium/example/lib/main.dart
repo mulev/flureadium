@@ -677,7 +677,8 @@ class _ReaderPageState extends State<ReaderPage> {
             ReadiumReaderWidget(
               key: ValueKey('reader-$_readerMountGeneration'),
               publication: pub,
-              onTap: () => setState(() => _controlsVisible = !_controlsVisible),
+              onTap: (_) =>
+                  setState(() => _controlsVisible = !_controlsVisible),
               onReady: _subscribeToChannels,
             )
           else
