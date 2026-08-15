@@ -21,10 +21,7 @@ const ReadiumReaderWidget({
   required Publication publication,
   Widget loadingWidget = const Center(child: CircularProgressIndicator()),
   Locator? initialLocator,
-  VoidCallback? onTap,
-  VoidCallback? onGoLeft,
-  VoidCallback? onGoRight,
-  VoidCallback? onSwipe,
+  void Function(Offset position)? onTap,
   Function(String)? onExternalLinkActivated,
   void Function(Locator)? onLocatorChanged,
   VoidCallback? onReady,
@@ -100,54 +97,31 @@ ReadiumReaderWidget(
 
 ### onTap
 
-**Type:** `VoidCallback?`
+**Type:** `void Function(Offset position)?`
 
-Called when the user taps on the reader content.
+Called when the user taps the content and Readium handled nothing internally.
+The position is in logical pixels, relative to the reader view.
+
+Readium filters the tap before this callback runs. In an EPUB, a tap on a
+hyperlink, a footnote, or any other interactive element navigates and does not
+fire `onTap` — you get taps on plain content only, so a host can toggle its
+chrome on a single tap without swallowing links.
+
+That filter is WebView-specific. PDF and CBZ have no equivalent, so a tap on a
+PDF link annotation both follows the link and reports a tap. See
+[iOS notes](../platform-specific/ios.md).
+
+Which regions of the page mean what is a host decision. The plugin reports
+where the tap landed and nothing more.
 
 ```dart
 ReadiumReaderWidget(
   publication: pub,
-  onTap: () {
+  onTap: (position) {
     setState(() => _showControls = !_showControls);
   },
 )
 ```
-
-### onGoLeft
-
-**Type:** `VoidCallback?`
-
-Called when the reader navigates left (previous page).
-
-```dart
-ReadiumReaderWidget(
-  publication: pub,
-  onGoLeft: () {
-    print('Went to previous page');
-  },
-)
-```
-
-### onGoRight
-
-**Type:** `VoidCallback?`
-
-Called when the reader navigates right (next page).
-
-```dart
-ReadiumReaderWidget(
-  publication: pub,
-  onGoRight: () {
-    print('Went to next page');
-  },
-)
-```
-
-### onSwipe
-
-**Type:** `VoidCallback?`
-
-Called on swipe gestures.
 
 ### onExternalLinkActivated
 
@@ -421,7 +395,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             loadingWidget: const Center(
               child: CircularProgressIndicator(),
             ),
-            onTap: () {
+            onTap: (position) {
               setState(() => _showControls = !_showControls);
             },
             onExternalLinkActivated: (url) {

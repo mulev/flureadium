@@ -63,7 +63,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     return Scaffold(
       body: ReadiumReaderWidget(
         publication: _publication!,
-        onTap: () => _toggleControls(),
+        onTap: (_) => _toggleControls(),
         onLocatorChanged: (locator) => _saveProgress(locator),
       ),
     );
@@ -633,7 +633,7 @@ class _FullReaderScreenState extends State<FullReaderScreen> {
           ReadiumReaderWidget(
             publication: _publication!,
             initialLocator: _initialLocator,
-            onTap: () => setState(() => _showControls = !_showControls),
+            onTap: (_) => setState(() => _showControls = !_showControls),
             onLocatorChanged: _saveProgress,
           ),
 

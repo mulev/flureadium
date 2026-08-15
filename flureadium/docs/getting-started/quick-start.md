@@ -76,7 +76,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
       ),
       body: ReadiumReaderWidget(
         publication: _publication!,
-        onTap: () {
+        onTap: (position) {
           // Handle tap (e.g., show/hide controls)
         },
         onLocatorChanged: (locator) {
