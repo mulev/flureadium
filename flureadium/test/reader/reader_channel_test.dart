@@ -200,19 +200,25 @@ void main() {
       expect(seen, const Offset(10, 20));
     });
 
-    test('swallows a malformed tap payload without calling back', () async {
-      var called = false;
+    test('swallows a malformed tap payload but keeps handling taps', () async {
+      Offset? seen;
       channel = ReadiumReaderChannel(
         channelName,
         onPageChanged: (_) {},
-        onTap: (_) => called = true,
+        onTap: (position) => seen = position,
       );
 
       await expectLater(
         channel.onMethodCall(const MethodCall('onTap', {'x': 'left'})),
         completes,
       );
-      expect(called, isFalse);
+      expect(seen, isNull);
+
+      // The second call is what makes this test mean something: without it,
+      // deleting the whole `case 'onTap'` branch still passes, because the
+      // `default:` arm's UnimplementedError lands in the same catch.
+      await channel.onMethodCall(const MethodCall('onTap', {'x': 1, 'y': 2}));
+      expect(seen, const Offset(1, 2));
     });
   });
 }
