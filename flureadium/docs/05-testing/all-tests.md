@@ -93,3 +93,48 @@ The delegated runners also write their own detailed logs under `test_logs/` — 
 ## When to use it
 
 Reach for `run_all_tests.sh` when you want the whole picture in one command — before a commit, or to confirm a change in one package didn't break another. For focused iteration on a single platform or a single XCTest class, call the delegated runner directly ([native-unit-tests.md](native-unit-tests.md), [integration-tests.md](integration-tests.md), [ios-unit-tests.md](ios-unit-tests.md)); when a suite fails, the summary names the log to open.
+
+## Assertions must be able to fail
+
+Every assertion has to be able to go red. A sweep across the Dart suites removed 53 that could not: each restated something the compiler, null safety, or the test itself had already settled. These forms are banned:
+
+| Banned form | Always passes because |
+|---|---|
+| `expect(x, isA<T>())` where `x`'s static type is already `T` | the compiler proved it. `expect(voices, isA<List<ReaderTTSVoice>>())` on a method declared `Future<List<ReaderTTSVoice>>` is a no-op |
+| `expect(x, isNotNull)` on a non-nullable declared type | null safety already rules the failure out |
+| `expect(c, equals(c))` on the same canonicalized `const` | Equatable's `==` short-circuits on `identical`, and both operands are the same object |
+| a finder asserted before an action, then the identical finder asserted after it | the widget was mounted before the action and nothing in the action unmounts it, so only a crash fails it |
+| key presence or non-emptiness where the test name promises a value | `expect(json['metadata'], isNotNull)` in a test called "serializes publication to JSON" passes on `{}` |
+
+Assert the value instead: the one the fixture or the mock actually produced. In an integration test, read the before-value from a latch, run the action, then assert that the after-value changed the way the test name claims.
+
+### Latches, not finders
+
+The example app publishes every fact worth asserting as a keyed debug `Text`, and `example/integration_test/helpers/` reads them back: `locatorHref` and `savedLocatorHref` in `locator_latch.dart`, `readerStatus` in `reader_status.dart`, `currentTrackHref` in `audiobook_track.dart`. `pumpUntil` in `pump_until.dart` polls one of those until it moves. Copy that pattern: capture the latch, act, `pumpUntil` the value changes, assert `pumpUntil`'s own result with a `reason`, then assert the value.
+
+Two examples already in the suites:
+
+- `text_locator_test.dart`, `'a page turn is pushed to Dart'` — taps `→`, waits for `locatorHref` to fill, then asserts the href ends in `.xhtml`.
+- `epub_test.dart`, `'the load cover tracks reader status'` — waits for the open to reset `readerStatus`, then samples the loading-cover invariant on every pump until the status reads `ready`.
+
+### Shape checks that are fine
+
+The rule bans checks that cannot fail, not matchers. These stay:
+
+- `isA<T>()` on a `dynamic` channel argument or a decoded JSON field, where the runtime type is the contract.
+- `throwsA(isA<SomeException>())`.
+- `isNotNull` immediately followed by a `!` dereference and assertions on the value.
+- `findsOneWidget` on a finder that only exists after the action.
+- `findsOneWidget` that turns a discarded `pumpUntil` timeout into a failure.
+
+### Proving a new assertion can fail
+
+Break the value it reads — the mock's return, the fixture literal, the app's write to the latch — run the test, watch it fail, restore the value, watch it pass. That red state is the check; a tautology cannot produce one. The device suites give nobody an on-demand loop for this, so write down which broken implementation the assertion would have caught instead.
+
+### Known gaps
+
+Three limits the rule cannot cover yet. Each one is filed:
+
+- `flureadium-8om` — nothing reports the active EPUB theme back to Dart, so `'applying night preferences keeps status and position'` asserts status and position rather than the theme.
+- `flureadium-0xb` — shape-only serialization assertions outside the sweep's census.
+- `flureadium-69n` — the audio-error latch reader is copied across four integration files.
