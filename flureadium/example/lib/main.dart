@@ -130,7 +130,9 @@ class _ReaderPageState extends State<ReaderPage> {
   // after the native platform view (and all EventChannel handlers) are ready.
   // Safe to call on all platforms: Android registers channels eagerly; iOS
   // registers them lazily in ReadiumReaderView.init() which runs just before
-  // onReady fires. No polling, no timers — pumpAndSettle works correctly.
+  // onReady fires. No polling, no timers. Tests against this app still pump in
+  // bounded steps rather than pumpAndSettle: the load cover's spinner keeps
+  // scheduling frames until the reader reports `ready`.
   void _subscribeToChannels() {
     _statusSub?.cancel();
     _locatorSub?.cancel();
@@ -683,10 +685,14 @@ class _ReaderPageState extends State<ReaderPage> {
             )
           else
             const Center(child: CircularProgressIndicator()),
-          // Readium paints nothing until it reports `ready`; a host that wants
+          // Readium shows no content until it reports `ready`; a host that wants
           // that window covered stacks its own cover. IgnorePointer so it only
           // paints — the reader below and the controls above stay hit-testable.
-          if (pub != null && _readerStatus != 'ready')
+          // `error` and `closed` are terminal: no `ready` follows either, so a
+          // cover left up there would sit over a dead reader forever. The
+          // controls carry the status text that says which one happened.
+          if (pub != null &&
+              (_readerStatus.isEmpty || _readerStatus == 'loading'))
             const Positioned.fill(
               key: Key('reader-loading-cover'),
               child: IgnorePointer(

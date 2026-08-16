@@ -44,11 +44,27 @@ void _navigationTests(String assetLabel, String Function() openButtonLabel) {
 
       final cover = find.byKey(const Key('reader-loading-cover'));
 
-      // Sampled on every pump: covered exactly while the reader is not ready.
+      // _waitForReader only asks whether a reader is mounted, and for the
+      // non-default groups the previous publication's reader still is, carrying
+      // its 'ready'. Wait for the open to reset the status or the first sample
+      // below would end the test before the load it exists to watch.
+      final loading = await pumpUntil(
+        tester,
+        () => readerStatus(tester) != 'ready',
+        timeout: const Duration(seconds: 15),
+      );
+      expect(loading, isTrue, reason: 'the open never reset the reader status');
+
+      // Sampled on every pump: covered exactly while the reader is loading.
+      // 'error' and 'closed' are terminal, so the cover is gone there too.
       final becameReady = await pumpUntil(tester, () {
-        final ready = readerStatus(tester) == 'ready';
-        expect(cover.evaluate().isNotEmpty, !ready);
-        return ready;
+        final status = readerStatus(tester);
+        expect(
+          cover.evaluate().isNotEmpty,
+          status.isEmpty || status == 'loading',
+          reason: 'reader status was "$status"',
+        );
+        return status == 'ready';
       }, timeout: const Duration(seconds: 30));
 
       expect(becameReady, isTrue, reason: 'reader never reported ready');
