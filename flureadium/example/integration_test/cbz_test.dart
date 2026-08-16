@@ -1,9 +1,12 @@
 import 'package:flureadium/flureadium.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'helpers/ensure_app_showing.dart';
 import 'helpers/extract_asset.dart';
+import 'helpers/locator_latch.dart';
+import 'helpers/pump_until.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -33,14 +36,24 @@ void main() {
         reopenButton: 'Open CBZ',
       );
 
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+      final delivered = await pumpUntil(
+        tester,
+        () => locatorHref(tester).isNotEmpty,
+        timeout: const Duration(seconds: 15),
+      );
+      expect(delivered, isTrue, reason: 'no starting page locator');
+      final first = locatorHref(tester);
 
       await tester.tap(find.text('→'));
-      await tester.pump(const Duration(seconds: 1));
-      await tester.tap(find.text('←'));
-      await tester.pump(const Duration(seconds: 1));
+      await _nextPage(tester, from: first);
 
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+      await tester.tap(find.text('←'));
+      final returned = await pumpUntil(
+        tester,
+        () => locatorHref(tester) == first,
+        timeout: const Duration(seconds: 15),
+      );
+      expect(returned, isTrue, reason: 'the page never returned to "$first"');
     });
 
     testWidgets('revisiting pages loads from cache without errors', (
@@ -52,21 +65,46 @@ void main() {
         reopenButton: 'Open CBZ',
       );
 
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+      final delivered = await pumpUntil(
+        tester,
+        () => locatorHref(tester).isNotEmpty,
+        timeout: const Duration(seconds: 15),
+      );
+      expect(delivered, isTrue, reason: 'no starting page locator');
+      final first = locatorHref(tester);
 
-      // Navigate forward two pages
       await tester.tap(find.text('→'));
-      await tester.pump(const Duration(seconds: 2));
+      final second = await _nextPage(tester, from: first);
       await tester.tap(find.text('→'));
-      await tester.pump(const Duration(seconds: 2));
+      final third = await _nextPage(tester, from: second);
 
-      // Navigate back to previously visited pages (cache hit path on iOS)
+      // Back to pages already rendered — the iOS cache-hit path.
       await tester.tap(find.text('←'));
-      await tester.pump(const Duration(seconds: 2));
-      await tester.tap(find.text('←'));
-      await tester.pump(const Duration(seconds: 2));
+      final backToSecond = await pumpUntil(
+        tester,
+        () => locatorHref(tester) == second,
+        timeout: const Duration(seconds: 15),
+      );
+      expect(backToSecond, isTrue, reason: 'no cache hit for "$second"');
 
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+      await tester.tap(find.text('←'));
+      final backToFirst = await pumpUntil(
+        tester,
+        () => locatorHref(tester) == first,
+        timeout: const Duration(seconds: 15),
+      );
+      expect(backToFirst, isTrue, reason: 'no cache hit for "$first"');
+
+      expect(
+        third,
+        isNot(equals(first)),
+        reason: 'the forward taps never left page one',
+      );
+      expect(
+        _errorLatch(tester),
+        isEmpty,
+        reason: 'an error surfaced during the revisit',
+      );
     });
 
     testWidgets(
@@ -297,3 +335,22 @@ Future<Locator> _waitForCbzReaderReady(
         : 'CBZ reader did not navigate to $href.',
   );
 }
+
+/// Waits for the locator latch to leave [from] and returns the href that
+/// replaced it. Fails the test if the page never moved.
+Future<String> _nextPage(WidgetTester tester, {required String from}) async {
+  final moved = await pumpUntil(
+    tester,
+    () => locatorHref(tester) != from,
+    timeout: const Duration(seconds: 15),
+  );
+  expect(moved, isTrue, reason: 'the page never left "$from"');
+  return locatorHref(tester);
+}
+
+/// Reads the keyed error latch the example fills from onErrorEvent — the
+/// channel `ReaderCoroutineFailure` reports image-navigator failures on.
+/// The text is `audio-error: <message>`; empty until an error surfaces.
+String _errorLatch(WidgetTester tester) =>
+    (tester.widget<Text>(find.byKey(const Key('audio-error'))).data ?? '')
+        .replaceFirst('audio-error: ', '');
