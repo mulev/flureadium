@@ -3,7 +3,7 @@
 ### Breaking changes
 
 - **`ReadiumReaderWidget.loadingWidget` is gone.** It never rendered anything. The widget that drew it was removed in an earlier refactor and the parameter outlived it, so passing a loading widget and passing nothing produced the same blank platform view. There is no replacement parameter: a host that wants to cover the load stacks its own widget over the reader and drops it when `onReaderStatusChanged` reports `ready`. The reader widget's API reference has the recipe. Remove the argument from your call.
-- **`rxdart` is no longer a dependency.** The plugin only pulled it in for a debug listener that logged locators and did nothing else, and that listener is gone. Host code that imported `package:rxdart/rxdart.dart` and got it transitively through flureadium now has to declare it: add `rxdart` to your own `pubspec.yaml`. The debounce samples in the docs say so where they appear.
+- **`rxdart` is no longer a dependency.** The plugin only pulled it in for a debug listener that logged locators and did nothing else, and that listener is gone. Host code that imported `package:rxdart/rxdart.dart` and got it transitively through flureadium now has to declare it: add `rxdart` to your own `pubspec.yaml`. Every `debounceTime` sample in the docs needs it.
 
 ### Bug Fixes
 

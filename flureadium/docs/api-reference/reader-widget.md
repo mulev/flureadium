@@ -190,7 +190,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
 ## Covering the load
 
-The reader paints nothing between mount and the moment Readium reports content. There is no plugin-side parameter for that window — cover it yourself by stacking a widget over the reader and dropping it when the reader reports `ready`:
+The reader shows no content between mount and the moment Readium reports it. There is no plugin-side parameter for that window — cover it yourself by stacking a widget over the reader and dropping it when the reader reports `ready`:
 
 ```dart
 class _ReaderPageState extends State<ReaderPage> {
@@ -234,6 +234,8 @@ Two things about this recipe are load-bearing.
 **The reader stays in the tree.** Returning the cover *instead of* `ReadiumReaderWidget` never finishes loading: the platform view is what triggers creation, creation is what fires `onReady`, and `onReady` is where you subscribe. Swap the widget out and the status you are waiting for is never sent. Put the cover over the reader, not in place of it.
 
 **Subscribing from `onReady` is early enough.** On Android and iOS the reader reports `loading` while the platform view is still being created, before Flutter can reply to Dart, so the first status is sent before any host can be listening. Both platforms hold the latest status and hand it to the first subscriber, so `ready` reaches a host that subscribes from `onReady` even when it was sent before the subscription existed. Web keeps no such buffer, since its status stream is a plain broadcast stream, but web fires `onReady` from the first frame while the JavaScript reader is still loading. The subscription is in place well before `ready` either way.
+
+**One exception: PDF on iOS.** `PdfReaderView` publishes its statuses to its own `pdf-reader-status` channel (`ios/.../PdfReaderView.swift:83`), and nothing on the Dart side subscribes to it — `onReaderStatusChanged` listens on `dev.mulev.flureadium/reader-status` only. An iOS PDF therefore reports no status at all, so a cover gated on `ready` never comes down. Drop it on the first locator there, or on a timeout.
 
 Whether the cover blocks input is your call. Wrap it in `IgnorePointer` to let touches through to the reader underneath, or leave it out to swallow them until the reader is up.
 
