@@ -239,10 +239,6 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     return self.readiumViewController.currentLocation
   }
 
-  func getCurrentSelection() -> Locator? {
-    return self.readiumViewController.currentSelection?.locator
-  }
-
   /// Resolves DOM fragments unless the reader is already gone. The disposal
   /// guard lives here so both the locator reporter and the `getCurrentLocator`
   /// channel case are covered by it.
@@ -311,10 +307,6 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     }
   }
 
-  func justGoToLocator(_ locator: Locator, animated: Bool) async -> Bool {
-    return await readiumViewController.go(to: locator, options: NavigatorGoOptions(animated: animated))
-  }
-
   private func emitOnPageChanged() {
     guard let locator = readiumViewController.currentLocation else {
       print(TAG, "emitOnPageChanged: currentLocation = nil!")
@@ -325,111 +317,80 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   }
 
   func onMethodCall(call: FlutterMethodCall, result: @escaping FlutterResult) {
-    switch call.method {
-    case "go":
-      let args = call.arguments as! [Any?]
-      print(TAG, "onMethodCall[go] locator = \(args[0] as! String)")
-      let locator = try! Locator(jsonString: args[0] as! String, warnings: readiumBugLogger)!
-      let animated = args[1] as! Bool
-      let isAudioBookWithText = args[2] as? Bool ?? false
+    print(TAG, "onMethodCall[\(call.method)] args = \(String(describing: call.arguments))")
 
+    guard let command = EpubReaderCommand(call) else {
+      print(TAG, "Unhandled call \(call.method)")
+      return result(FlutterMethodNotImplemented)
+    }
+
+    switch command {
+    case let .go(locator, animated, isAudioBookWithText):
       Task { @MainActor in
         await self.goToLocator(locator: locator, animated: animated)
-        let _ = await self.page.setLocation(locatorJson: locator.jsonString ?? "null", isAudioBookWithText: isAudioBookWithText)
+        let _ = await self.page.setLocation(
+          locatorJson: locator.jsonString ?? "null", isAudioBookWithText: isAudioBookWithText)
         result(true)
       }
-      break
-    case "goLeft":
-      let animated = call.arguments as! Bool
-      let readiumViewController = self.readiumViewController
 
-      Task { @MainActor in
-        let success = await readiumViewController.goLeft(options: NavigatorGoOptions(animated: animated))
-        result(success)
-      }
-      break
-    case "goRight":
-      let animated = call.arguments as! Bool
+    case let .goLeft(animated):
       let readiumViewController = self.readiumViewController
-
       Task { @MainActor in
-        let success = await readiumViewController.goRight(options: NavigatorGoOptions(animated: animated))
-        result(success)
+        result(await readiumViewController.goLeft(options: NavigatorGoOptions(animated: animated)))
       }
-      break
-    case "setLocation":
-      let args = call.arguments as! [Any]
-      print(TAG, "onMethodCall[setLocation] locator = \(args[0] as! String)")
-      let locator = try! Locator(jsonString: args[0] as! String, warnings: readiumBugLogger)!
-      let isAudioBookWithText = args[1] as? Bool ?? false
+
+    case let .goRight(animated):
+      let readiumViewController = self.readiumViewController
+      Task { @MainActor in
+        result(await readiumViewController.goRight(options: NavigatorGoOptions(animated: animated)))
+      }
+
+    case let .setLocation(locator, isAudioBookWithText):
       Task.detached(priority: .high) {
-        let _ = await self.page.setLocation(locatorJson: locator.jsonString ?? "null", isAudioBookWithText: isAudioBookWithText)
-        return await MainActor.run() {
-          result(true)
-        }
+        let _ = await self.page.setLocation(
+          locatorJson: locator.jsonString ?? "null", isAudioBookWithText: isAudioBookWithText)
+        return await MainActor.run { result(true) }
       }
-      break
-    case "getLocatorFragments":
-      let args = call.arguments as? String ?? "null"
+
+    case let .locatorFragments(json):
       returnJSResult(result: result, onFailure: false) {
-        await self.page.locatorFragmentsResult(locatorJson: args, isScrollMode: true)
+        await self.page.locatorFragmentsResult(locatorJson: json, isScrollMode: true)
       }
-      break
-    case "getCurrentLocator":
-      let args = call.arguments as? String ?? "null"
-      print(TAG, "onMethodCall[currentLocator] args = \(args)")
+
+    case .currentLocator:
       Task.detached(priority: .high) { [isVerticalScroll] in
         guard let json = await self.readiumViewController.currentLocation?.jsonString else {
           await MainActor.run { result(nil) }
           return
         }
         let data = await self.resolveLocatorFragments(json, isVerticalScroll)
-        await MainActor.run {
-          result(data?.jsonString)
-        }
+        await MainActor.run { result(data?.jsonString) }
       }
-      break
-    case "isLocatorVisible":
-      let args = call.arguments as! String
-      print(TAG, "onMethodCall[isLocatorVisible] locator = \(args)")
-      let locator = try! Locator(jsonString: args, warnings: readiumBugLogger)!
-      if locator.href != self.readiumViewController.currentLocation?.href {
-        result(false)
-        return
+
+    case let .isLocatorVisible(locator, json):
+      guard locator.href == self.readiumViewController.currentLocation?.href else {
+        return result(false)
       }
-      returnJSResult(result: result) { await self.page.isLocatorVisible(locatorJson: args) }
-      break
-    case "isReaderReady":
-      returnJSResult(result: result) { await self.page.isReaderReady() }
-      break
-    case "setPreferences":
-      let args = call.arguments as! [String: String]
-      print(TAG, "onMethodCall[setPreferences] args = \(args)")
-      let preferences = EPUBPreferences.init(fromMap: args)
-      setUserPreferences(preferences: preferences)
-      break
-    case "setNavigationConfig":
-      let args = call.arguments as! [String: Any]
-      print(TAG, "onMethodCall[setNavigationConfig] args = \(args)")
-      edgeNavigation.apply(FlutterNavigationConfig(fromMap: args))
+      returnJSResult(result: result) { await self.page.isLocatorVisible(locatorJson: json) }
+
+    case .isReaderReady: returnJSResult(result: result) { await self.page.isReaderReady() }
+
+    case let .setPreferences(preferences): setUserPreferences(preferences: preferences)
+
+    case let .setNavigationConfig(config):
+      edgeNavigation.apply(config)
       configureEdgeTapHandlers(isScrollMode: isVerticalScroll)
       result(nil)
-    case "applyDecorations":
-      let args = call.arguments as! [Any?]
-      let identifier = args[0] as! String
-      let decorationsStr = args[1] as! [String]
 
-      guard let decorations = try? decorationsStr.map({ try Decoration(fromJson: $0) }) else {
-        return result(FlutterError.init(
-          code: "JSON mapping error",
-          message: "Could not map decorations from JSON: \(decorationsStr)",
+    case let .applyDecorations(group, decorations, json):
+      guard let decorations else {
+        return result(FlutterError(
+          code: "JSON mapping error", message: "Could not map decorations from JSON: \(json)",
           details: nil))
       }
+      applyDecorations(decorations, forGroup: group)
 
-      print(TAG, "onMethodCall[setPreferences] args = \(args)")
-      applyDecorations(decorations, forGroup: identifier)
-      break
-    case "dispose":
+    case .dispose:
       print(TAG, "Disposing readiumViewController")
       isDisposed = true
       if let token = tapObserverToken { readiumViewController.removeObserver(token) }
@@ -440,11 +401,6 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       channel.setMethodCallHandler(nil)
       if currentReaderView === self { currentReaderView = nil }
       result(nil)
-      break
-    default:
-      print(TAG, "Unhandled call \(call.method)")
-      result(FlutterMethodNotImplemented)
-      break
     }
   }
 
