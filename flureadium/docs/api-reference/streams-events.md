@@ -53,7 +53,8 @@ one replacing it.
 
 ### Debouncing
 
-For performance, consider debouncing frequent updates:
+For performance, consider debouncing frequent updates. `rxdart` is not a
+flureadium dependency — add it to your own `pubspec.yaml`:
 
 ```dart
 import 'package:rxdart/rxdart.dart';

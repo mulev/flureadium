@@ -37,7 +37,8 @@ Future<Locator?> loadProgress(String bookId) async {
 
 ## Debouncing Position Updates
 
-Position updates can be frequent. Debounce to reduce storage writes:
+Position updates can be frequent. Debounce to reduce storage writes. `rxdart`
+is not a flureadium dependency — add it to your own `pubspec.yaml`:
 
 ```dart
 import 'package:rxdart/rxdart.dart';
