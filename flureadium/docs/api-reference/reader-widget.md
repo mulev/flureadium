@@ -107,9 +107,10 @@ hyperlink, a footnote, or any other interactive element navigates and does not
 fire `onTap` — you get taps on plain content only, so a host can toggle its
 chrome on a single tap without swallowing links.
 
-That filter is WebView-specific. PDF and CBZ have no equivalent, so a tap on a
-PDF link annotation both follows the link and reports a tap. This holds on iOS
-and Android alike.
+That filter is WebView-specific, and PDF and CBZ have no equivalent. On iOS, a tap
+on a PDF link annotation follows the link and reports the tap as well. On Android
+the pdfium adapter forwards the point and follows nothing, so the same tap is
+reported and navigates nowhere.
 
 One region is not yours: the left and right edge strips, `edgeTapAreaPoints`
 wide, are claimed by the native edge-tap overlay before Readium sees the touch,

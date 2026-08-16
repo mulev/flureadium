@@ -161,8 +161,9 @@ android/src/main/kotlin/dev/mulev/flureadium/
 ├── models/
 │   └── PdfReaderViewModel.kt    # PDF reader state
 └── navigators/
-    ├── ImageNavigator.kt        # CBZ / DIVINA navigation controller
-    └── PdfNavigator.kt          # PDF navigation controller
+    ├── ImageNavigator.kt           # CBZ / DIVINA navigation controller
+    ├── NavigatorTapForwarder.kt    # Readium InputListener → logical-pixel taps
+    └── PdfNavigator.kt             # PDF navigation controller
 ```
 
 ### Plugin Lifecycle
@@ -565,6 +566,57 @@ The Android implementation:
 **Files:**
 - `PageThumbnailExtractor.kt` - Decode/downscale/compress helper
 - `PublicationChannel.kt` - `extractPageThumbnail` method-channel handler
+
+### Content Taps
+
+`ReadiumReaderWidget.onTap` fires for a tap on content, meaning a tap nothing else
+claimed. The plugin does not detect those taps itself. It registers an
+`InputListener` on the Readium navigator and lets the toolkit decide what counts
+as a content tap before the plugin hears about it.
+
+`NavigatorTapForwarder` (`navigators/NavigatorTapForwarder.kt`) is that listener.
+Each visual navigator owns one and binds it to the Readium navigator it currently
+hosts: `EpubNavigator` and `PdfNavigator` bind in `onPageLoaded`, `ImageNavigator`
+in `setupNavigatorListeners`, above the guard that returns early while a CBZ still
+has no locator. All three unbind in `dispose` and in `release`, the teardown a
+publication swap takes.
+
+**Binding is keyed on the navigator instance.** `EpubReaderFragment` and
+`PdfReaderFragment` remove their Readium navigator in `onPause` and build a new one
+in `onResume`, while `hasNotifiedIsReady` stops `setupNavigatorListeners` from
+running a second time. Registering again on the same navigator would report every
+tap twice, and skipping a recreated one would report no taps at all. Neither is
+visible in a host that toggles chrome on the callback, so the forwarder compares
+identity and moves its registration to whichever navigator is live.
+
+**Coordinates cross the channel in logical pixels.** `TapEvent.point` is a `PointF`
+in navigator-view pixels, so the forwarder divides by
+`publicationView.resources.displayMetrics.density` before sending
+`{"x": …, "y": …}`. iOS already reports points, so Dart gets one unit system from
+both platforms.
+
+**EPUB filters link taps for you.** `InputListener.onTap` is documented as "the user
+tapped the content, but nothing handled the event internally (eg. by following an
+internal link)". A tap on a hyperlink or a footnote navigates and reports no tap, so
+a host can toggle its chrome on every `onTap`.
+
+**PDF and CBZ have nothing to filter.** The pdfium adapter forwards the tap point and
+follows no link, so a tap on a PDF link annotation is reported as a content tap and
+navigates nowhere. iOS behaves differently here: PDFKit follows the annotation and
+reports the tap as well. See [iOS](ios.md#content-taps).
+
+**A tap arriving after the view is gone is dropped.** `publicationView` is
+`requireView()` on every Readium navigator fragment, and an EPUB tap reaches the
+forwarder from the WebView's JavaScript bridge after a hop to the main thread. If
+`onPause` destroyed the view in between, the forwarder returns without reporting
+rather than letting the read throw into the bridge.
+
+`NavigatorTapForwarder.onTap` returns `false`, so it never consumes the event.
+`CompositeInputListener.onTap` is `listeners.any { it.onTap(event) }`, which
+short-circuits: returning `true` would starve every listener Readium registered
+behind the forwarder. Edge taps have a separate owner, the overlay below, which
+claims them before Readium sees them. See
+[Edge Tap and Swipe Navigation](#edge-tap-and-swipe-navigation).
 
 ## Edge Tap and Swipe Navigation
 
