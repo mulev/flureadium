@@ -209,11 +209,15 @@ PDF gesture suppression is one type, `PdfGestureSuppression`. It holds the four
 host flags (`disableDoubleTapZoom`, `disableTextSelection`, `disableDragGestures`,
 `disableDoubleTapTextSelection`) and walks the navigator's live view tree,
 matching UIKit recognizers and interactions by class and by runtime type name.
-`PdfReaderView` applies it in two places: when the navigator hands over its view
-(`setupPDFView`), and again on every `setNavigationConfig` call, so a flag flipped
-while a PDF is open takes effect without reopening. Because `PDFTextInputView` is
-attached asynchronously after a page renders, removing double-tap word selection
-is retried at 0.1s, 0.5s and 1.0s. `PdfGestureSuppressionTests` covers every
+`PdfReaderView` applies it in two places: the full retained state when the
+navigator hands over its view (`setupPDFView`), and on a `setNavigationConfig`
+call only the flags that call turned on, against the live view. So switching a
+flag on takes effect while the PDF is open, but switching one off does not bring
+the gesture back — nothing re-enables a disabled recognizer or re-adds a removed
+interaction, so the gesture returns only once the navigator hands over a fresh
+view. Because `PDFTextInputView` is attached asynchronously after a page
+renders, removing double-tap word selection is retried at 0.1s, 0.5s and 1.0s.
+`PdfGestureSuppressionTests` covers every
 predicate against synthetic view trees.
 
 ### Platform View
