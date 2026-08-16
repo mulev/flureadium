@@ -23,7 +23,6 @@ ReadiumReaderChannel createReadiumReaderChannel(
 class ReadiumReaderWidget extends StatelessWidget {
   const ReadiumReaderWidget({
     required this.publication,
-    this.loadingWidget = const Center(child: CircularProgressIndicator()),
     this.initialLocator,
     this.onTap,
     this.onExternalLinkActivated,
@@ -33,7 +32,6 @@ class ReadiumReaderWidget extends StatelessWidget {
   });
 
   final Publication publication;
-  final Widget loadingWidget;
   final Locator? initialLocator;
 
   /// Not invoked on unsupported platforms.

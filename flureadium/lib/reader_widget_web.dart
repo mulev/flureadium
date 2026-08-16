@@ -25,7 +25,6 @@ ReadiumReaderChannel createReadiumReaderChannel(
 class ReadiumReaderWidget extends StatefulWidget {
   const ReadiumReaderWidget({
     required this.publication,
-    this.loadingWidget = const Center(child: CircularProgressIndicator()),
     this.initialLocator,
     this.onTap,
     this.onExternalLinkActivated,
@@ -35,7 +34,6 @@ class ReadiumReaderWidget extends StatefulWidget {
   });
 
   final Publication publication;
-  final Widget loadingWidget;
   final Locator? initialLocator;
 
   /// Never invoked on web: there is no native tap source.

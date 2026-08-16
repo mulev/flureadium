@@ -51,7 +51,6 @@ void main() {
         final widget = ReadiumReaderWidget(publication: publication);
 
         expect(widget.publication, equals(publication));
-        expect(widget.loadingWidget, isA<Center>());
         expect(widget.initialLocator, isNull);
       });
 
@@ -61,31 +60,16 @@ void main() {
           href: 'chapter1.xhtml',
           type: 'application/xhtml+xml',
         );
-        const customLoading = Text('Loading...');
 
         final widget = ReadiumReaderWidget(
           publication: publication,
           initialLocator: locator,
-          loadingWidget: customLoading,
           onTap: (_) {},
         );
 
         expect(widget.publication, equals(publication));
         expect(widget.initialLocator, equals(locator));
-        expect(widget.loadingWidget, equals(customLoading));
         expect(widget.onTap, isNotNull);
-      });
-    });
-
-    group('default loading widget', () {
-      test('default loadingWidget is CircularProgressIndicator', () {
-        final publication = createTestPublication();
-
-        final widget = ReadiumReaderWidget(publication: publication);
-
-        expect(widget.loadingWidget, isA<Center>());
-        final center = widget.loadingWidget as Center;
-        expect(center.child, isA<CircularProgressIndicator>());
       });
     });
 
