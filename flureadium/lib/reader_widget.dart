@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flureadium_platform_interface/flureadium_platform_interface.dart';
-import 'package:rxdart/rxdart.dart';
 
 import 'reader_channel.dart';
 import 'src/reader/orientation_handler_mixin.dart';
@@ -81,7 +80,6 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
     implements ReadiumReaderWidgetInterface {
   ReadiumReaderChannel? _channel;
   Locator? _currentLocator;
-  StreamSubscription<Locator>? _locatorDebugSub;
   bool isReady = false;
 
   /// Bumped on every publication swap and used as the platform view's key.
@@ -134,8 +132,6 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
   /// is built. Leaves [_isReadyCompleter] settled rather than replacing it —
   /// only a swap has a new view to hand a fresh one to.
   void _teardownCurrentView() {
-    _locatorDebugSub?.cancel();
-    _locatorDebugSub = null;
     cleanupWidgetInterface(_channel?.name);
     // Detached before dispose() because dispose() awaits a native round-trip
     // and only drops the handler afterwards. A page change delivered in that
@@ -373,16 +369,5 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
     widget.onReady?.call();
 
     R2Log.d('New widget is: ${_channel?.name}');
-
-    // TODO: This is just to demo how to use and debounce the Stream, remove when appropriate.
-    final nativeLocatorStream = readium.onTextLocatorChanged
-        .debounceTime(const Duration(milliseconds: 50))
-        .asBroadcastStream()
-        .distinct();
-
-    _locatorDebugSub?.cancel();
-    _locatorDebugSub = nativeLocatorStream.listen((locator) {
-      R2Log.d('ReaderWidget.LocatorChanged - $locator');
-    });
   }
 }

@@ -37,7 +37,6 @@ dependencies:
   flutter_web_plugins:
     sdk: flutter
   flureadium_platform_interface: ^0.10.0
-  rxdart: ^0.28.0
   wakelock_plus: ^1.2.8
   web: ^1.1.1
   collection: ^1.19.1
