@@ -61,15 +61,17 @@ void main() {
           type: 'application/xhtml+xml',
         );
 
+        void onTap(Offset _) {}
+
         final widget = ReadiumReaderWidget(
           publication: publication,
           initialLocator: locator,
-          onTap: (_) {},
+          onTap: onTap,
         );
 
         expect(widget.publication, equals(publication));
         expect(widget.initialLocator, equals(locator));
-        expect(widget.onTap, isNotNull);
+        expect(widget.onTap, same(onTap));
       });
     });
 

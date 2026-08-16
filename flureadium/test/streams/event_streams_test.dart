@@ -267,7 +267,8 @@ void main() {
 
       await Future.delayed(const Duration(milliseconds: 100));
 
-      expect(errors[0].data, isNotNull);
+      expect(errors[0].data, equals({'context': 'chapter loading'}));
+      expect(errors[0].code, equals('DATA_ERR'));
 
       await subscription.cancel();
     });

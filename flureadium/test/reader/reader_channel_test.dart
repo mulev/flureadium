@@ -113,10 +113,12 @@ void main() {
       final args = log.first.arguments as List;
       final decorationList = args[1] as List;
       final decoMap = decorationList[0] as Map;
+      final styleMap = decoMap['style'] as Map;
 
       expect(decoMap['id'], equals('highlight-xyz'));
-      expect(decoMap['locator'], isA<Map>());
-      expect(decoMap['style'], isA<Map>());
+      expect((decoMap['locator'] as Map)['href'], equals('chapter1.xhtml'));
+      expect(styleMap['style'], equals('highlight'));
+      expect(styleMap['tint'], equals('#ffff00'));
     });
   });
 
