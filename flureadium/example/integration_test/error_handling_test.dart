@@ -67,20 +67,16 @@ void main() {
         // so the remount is what asks native to enable a publication it has
         // already closed.
         await tester.tap(find.text('Close Native Only'));
-        // Not pumpAndSettle: the load cover's spinner is on screen from the
-        // moment the status leaves 'ready', and an indeterminate
-        // CircularProgressIndicator schedules frames forever. Wait for the
-        // close to land instead.
-        final closed = await pumpUntil(
-          tester,
-          () => readerStatus(tester) == 'closed',
-          timeout: const Duration(seconds: 15),
-        );
-        expect(
-          closed,
-          isTrue,
-          reason: 'reader status was "${readerStatus(tester)}"',
-        );
+        // Not pumpAndSettle: the load cover keeps an indeterminate
+        // CircularProgressIndicator on screen until the reader reports
+        // 'ready', and that schedules frames forever. There is no status to
+        // wait on either - ReadiumReader.closePublication() emits none
+        // (android/.../ReadiumReader.kt:717-740; 'closed' comes only from
+        // ReadiumReaderWidget.dispose(), which a mounted widget never runs) -
+        // so give the close a bounded window, the way webpub_test.dart does.
+        // A close that has not landed makes the remount succeed, and the
+        // 'error' expectation below fails loudly rather than passing.
+        await tester.pump(const Duration(seconds: 2));
         await tester.tap(find.text('Remount Reader'));
 
         await pumpUntil(
