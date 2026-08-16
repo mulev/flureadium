@@ -21,7 +21,6 @@ class ReadiumBugLogger: ReadiumShared.WarningLogger {
 }
 
 private let readiumBugLogger = ReadiumBugLogger()
-private var userScripts: [WKUserScript] = []
 
 func parseLocatorFragmentsResult(_ result: Any?) -> Locator? {
   guard let json = result as? Dictionary<String, Any?> else {
@@ -43,6 +42,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   private var isDisposed = false
   private var edgeNavigation = ReaderEdgeNavigationState()
   private var tapObserverToken: InputObservableToken?
+  private let userScripts: [WKUserScript]
 
   // Retain the navigation adapter to prevent ARC deallocation
   private var directionalNavigationAdapter: DirectionalNavigationAdapter?
@@ -54,10 +54,6 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   private var currentSpineItemHref: String?
 
   var publicationIdentifier: String?
-
-  /// The editing actions shown in the EPUB long-press selection menu.
-  /// Keeping this as a static constant makes the native action set testable.
-  static let epubEditingActions: [EditingAction] = [.copy, .lookup, .translate]
 
   /// The pointer policy handed to Readium's `DirectionalNavigationAdapter`.
   ///
@@ -103,24 +99,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     print(TAG, "Publication: (identifier=\(String(describing: publication.metadata.identifier)),title=\(String(describing: publication.metadata.title)))")
     print(TAG, "Added publication at \(String(describing: publication.baseURL))")
 
-    // Remove undocumented Readium default 20dp or 44dp top/bottom padding.
-    // See EPUBNavigatorViewController.swift in r2-navigator-swift.
-    var config = EPUBNavigatorViewController.Configuration()
-    config.contentInset = [
-      .compact: (top: 0, bottom: 0),
-      .regular: (top: 0, bottom: 0),
-    ]
-    // TODO: Make this config configurable from Flutter
-    // Might want it to be higher for a local publication than remote.
-    config.preloadPreviousPositionCount = 2
-    config.preloadNextPositionCount = 4
-    config.debugState = true
-    config.decorationTemplates = HTMLDecorationTemplate.defaultTemplates(alpha: 1.0, experimentalPositioning: true)
-    config.editingActions = ReadiumReaderView.epubEditingActions
-
-    if (defaultPreferences != nil) {
-      config.preferences = defaultPreferences!
-    }
+    let config = makeEpubNavigatorConfiguration(preferences: defaultPreferences)
 
     readiumViewController = try! EPUBNavigatorViewController(
       publication: publication,
@@ -129,9 +108,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       httpServer: sharedReadium.httpServer!
     )
 
-    if userScripts.isEmpty {
-      initUserScripts(registrar: registrar)
-    }
+    userScripts = EpubUserScripts.make(registrar: registrar)
 
     _view = EdgeTapInterceptView()
     super.init()
@@ -554,88 +531,6 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     }
   }
 
-}
-
-func initUserScripts(registrar: FlutterPluginRegistrar) {
-  let comicJsKey = registrar.lookupKey(forAsset: "assets/helpers/comics.js", fromPackage: "flureadium")
-  let comicCssKey = registrar.lookupKey(forAsset: "assets/helpers/comics.css", fromPackage: "flureadium")
-  let epubJsKey = registrar.lookupKey(forAsset: "assets/helpers/epub.js", fromPackage: "flureadium")
-  let epubCssKey = registrar.lookupKey(forAsset: "assets/helpers/epub.css", fromPackage: "flureadium")
-  let jsScripts = [comicJsKey, epubJsKey].map { sourceFile -> String in
-    let path = Bundle.main.path(forResource: sourceFile, ofType: nil)!
-    let data = FileManager().contents(atPath: path)!
-    return String(data: data, encoding: .utf8)!
-  }
-  let addCssScripts = [comicCssKey, epubCssKey].map { sourceFile -> String in
-    let path = Bundle.main.path(forResource: sourceFile, ofType: nil)!
-    let data = FileManager().contents(atPath: path)!.base64EncodedString()
-    return """
-      (function() {
-      var parent = document.getElementsByTagName('head').item(0);
-      var style = document.createElement('style');
-      style.type = 'text/css';
-      style.innerHTML = window.atob('\(data)');
-      parent.appendChild(style)})();
-    """
-  }
-  /// Add JS scripts right away, before loading the rest of the document.
-  for jsScript in jsScripts {
-    userScripts.append(WKUserScript(source: jsScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
-  }
-  /// Add css injection scripts after primary document finished loading.
-  for addCssScript in addCssScripts {
-    userScripts.append(WKUserScript(source: addCssScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
-  }
-  /// Add simple script used by our JS to detect OS
-  userScripts.append(WKUserScript(source: "const isAndroid=false,isIos=true;", injectionTime: .atDocumentStart, forMainFrameOnly: false))
-
-  /// Click synthesis: Flutter's synthetic touch delivery prevents WKWebView from
-  /// dispatching native click events after goLeft/goRight (when WKContentView is oversized).
-  /// This script monitors pointerup events and synthesizes a click if the native one
-  /// doesn't fire within 50ms.
-  let clickSynthesisScript = """
-  (function() {
-      var pendingClickTimer = null;
-      var lastPointerDownPos = null;
-
-      document.addEventListener('pointerdown', function(e) {
-          lastPointerDownPos = { x: e.clientX, y: e.clientY };
-      }, true);
-
-      document.addEventListener('pointerup', function(e) {
-          if (!lastPointerDownPos) return;
-          var dx = e.clientX - lastPointerDownPos.x;
-          var dy = e.clientY - lastPointerDownPos.y;
-          if (Math.sqrt(dx * dx + dy * dy) > 10) return;
-
-          var x = e.clientX;
-          var y = e.clientY;
-          var target = e.target;
-
-          if (pendingClickTimer) clearTimeout(pendingClickTimer);
-          pendingClickTimer = setTimeout(function() {
-              pendingClickTimer = null;
-              var clickEvent = new MouseEvent('click', {
-                  bubbles: true,
-                  cancelable: true,
-                  view: window,
-                  clientX: x,
-                  clientY: y,
-                  button: 0
-              });
-              target.dispatchEvent(clickEvent);
-          }, 50);
-      }, true);
-
-      document.addEventListener('click', function(e) {
-          if (pendingClickTimer) {
-              clearTimeout(pendingClickTimer);
-              pendingClickTimer = null;
-          }
-      }, true);
-  })();
-  """
-  userScripts.append(WKUserScript(source: clickSynthesisScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
 }
 
 func strippedHref(_ href: String) -> String {

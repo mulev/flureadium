@@ -24,7 +24,8 @@
 		D1E2F3A4B5C6D7E800009002 /* ReaderEdgeNavigationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E800009001 /* ReaderEdgeNavigationStateTests.swift */; };
 		D1E2F3A4B5C6D7E800009102 /* FlutterNavigationConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E800009101 /* FlutterNavigationConfigTests.swift */; };
 		D1E2F3A4B5C6D7E800008002 /* NowPlayingInfoUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E800008001 /* NowPlayingInfoUpdaterTests.swift */; };
-		E1F2A3B4C5D6E7F800008002 /* EpubEditingActionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */; };
+		E1F2A3B4C5D6E7F800008002 /* EpubNavigatorConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F800008001 /* EpubNavigatorConfigurationTests.swift */; };
+		E1F2A3B4C5D6E7F800009002 /* EpubUserScriptsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F800009001 /* EpubUserScriptsTests.swift */; };
 		F1A2B3C4D5E6F7A800009002 /* ImageCacheURLProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */; };
 		A2B3C4D5E6F7A8B900010002 /* FlureadiumPluginGoToLocatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */; };
 		A2B3C4D5E6F7A8B900020002 /* FlureadiumPluginAudioEnableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */; };
@@ -120,7 +121,8 @@
 		DDBBCC0011223344AABBCC0B /* ReaderViewKindRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewKindRoutingTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC0D /* FlureadiumPluginStreamOwnershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginStreamOwnershipTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC0F /* ReaderTapObserverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderTapObserverTests.swift; sourceTree = "<group>"; };
-		E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubEditingActionsTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D6E7F800008001 /* EpubNavigatorConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubNavigatorConfigurationTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D6E7F800009001 /* EpubUserScriptsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubUserScriptsTests.swift; sourceTree = "<group>"; };
 		F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheURLProtocolTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginGoToLocatorTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginAudioEnableTests.swift; sourceTree = "<group>"; };
@@ -199,7 +201,8 @@
 				D1E2F3A4B5C6D7E800007001 /* EdgeTapInterceptViewTests.swift */,
 				D1E2F3A4B5C6D7E800009001 /* ReaderEdgeNavigationStateTests.swift */,
 				D1E2F3A4B5C6D7E800008001 /* NowPlayingInfoUpdaterTests.swift */,
-				E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */,
+				E1F2A3B4C5D6E7F800008001 /* EpubNavigatorConfigurationTests.swift */,
+				E1F2A3B4C5D6E7F800009001 /* EpubUserScriptsTests.swift */,
 				F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */,
 				A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */,
 				A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */,
@@ -516,7 +519,8 @@
 				D1E2F3A4B5C6D7E800007002 /* EdgeTapInterceptViewTests.swift in Sources */,
 				D1E2F3A4B5C6D7E800009002 /* ReaderEdgeNavigationStateTests.swift in Sources */,
 				D1E2F3A4B5C6D7E800008002 /* NowPlayingInfoUpdaterTests.swift in Sources */,
-				E1F2A3B4C5D6E7F800008002 /* EpubEditingActionsTests.swift in Sources */,
+				E1F2A3B4C5D6E7F800008002 /* EpubNavigatorConfigurationTests.swift in Sources */,
+				E1F2A3B4C5D6E7F800009002 /* EpubUserScriptsTests.swift in Sources */,
 				F1A2B3C4D5E6F7A800009002 /* ImageCacheURLProtocolTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900010002 /* FlureadiumPluginGoToLocatorTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900020002 /* FlureadiumPluginAudioEnableTests.swift in Sources */,
