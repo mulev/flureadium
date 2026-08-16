@@ -21,6 +21,8 @@
 		C1D2E3F4A5B6C7D800005002 /* FlutterMediaOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6C7D800005001 /* FlutterMediaOverlayTests.swift */; };
 		C1D2E3F4A5B6C7D800006002 /* ReadiumErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6C7D800006001 /* ReadiumErrorTests.swift */; };
 		D1E2F3A4B5C6D7E800007002 /* EdgeTapInterceptViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E800007001 /* EdgeTapInterceptViewTests.swift */; };
+		D1E2F3A4B5C6D7E800009002 /* ReaderEdgeNavigationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E800009001 /* ReaderEdgeNavigationStateTests.swift */; };
+		D1E2F3A4B5C6D7E800009102 /* FlutterNavigationConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E800009101 /* FlutterNavigationConfigTests.swift */; };
 		D1E2F3A4B5C6D7E800008002 /* NowPlayingInfoUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E800008001 /* NowPlayingInfoUpdaterTests.swift */; };
 		E1F2A3B4C5D6E7F800008002 /* EpubEditingActionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */; };
 		F1A2B3C4D5E6F7A800009002 /* ImageCacheURLProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */; };
@@ -99,6 +101,8 @@
 		C1D2E3F4A5B6C7D800005001 /* FlutterMediaOverlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlutterMediaOverlayTests.swift; sourceTree = "<group>"; };
 		C1D2E3F4A5B6C7D800006001 /* ReadiumErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadiumErrorTests.swift; sourceTree = "<group>"; };
 		D1E2F3A4B5C6D7E800007001 /* EdgeTapInterceptViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeTapInterceptViewTests.swift; sourceTree = "<group>"; };
+		D1E2F3A4B5C6D7E800009101 /* FlutterNavigationConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlutterNavigationConfigTests.swift; sourceTree = "<group>"; };
+		D1E2F3A4B5C6D7E800009001 /* ReaderEdgeNavigationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderEdgeNavigationStateTests.swift; sourceTree = "<group>"; };
 		D1E2F3A4B5C6D7E800008001 /* NowPlayingInfoUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInfoUpdaterTests.swift; sourceTree = "<group>"; };
 		CA90AC1234567890ABCDEF01 /* CarPlayChapterListTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayChapterListTests.swift; sourceTree = "<group>"; };
 		CA90AC1234567890ABCDEF11 /* CarPlayPlaybackBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayPlaybackBridgeTests.swift; sourceTree = "<group>"; };
@@ -191,7 +195,9 @@
 				C1D2E3F4A5B6C7D800004001 /* ReadiumExtensionsTests.swift */,
 				C1D2E3F4A5B6C7D800005001 /* FlutterMediaOverlayTests.swift */,
 				C1D2E3F4A5B6C7D800006001 /* ReadiumErrorTests.swift */,
+				D1E2F3A4B5C6D7E800009101 /* FlutterNavigationConfigTests.swift */,
 				D1E2F3A4B5C6D7E800007001 /* EdgeTapInterceptViewTests.swift */,
+				D1E2F3A4B5C6D7E800009001 /* ReaderEdgeNavigationStateTests.swift */,
 				D1E2F3A4B5C6D7E800008001 /* NowPlayingInfoUpdaterTests.swift */,
 				E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */,
 				F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */,
@@ -506,7 +512,9 @@
 				C1D2E3F4A5B6C7D800004002 /* ReadiumExtensionsTests.swift in Sources */,
 				C1D2E3F4A5B6C7D800005002 /* FlutterMediaOverlayTests.swift in Sources */,
 				C1D2E3F4A5B6C7D800006002 /* ReadiumErrorTests.swift in Sources */,
+				D1E2F3A4B5C6D7E800009102 /* FlutterNavigationConfigTests.swift in Sources */,
 				D1E2F3A4B5C6D7E800007002 /* EdgeTapInterceptViewTests.swift in Sources */,
+				D1E2F3A4B5C6D7E800009002 /* ReaderEdgeNavigationStateTests.swift in Sources */,
 				D1E2F3A4B5C6D7E800008002 /* NowPlayingInfoUpdaterTests.swift in Sources */,
 				E1F2A3B4C5D6E7F800008002 /* EpubEditingActionsTests.swift in Sources */,
 				F1A2B3C4D5E6F7A800009002 /* ImageCacheURLProtocolTests.swift in Sources */,

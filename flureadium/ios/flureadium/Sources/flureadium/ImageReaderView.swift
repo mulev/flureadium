@@ -19,7 +19,7 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
   private let viewContainer: UIView
   private let imageViewController: CBZNavigatorViewController
   private var hasSentReady = false
-  private var navigationState = ImageReaderNavigationState()
+  private var edgeNavigation = ReaderEdgeNavigationState()
   private var visitedIndices = Set<Int>()
   private var prefetchTask: Task<Void, Never>?
   private var tapObserverToken: InputObservableToken?
@@ -66,17 +66,7 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
     imageViewController.delegate = self
 
     imageViewController.loadViewIfNeeded()
-    let child: UIView = imageViewController.view!
-    let parent = viewContainer
-    parent.addSubview(child)
-
-    child.translatesAutoresizingMaskIntoConstraints = false
-    NSLayoutConstraint.activate([
-      child.leadingAnchor.constraint(equalTo: parent.leadingAnchor),
-      child.trailingAnchor.constraint(equalTo: parent.trailingAnchor),
-      child.topAnchor.constraint(equalTo: parent.topAnchor),
-      child.bottomAnchor.constraint(equalTo: parent.bottomAnchor),
-    ])
+    viewContainer.addPinnedSubview(imageViewController.view!)
 
     currentImageReaderView = self
     configureEdgeTapHandlers()
@@ -159,33 +149,8 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
 
   private func configureEdgeTapHandlers() {
     guard let edgeTapView = viewContainer as? EdgeTapInterceptView else { return }
-    navigationState.configure(
-      edgeTapView: edgeTapView,
-      onLeftEdgeTap: { [weak self] in
-        guard let self else { return }
-        Task { @MainActor in
-          let _ = await self.imageViewController.goLeft(options: NavigatorGoOptions(animated: false))
-        }
-      },
-      onRightEdgeTap: { [weak self] in
-        guard let self else { return }
-        Task { @MainActor in
-          let _ = await self.imageViewController.goRight(options: NavigatorGoOptions(animated: false))
-        }
-      },
-      onSwipeLeft: { [weak self] in
-        guard let self else { return }
-        Task { @MainActor in
-          let _ = await self.imageViewController.goRight(options: NavigatorGoOptions(animated: false))
-        }
-      },
-      onSwipeRight: { [weak self] in
-        guard let self else { return }
-        Task { @MainActor in
-          let _ = await self.imageViewController.goLeft(options: NavigatorGoOptions(animated: false))
-        }
-      }
-    )
+    edgeNavigation.configure(
+      edgeTapView: edgeTapView, navigator: imageViewController, animated: false)
   }
 
   private func prefetchAdjacentPages(around currentIndex: Int) {
@@ -257,7 +222,7 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
     case "setNavigationConfig":
       let args = call.arguments as! [String: Any]
       let navConfig = FlutterNavigationConfig(fromMap: args)
-      navigationState.apply(navConfig)
+      edgeNavigation.apply(navConfig)
       configureEdgeTapHandlers()
       result(nil)
     case "applyDecorations":

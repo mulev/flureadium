@@ -33,9 +33,7 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
   private var disableTextSelection: Bool
   private var disableDragGestures: Bool
   private var disableDoubleTapTextSelection: Bool
-  private var enableEdgeTapNavigation: Bool
-  private var enableSwipeNavigation: Bool
-  private var edgeTapAreaPoints: CGFloat?
+  private var edgeNavigation = ReaderEdgeNavigationState()
   private var tapObserverToken: InputObservableToken?
 
   var publicationIdentifier: String?
@@ -69,9 +67,6 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
     disableTextSelection = false
     disableDragGestures = false
     disableDoubleTapTextSelection = false
-    enableEdgeTapNavigation = true
-    enableSwipeNavigation = true
-    edgeTapAreaPoints = nil
 
     let locatorStr = creationParams["initialLocator"] as? String
     let locator = locatorStr == nil ? nil : try! Locator.init(jsonString: locatorStr!)
@@ -104,25 +99,11 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
     channel.setMethodCallHandler(onMethodCall)
     pdfViewController.delegate = self
 
-    let child: UIView = pdfViewController.view
-    let view = _view
-    view.addSubview(pdfViewController.view)
-
-    child.translatesAutoresizingMaskIntoConstraints = false
-
-    NSLayoutConstraint.activate(
-      [
-        child.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-        child.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-        child.topAnchor.constraint(equalTo: view.topAnchor),
-        child.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-      ]
-    )
+    _view.addPinnedSubview(pdfViewController.view)
 
     currentPdfReaderView = self
     publicationIdentifier = publication.metadata.identifier
 
-    // Configure edge tap handlers for page navigation
     configureEdgeTapHandlers()
 
     // A tap on a PDF link annotation reports here and follows the link:
@@ -220,58 +201,11 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
     configureEdgeTapHandlers()
   }
 
-  /// Configure edge tap handlers for page navigation.
-  /// Tapping on the left edge triggers goLeft (previous page).
-  /// Tapping on the right edge triggers goRight (next page).
+  /// PDF has no scroll mode on this view path, so the paginated gate always holds.
   private func configureEdgeTapHandlers() {
     guard let edgeTapView = _view as? EdgeTapInterceptView else { return }
-
-    // Intercept edge zones only when edge tap navigation is active.
-    // PDF reader has no scroll mode on this view path.
-    edgeTapView.interceptEdgeTaps = enableEdgeTapNavigation
-
-    if enableEdgeTapNavigation {
-      if let points = edgeTapAreaPoints {
-        edgeTapView.edgeThresholdPoints = points
-      }
-      edgeTapView.onLeftEdgeTap = { [weak self] in
-        guard let self = self else { return }
-        print(TAG, "[FALLBACK] Triggering goLeft via edge tap")
-        Task { @MainActor in
-          let _ = await self.pdfViewController.goLeft(options: NavigatorGoOptions(animated: true))
-        }
-      }
-      edgeTapView.onRightEdgeTap = { [weak self] in
-        guard let self = self else { return }
-        print(TAG, "[FALLBACK] Triggering goRight via edge tap")
-        Task { @MainActor in
-          let _ = await self.pdfViewController.goRight(options: NavigatorGoOptions(animated: true))
-        }
-      }
-    } else {
-      edgeTapView.onLeftEdgeTap = nil
-      edgeTapView.onRightEdgeTap = nil
-    }
-
-    if enableSwipeNavigation {
-      edgeTapView.onSwipeLeft = { [weak self] in
-        guard let self = self else { return }
-        print(TAG, "[FALLBACK] Triggering goRight via swipe left handler")
-        Task { @MainActor in
-          let _ = await self.pdfViewController.goRight(options: NavigatorGoOptions(animated: true))
-        }
-      }
-      edgeTapView.onSwipeRight = { [weak self] in
-        guard let self = self else { return }
-        print(TAG, "[FALLBACK] Triggering goLeft via swipe right handler")
-        Task { @MainActor in
-          let _ = await self.pdfViewController.goLeft(options: NavigatorGoOptions(animated: true))
-        }
-      }
-    } else {
-      edgeTapView.onSwipeLeft = nil
-      edgeTapView.onSwipeRight = nil
-    }
+    edgeNavigation.configure(
+      edgeTapView: edgeTapView, navigator: pdfViewController, animated: true)
   }
 
   private func disableDoubleTapZoomGesture(in view: UIView) {
@@ -483,8 +417,6 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
       let args = call.arguments as! [String: Any]
       print(TAG, "onMethodCall[setNavigationConfig] args = \(args)")
       let navConfig = FlutterNavigationConfig(fromMap: args)
-      if let v = navConfig.enableEdgeTapNavigation { enableEdgeTapNavigation = v }
-      if let v = navConfig.enableSwipeNavigation { enableSwipeNavigation = v }
       if let v = navConfig.disableDoubleTapZoom {
         disableDoubleTapZoom = v
         // setupPDFView has already run — apply immediately to the live view
@@ -505,9 +437,7 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
           scheduleDisableDoubleTapWordSelection()
         }
       }
-      if let pts = navConfig.edgeTapAreaPoints {
-        edgeTapAreaPoints = CGFloat(min(max(pts, 44.0), 120.0))
-      }
+      edgeNavigation.apply(navConfig)
       configureEdgeTapHandlers()
       result(nil)
     case "dispose":

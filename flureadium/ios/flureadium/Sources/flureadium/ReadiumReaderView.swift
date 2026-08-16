@@ -31,15 +31,6 @@ func parseLocatorFragmentsResult(_ result: Any?) -> Locator? {
   return try? Locator(json: json, warnings: readiumBugLogger)
 }
 
-/// Whether the overlay swallows touches in its edge zones.
-///
-/// Only when it will act on them. Readium's adapter no longer claims pointers,
-/// so intercepting while edge tap is off would starve the WebView — and with it
-/// the tap observer — of every touch within `edgeTapAreaPoints` of an edge.
-func shouldInterceptEdgeTaps(isScrollMode: Bool, edgeTapEnabled: Bool) -> Bool {
-  !isScrollMode && edgeTapEnabled
-}
-
 class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, VisualNavigatorDelegate {
 
   private let channel: ReadiumReaderChannel
@@ -50,9 +41,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   private var isVerticalScroll = false
   private var hasSentReady = false
   private var isDisposed = false
-  private var enableEdgeTapNavigation: Bool
-  private var enableSwipeNavigation: Bool
-  private var edgeTapAreaPoints: CGFloat?
+  private var edgeNavigation = ReaderEdgeNavigationState()
   private var tapObserverToken: InputObservableToken?
 
   // Retain the navigation adapter to prevent ARC deallocation
@@ -102,11 +91,6 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
 
     let preferencesMap = creationParams["preferences"] as? [String: String]
     let defaultPreferences = preferencesMap.map { EPUBPreferences.init(fromMap: $0) }
-
-    // Navigation config uses defaults; updated via setNavigationConfig channel call
-    enableEdgeTapNavigation = true
-    enableSwipeNavigation = true
-    edgeTapAreaPoints = nil
 
     let locatorStr = creationParams["initialLocator"] as? String
     let locator = locatorStr == nil ? nil : try! Locator.init(jsonString: locatorStr!)
@@ -159,20 +143,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     isVerticalScroll = defaultPreferences?.scroll ?? false
     configureEdgeTapHandlers(isScrollMode: isVerticalScroll)
 
-    let child: UIView = readiumViewController.view
-    let view = _view
-    view.addSubview(readiumViewController.view)
-
-    child.translatesAutoresizingMaskIntoConstraints = false
-
-    NSLayoutConstraint.activate(
-      [
-        child.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-        child.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-        child.topAnchor.constraint(equalTo: view.topAnchor),
-        child.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-      ]
-    )
+    _view.addPinnedSubview(readiumViewController.view)
 
     currentReaderView = self
     publicationIdentifier = publication.metadata.identifier
@@ -329,58 +300,15 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     configureEdgeTapHandlers(isScrollMode: isVerticalScroll)
   }
 
-  /// Configure edge tap handlers based on scroll mode.
-  /// In scroll mode, all callbacks are nil — WKWebView handles native swipes.
-  /// In paginated mode, edge taps trigger goLeft/goRight when the host enables them.
+  /// Re-applies edge tap and swipe wiring for the current scroll mode.
   private func configureEdgeTapHandlers(isScrollMode: Bool) {
     guard let edgeTapView = _view as? EdgeTapInterceptView else { return }
-
-    // Intercepting and acting are one condition: the overlay only swallows an
-    // edge touch when it has a page turn to run on it.
-    let edgeTapsActive = shouldInterceptEdgeTaps(
-      isScrollMode: isScrollMode, edgeTapEnabled: enableEdgeTapNavigation)
-    edgeTapView.interceptEdgeTaps = edgeTapsActive
-
-    if edgeTapsActive {
-      if let points = edgeTapAreaPoints {
-        edgeTapView.edgeThresholdPoints = points
-      }
-      edgeTapView.onLeftEdgeTap = { [weak self] in
-        guard let self = self else { return }
-        Task { @MainActor in
-          let _ = await self.readiumViewController.goLeft(options: NavigatorGoOptions(animated: true))
-        }
-      }
-      edgeTapView.onRightEdgeTap = { [weak self] in
-        guard let self = self else { return }
-        Task { @MainActor in
-          let _ = await self.readiumViewController.goRight(options: NavigatorGoOptions(animated: true))
-        }
-      }
-    } else {
-      edgeTapView.onLeftEdgeTap = nil
-      edgeTapView.onRightEdgeTap = nil
-    }
-
-    // Swipes are ours only in paginated mode — WKWebView handles them natively
-    // while scrolling.
-    if !isScrollMode && enableSwipeNavigation {
-      edgeTapView.onSwipeLeft = { [weak self] in
-        guard let self = self else { return }
-        Task { @MainActor in
-          let _ = await self.readiumViewController.goRight(options: NavigatorGoOptions(animated: true))
-        }
-      }
-      edgeTapView.onSwipeRight = { [weak self] in
-        guard let self = self else { return }
-        Task { @MainActor in
-          let _ = await self.readiumViewController.goLeft(options: NavigatorGoOptions(animated: true))
-        }
-      }
-    } else {
-      edgeTapView.onSwipeLeft = nil
-      edgeTapView.onSwipeRight = nil
-    }
+    edgeNavigation.configure(
+      edgeTapView: edgeTapView,
+      navigator: readiumViewController,
+      isScrollMode: isScrollMode,
+      animated: true
+    )
   }
 
   private func emitOnPageChanged(locator: Locator) -> Void {
@@ -589,15 +517,9 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     case "setNavigationConfig":
       let args = call.arguments as! [String: Any]
       print(TAG, "onMethodCall[setNavigationConfig] args = \(args)")
-      let navConfig = FlutterNavigationConfig(fromMap: args)
-      if let v = navConfig.enableEdgeTapNavigation { enableEdgeTapNavigation = v }
-      if let v = navConfig.enableSwipeNavigation { enableSwipeNavigation = v }
-      if let pts = navConfig.edgeTapAreaPoints {
-        edgeTapAreaPoints = CGFloat(min(max(pts, 44.0), 120.0))
-      }
+      edgeNavigation.apply(FlutterNavigationConfig(fromMap: args))
       configureEdgeTapHandlers(isScrollMode: isVerticalScroll)
       result(nil)
-      break
     case "applyDecorations":
       let args = call.arguments as! [Any?]
       let identifier = args[0] as! String
