@@ -108,8 +108,12 @@ void main() {
     });
 
     group('equality', () {
-      test('pdf format equals itself', () {
-        expect(PublicationFormat.pdf, equals(PublicationFormat.pdf));
+      test('two pdf formats built separately are equal', () {
+        // Runtime instance, so equality compares props, not identity.
+        expect(
+          PublicationFormat(PublicationFormatEnum.pdf),
+          equals(PublicationFormat.pdf),
+        );
       });
 
       test('pdf format is different from epub', () {
