@@ -1,10 +1,12 @@
 import 'package:flureadium/flureadium.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'package:flureadium_example/main.dart' as app;
 
 import 'helpers/pump_until.dart';
+import 'helpers/reader_status.dart';
 
 Future<void> _waitForReader(WidgetTester tester) async {
   await pumpUntil(
@@ -30,6 +32,26 @@ void _navigationTests(String assetLabel, String Function() openButtonLabel) {
         await _waitForReader(tester);
       }
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+    });
+
+    testWidgets('the load cover tracks reader status', (tester) async {
+      app.main();
+      await _waitForReader(tester);
+      if (openButtonLabel() != 'default') {
+        await tester.tap(find.text(openButtonLabel()));
+        await _waitForReader(tester);
+      }
+
+      final cover = find.byKey(const Key('reader-loading-cover'));
+
+      // Sampled on every pump: covered exactly while the reader is not ready.
+      final becameReady = await pumpUntil(tester, () {
+        final ready = readerStatus(tester) == 'ready';
+        expect(cover.evaluate().isNotEmpty, !ready);
+        return ready;
+      }, timeout: const Duration(seconds: 30));
+
+      expect(becameReady, isTrue, reason: 'reader never reported ready');
     });
 
     testWidgets('navigate left and right', (tester) async {

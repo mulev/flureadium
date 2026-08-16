@@ -683,6 +683,19 @@ class _ReaderPageState extends State<ReaderPage> {
             )
           else
             const Center(child: CircularProgressIndicator()),
+          // Readium paints nothing until it reports `ready`; a host that wants
+          // that window covered stacks its own cover. IgnorePointer so it only
+          // paints — the reader below and the controls above stay hit-testable.
+          if (pub != null && _readerStatus != 'ready')
+            const Positioned.fill(
+              key: Key('reader-loading-cover'),
+              child: IgnorePointer(
+                child: ColoredBox(
+                  color: Colors.white,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              ),
+            ),
           if (pub == null || _controlsVisible)
             Positioned(
               bottom: 0,
