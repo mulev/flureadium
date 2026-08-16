@@ -116,8 +116,9 @@ void main() {
         expect(json['href'], equals('chapter1.xhtml'));
         expect(json['type'], equals('application/xhtml+xml'));
         expect(json['title'], equals('Chapter 1'));
-        expect(json['locations'], isNotNull);
-        expect(json['text'], isNotNull);
+        expect(json['locations']['position'], equals(1));
+        expect(json['locations']['progression'], equals(0.5));
+        expect(json['text']['highlight'], equals('Highlight'));
       });
 
       test('roundtrip serialization preserves data', () {

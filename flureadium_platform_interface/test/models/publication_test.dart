@@ -22,9 +22,11 @@ void main() {
 
         final json = publication.toJson();
 
-        expect(json['metadata'], isNotNull);
-        expect(json['links'], isNotNull);
-        expect(json['readingOrder'], isNotNull);
+        expect(json['metadata']['title'], equals({'und': 'Test Book'}));
+        expect(json['links'], hasLength(1));
+        expect(json['links'][0]['href'], equals('manifest.json'));
+        expect(json['readingOrder'], hasLength(1));
+        expect(json['readingOrder'][0]['href'], equals('chapter1.xhtml'));
       });
 
       test('roundtrip serialization preserves data', () {
@@ -250,7 +252,10 @@ void main() {
           context: ['https://readium.org/webpub-manifest/context.jsonld'],
         );
 
-        expect(copied.context, isNotEmpty);
+        expect(
+          copied.context,
+          equals(['https://readium.org/webpub-manifest/context.jsonld']),
+        );
         expect(original.context, isEmpty);
       });
 

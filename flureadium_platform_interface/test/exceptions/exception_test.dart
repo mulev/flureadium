@@ -280,7 +280,7 @@ void main() {
         expect(error.message, equals('Parsed error'));
         expect(error.code, equals('PARSE_ERR'));
         expect(error.data, equals('Additional data'));
-        expect(error.stackTrace, isNotNull);
+        expect(error.stackTrace.toString(), equals('at line 1\nat line 2'));
       });
 
       test('parses JSON with minimal data', () {
