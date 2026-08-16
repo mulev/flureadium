@@ -1,3 +1,10 @@
+## 0.17.0
+
+### Bug Fixes
+
+- **iOS stops turning pages in a band no host configured**: on a 393 pt iPhone with `enableEdgeTapNavigation` set to `false`, a single tap anywhere in 147.8 pt — 37.6% of the width — still turned a page. Two components claimed edge taps with two different widths, and only one of them read the preference: `EdgeTapInterceptView` absorbed `edgeTapAreaPoints` (44 pt by default) and Readium's `DirectionalNavigationAdapter` claimed `max(80, 0.3 × width)`, or 117.9 pt, ungated. Taps that landed between the two widths fell through the overlay to the adapter, which turned the page. The adapter is now built with an empty pointer policy, so the overlay is the only pointer edge owner on iOS and `enableEdgeTapNavigation` governs every edge tap. The adapter keeps its key observer, so arrow keys and the space bar still page. Android never had a second owner and is unaffected.
+- **A tap near the edge of an EPUB reports as a content tap when edge tap is off**: the overlay claimed both edge zones whenever the EPUB was paginated, regardless of the preference, because that was the only way to keep the adapter from seeing those touches. With the adapter's pointers gone, the claim had no purpose left and swallowed the touch instead — `onTap` never fired within 44 pt of either edge. The overlay now intercepts only when it will act, matching what the PDF and image readers already did.
+
 ## 0.16.6
 
 ### Bug Fixes

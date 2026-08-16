@@ -381,10 +381,11 @@ annotation in a PDF both follows the link and reports a tap. PDFKit exposes no w
 to ask whether an annotation consumed the touch, so the plugin does not guess —
 hosts that care can ignore taps that arrive alongside a page change.
 
-The observer returns `false`, meaning it never consumes the event. Anything
-registered behind it — including the edge-tap page turner — still sees the tap.
-Registration order matters: the tap observer is added after
-`DirectionalNavigationAdapter.bind(to:)`.
+The observer returns `false`, so it never consumes the event. Registration order
+still matters — the tap observer is added after
+`DirectionalNavigationAdapter.bind(to:)` — but that adapter no longer registers a
+pointer observer at all, so nothing behind the tap observer turns a page. See
+[Edge Tap and Swipe Navigation](#edge-tap-and-swipe-navigation).
 
 ### Edge Tap and Swipe Navigation
 
@@ -423,18 +424,37 @@ await flureadium.setNavigationConfig(
 
 Both default to enabled (`true`) when not set. The `edgeTapAreaPoints` value is in absolute iOS points (44–120, clamped automatically) and defaults to 44pt (iOS HIG minimum tap target).
 
-**iOS 26 touch routing — `interceptEdgeTaps`:**
+**One pointer edge owner:**
 
-On iOS 26+, Flutter changed how platform view touches are routed. Edge-zone touches now fall through `EdgeTapInterceptView` to the underlying WKWebView when there are no intercept callbacks set, which lets Readium's `DirectionalNavigationAdapter` see those touches — even when edge tap navigation is turned off.
+`EdgeTapInterceptView` is the only component on iOS that reacts to a pointer near an
+edge. Readium's `DirectionalNavigationAdapter` is built with
+`pointerPolicy: .init(types: [])` (`ReadiumReaderView.edgeTapPointerPolicy`), and
+`bind(to:)` skips every pointer type absent from that set. It registers the key
+observer unconditionally, so arrow keys and the space bar still turn pages.
 
-To fix this, `EdgeTapInterceptView` has an `interceptEdgeTaps: Bool` property (default `false`) that is independent of callback presence:
+Before 0.17.0 both components claimed edge taps, with two widths and one gate between
+them. The overlay absorbed `edgeTapAreaPoints` — 44 pt by default — while the adapter
+claimed `max(80, 0.3 × width)`, or 117.9 pt on a 393 pt iPhone, and only the overlay
+was gated on `enableEdgeTapNavigation`. A tap anywhere in the 147.8 pt between the two
+widths, 37.6% of that screen, turned a page while the host's preference read `false`.
+Android never had a second owner, so this brings iOS in line with it.
 
-- **EPUB paginated mode** — `interceptEdgeTaps = true` always. The view absorbs all edge-zone touches regardless of whether callbacks are configured. `DirectionalNavigationAdapter` never sees them.
-- **EPUB scroll mode** — `interceptEdgeTaps = false`. WKWebView receives all touches natively for scrolling.
-- **PDF reader** — `interceptEdgeTaps = enableEdgeTapNavigation`. PDF has no scroll mode on this path, so the view only intercepts when the feature is on.
-- **Image reader** — `interceptEdgeTaps = enableEdgeTapNavigation`. CBZ and DIVINA use the same edge-tap/swipe overlay pattern as the PDF path.
+**Touch routing — `interceptEdgeTaps`:**
 
-This is a native iOS layer change only. No Dart or Flutter changes are required.
+Flutter delivers a platform-view touch to whatever `hitTest` returns, and on iOS 26+
+an edge-zone touch falls through to the WKWebView unless the overlay claims it. That
+claim turns a page when edge tap is on, and swallows a content tap when it is off —
+which would keep `onTap` from firing anywhere near an edge. So the property follows
+the gate rather than the mode alone:
+
+- **EPUB** — `interceptEdgeTaps = !isScrollMode && enableEdgeTapNavigation`, from the
+  `shouldInterceptEdgeTaps` helper. Paginated with edge tap on, the overlay absorbs
+  both edge zones and turns pages. With edge tap off, or in scroll mode, it absorbs
+  nothing: every tap reaches the WebView, and Readium reports it as a content tap.
+- **PDF reader** — `interceptEdgeTaps = enableEdgeTapNavigation`. PDF has no scroll
+  mode on this path.
+- **Image reader** — `interceptEdgeTaps = enableEdgeTapNavigation`. CBZ and DIVINA use
+  the same edge-tap and swipe overlay as the PDF path.
 
 **Files:**
 - `EdgeTapInterceptView.swift` - Shared edge tap and swipe detection view
