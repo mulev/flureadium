@@ -44,6 +44,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   private var enableEdgeTapNavigation: Bool
   private var enableSwipeNavigation: Bool
   private var edgeTapAreaPoints: CGFloat?
+  private var tapObserverToken: InputObservableToken?
 
   // Retain the navigation adapter to prevent ARC deallocation
   private var directionalNavigationAdapter: DirectionalNavigationAdapter?
@@ -168,6 +169,10 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
         pointerPolicy: .init(types: [.mouse, .touch])
     )
     directionalNavigationAdapter?.bind(to: readiumViewController)
+
+    tapObserverToken = observeTaps(
+      on: readiumViewController, reportingTo: channel,
+      isDisposed: { [weak self] in self?.isDisposed ?? true })
 
     print(TAG, "::init success")
   }
@@ -604,6 +609,8 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     case "dispose":
       print(TAG, "Disposing readiumViewController")
       isDisposed = true
+      if let token = tapObserverToken { readiumViewController.removeObserver(token) }
+      tapObserverToken = nil
       readiumViewController.view.removeFromSuperview()
       readiumViewController.delegate = nil
       FlureadiumPlugin.shared?.sendReaderStatus(ReadiumReaderStatusClosed)

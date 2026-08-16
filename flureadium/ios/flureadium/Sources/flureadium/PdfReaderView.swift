@@ -36,6 +36,7 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
   private var enableEdgeTapNavigation: Bool
   private var enableSwipeNavigation: Bool
   private var edgeTapAreaPoints: CGFloat?
+  private var tapObserverToken: InputObservableToken?
 
   var publicationIdentifier: String?
 
@@ -123,6 +124,10 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
 
     // Configure edge tap handlers for page navigation
     configureEdgeTapHandlers()
+
+    // A tap on a PDF link annotation reports here and follows the link:
+    // Readium's interactive-element filter is WebView-only.
+    tapObserverToken = observeTaps(on: pdfViewController, reportingTo: channel)
 
     print(TAG, "::init success")
   }
@@ -507,6 +512,8 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
       result(nil)
     case "dispose":
       print(TAG, "Disposing pdfViewController")
+      if let token = tapObserverToken { pdfViewController.removeObserver(token) }
+      tapObserverToken = nil
       pdfViewController.view.removeFromSuperview()
       pdfViewController.delegate = nil
       self.readerStatusStreamHandler?.sendEvent(PdfReaderStatusClosed)

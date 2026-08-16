@@ -22,6 +22,7 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
   private var navigationState = ImageReaderNavigationState()
   private var visitedIndices = Set<Int>()
   private var prefetchTask: Task<Void, Never>?
+  private var tapObserverToken: InputObservableToken?
 
   func view() -> UIView {
     print(TAG, "::getView")
@@ -79,6 +80,7 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
 
     currentImageReaderView = self
     configureEdgeTapHandlers()
+    tapObserverToken = observeTaps(on: imageViewController, reportingTo: channel)
 
     print(TAG, "::init success")
   }
@@ -269,6 +271,8 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
       ImageCacheURLProtocol.disable()
       imageViewController.view.removeFromSuperview()
       imageViewController.delegate = nil
+      if let token = tapObserverToken { imageViewController.removeObserver(token) }
+      tapObserverToken = nil
       FlureadiumPlugin.shared?.sendReaderStatus(ImageReaderStatusClosed)
       channel.setMethodCallHandler(nil)
       if currentImageReaderView === self { currentImageReaderView = nil }
