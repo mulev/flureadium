@@ -175,6 +175,7 @@ ios/Sources/flureadium/
 ├── AudioReaderView.swift      # Audio-only reader host (no navigator)
 ├── EpubUserScripts.swift      # WKUserScripts injected into the EPUB WebView
 ├── EpubNavigatorConfiguration.swift # EPUB navigator configuration builder
+├── SpineItemPositionMemory.swift # Scroll-mode position remembered per spine item
 ├── ReaderEdgeNavigationState.swift # Edge tap/swipe config shared by the three visual readers
 ├── PageThumbnailExtractor.swift # Image-resource thumbnail extraction
 └── ...

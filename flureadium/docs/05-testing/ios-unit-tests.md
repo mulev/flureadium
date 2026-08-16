@@ -29,7 +29,7 @@ flureadium/example/ios/RunnerTests/
 ├── ReadiumErrorTests.swift            # ReadiumError/FlureadiumError to FlutterError conversions
 ├── EdgeTapInterceptViewTests.swift   # hitTest geometry, edge interception, subview bypass, property behavior
 ├── NowPlayingInfoUpdaterTests.swift  # Chapter formatting for all ControlPanelInfoType variants
-├── ScrollModeNavigationTests.swift   # strippedHref, chapterLink before/after, isBackwardNavigation
+├── ScrollModeNavigationTests.swift   # strippedHref, isBackwardNavigation, SpineItemPositionMemory
 └── EventStreamHandlerTests.swift     # EventStreamHandler listen/cancel/dispose lifecycle
 ```
 
