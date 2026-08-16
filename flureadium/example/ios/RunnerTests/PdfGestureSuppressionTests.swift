@@ -337,6 +337,31 @@ final class PdfGestureSuppressionTests: XCTestCase {
     XCTAssertFalse(suppression.disableTextSelection)
   }
 
+  /// A `setNavigationConfig` call must only touch the live view for what it
+  /// switched on: the retained state stays whole, but the returned value carries
+  /// this call's flags alone.
+  func testApplyReturnsOnlyTheFlagsThisCallSwitchedOn() {
+    var suppression = PdfGestureSuppression()
+    suppression.apply(FlutterNavigationConfig(disableDoubleTapZoom: true))
+
+    let noGestureFlags = suppression.apply(
+      FlutterNavigationConfig(enableEdgeTapNavigation: true, edgeTapAreaPoints: 80))
+
+    XCTAssertFalse(noGestureFlags.disableDoubleTapZoom)
+    XCTAssertFalse(noGestureFlags.disableTextSelection)
+    XCTAssertFalse(noGestureFlags.disableDragGestures)
+    XCTAssertFalse(noGestureFlags.disableDoubleTapTextSelection)
+    XCTAssertTrue(suppression.disableDoubleTapZoom, "retained state survives a config without flags")
+
+    let textSelectionOnly = suppression.apply(
+      FlutterNavigationConfig(disableTextSelection: true))
+
+    XCTAssertTrue(textSelectionOnly.disableTextSelection)
+    XCTAssertFalse(textSelectionOnly.disableDoubleTapZoom, "already applied by the earlier call")
+    XCTAssertFalse(textSelectionOnly.disableDragGestures)
+    XCTAssertFalse(textSelectionOnly.disableDoubleTapTextSelection)
+  }
+
   // MARK: - Retry schedule
 
   /// `PDFTextInputView` is attached asynchronously after a page renders, so the

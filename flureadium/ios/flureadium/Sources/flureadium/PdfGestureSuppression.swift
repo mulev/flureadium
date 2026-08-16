@@ -25,13 +25,22 @@ struct PdfGestureSuppression {
   /// after a page renders — a single deferred attempt misses it.
   static let doubleTapRetryDelays: [Double] = [0.1, 0.5, 1.0]
 
-  mutating func apply(_ navConfig: FlutterNavigationConfig) {
+  /// Folds `navConfig` into the retained flags and returns the suppression this
+  /// call alone switched on, so a live view is only walked for the gestures the
+  /// host just disabled rather than for everything it ever disabled.
+  @discardableResult
+  mutating func apply(_ navConfig: FlutterNavigationConfig) -> PdfGestureSuppression {
     if let value = navConfig.disableDoubleTapZoom { disableDoubleTapZoom = value }
     if let value = navConfig.disableTextSelection { disableTextSelection = value }
     if let value = navConfig.disableDragGestures { disableDragGestures = value }
     if let value = navConfig.disableDoubleTapTextSelection {
       disableDoubleTapTextSelection = value
     }
+    return PdfGestureSuppression(
+      disableDoubleTapZoom: navConfig.disableDoubleTapZoom ?? false,
+      disableTextSelection: navConfig.disableTextSelection ?? false,
+      disableDragGestures: navConfig.disableDragGestures ?? false,
+      disableDoubleTapTextSelection: navConfig.disableDoubleTapTextSelection ?? false)
   }
 
   /// Applies every enabled suppression to `view` and its whole subtree.

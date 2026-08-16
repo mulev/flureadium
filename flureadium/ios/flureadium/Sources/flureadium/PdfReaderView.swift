@@ -265,10 +265,11 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
       let args = call.arguments as! [String: Any]
       print(TAG, "onMethodCall[setNavigationConfig] args = \(args)")
       let navConfig = FlutterNavigationConfig(fromMap: args)
-      gestureSuppression.apply(navConfig)
-      // setupPDFView has already run — apply to the live view.
-      gestureSuppression.apply(to: pdfViewController.view)
-      if gestureSuppression.disableDoubleTapTextSelection {
+      let newlyDisabled = gestureSuppression.apply(navConfig)
+      // setupPDFView has already run — apply what this call switched on to the
+      // live view; everything else was applied when it was switched on.
+      newlyDisabled.apply(to: pdfViewController.view)
+      if newlyDisabled.disableDoubleTapTextSelection {
         scheduleDisableDoubleTapWordSelection()
       }
       edgeNavigation.apply(navConfig)
