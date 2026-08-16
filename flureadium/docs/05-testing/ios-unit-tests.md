@@ -21,6 +21,8 @@ flureadium/example/ios/RunnerTests/
 ├── ModelTests.swift                   # ControlPanelInfoType, TTS/Audio/PDF preferences
 ├── FlutterNavigationConfigTests.swift # setNavigationConfig dictionary decoding
 ├── ReaderEdgeNavigationStateTests.swift # Edge tap/swipe gate matrix and page-turn direction
+├── EpubUserScriptsTests.swift         # Injected script count, order, injection times, generated sources
+├── EpubNavigatorConfigurationTests.swift # Content insets, preload counts, decorations, editing actions, preferences
 ├── StateSerializationTests.swift      # ReadiumTimebasedState toJson, toJsonString, Equatable
 ├── ReadiumExtensionsTests.swift       # Locator extensions, state mappings, EPUB/PDF preferences fromMap
 ├── FlutterMediaOverlayTests.swift     # FlutterMediaOverlayItem parsing/matching/locators
