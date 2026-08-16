@@ -2,10 +2,10 @@
 //  ScrollModeNavigationTests.swift
 //  RunnerTests
 //
-//  Unit tests for the scroll-mode chapter navigation helpers declared in
-//  ReadiumReaderView.swift: strippedHref(_:), chapterLink(before:in:),
-//  chapterLink(after:in:), and isBackwardNavigation(from:to:in:).
-//  These are internal free functions, exposed via @testable import.
+//  Unit tests for the scroll-mode position memory declared in
+//  SpineItemPositionMemory.swift: the SpineItemPositionMemory value type and
+//  its free helpers strippedHref(_:) and isBackwardNavigation(from:to:in:).
+//  These are internal, exposed via @testable import.
 //
 
 import XCTest
@@ -47,103 +47,6 @@ final class ScrollModeNavigationTests: XCTestCase {
         XCTAssertEqual(strippedHref(""), "")
     }
 
-    // MARK: - chapterLink(before:in:) — empty / boundary
-
-    func testChapterBefore_emptyReadingOrder_returnsNil() {
-        XCTAssertNil(chapterLink(before: "ch1.html", in: []))
-    }
-
-    func testChapterBefore_atFirstItem_returnsNil() {
-        XCTAssertNil(chapterLink(before: "ch1.html", in: threeLinks))
-    }
-
-    func testChapterBefore_hrefNotFound_returnsNil() {
-        XCTAssertNil(chapterLink(before: "unknown.html", in: threeLinks))
-    }
-
-    // MARK: - chapterLink(before:in:) — normal navigation
-
-    func testChapterBefore_atSecondItem_returnsFirst() {
-        let result = chapterLink(before: "ch2.html", in: threeLinks)
-        XCTAssertEqual(result?.href, "ch1.html")
-    }
-
-    func testChapterBefore_atLastItem_returnsSecond() {
-        let result = chapterLink(before: "ch3.html", in: threeLinks)
-        XCTAssertEqual(result?.href, "ch2.html")
-    }
-
-    // MARK: - chapterLink(before:in:) — href stripping
-
-    func testChapterBefore_currentHrefWithFragment_matchesCleanHref() {
-        let result = chapterLink(before: "ch2.html#section", in: threeLinks)
-        XCTAssertEqual(result?.href, "ch1.html")
-    }
-
-    func testChapterBefore_currentHrefWithQuery_matchesCleanHref() {
-        let result = chapterLink(before: "ch2.html?p=1", in: threeLinks)
-        XCTAssertEqual(result?.href, "ch1.html")
-    }
-
-    func testChapterBefore_linkHrefWithFragment_matchesCurrentClean() {
-        let linksWithFragments = [
-            makeLink("ch1.html#intro"),
-            makeLink("ch2.html#body"),
-            makeLink("ch3.html#end"),
-        ]
-        // Current href "ch2.html" should match "ch2.html#body" after stripping
-        let result = chapterLink(before: "ch2.html", in: linksWithFragments)
-        XCTAssertEqual(result?.href, "ch1.html#intro")
-    }
-
-    // MARK: - chapterLink(after:in:) — empty / boundary
-
-    func testChapterAfter_emptyReadingOrder_returnsNil() {
-        XCTAssertNil(chapterLink(after: "ch1.html", in: []))
-    }
-
-    func testChapterAfter_atLastItem_returnsNil() {
-        XCTAssertNil(chapterLink(after: "ch3.html", in: threeLinks))
-    }
-
-    func testChapterAfter_hrefNotFound_returnsNil() {
-        XCTAssertNil(chapterLink(after: "unknown.html", in: threeLinks))
-    }
-
-    // MARK: - chapterLink(after:in:) — normal navigation
-
-    func testChapterAfter_atFirstItem_returnsSecond() {
-        let result = chapterLink(after: "ch1.html", in: threeLinks)
-        XCTAssertEqual(result?.href, "ch2.html")
-    }
-
-    func testChapterAfter_atSecondItem_returnsThird() {
-        let result = chapterLink(after: "ch2.html", in: threeLinks)
-        XCTAssertEqual(result?.href, "ch3.html")
-    }
-
-    // MARK: - chapterLink(after:in:) — href stripping
-
-    func testChapterAfter_currentHrefWithFragment_matchesCleanHref() {
-        let result = chapterLink(after: "ch2.html#section", in: threeLinks)
-        XCTAssertEqual(result?.href, "ch3.html")
-    }
-
-    func testChapterAfter_currentHrefWithQuery_matchesCleanHref() {
-        let result = chapterLink(after: "ch2.html?p=1", in: threeLinks)
-        XCTAssertEqual(result?.href, "ch3.html")
-    }
-
-    func testChapterAfter_linkHrefWithFragment_matchesCurrentClean() {
-        let linksWithFragments = [
-            makeLink("ch1.html#intro"),
-            makeLink("ch2.html#body"),
-            makeLink("ch3.html#end"),
-        ]
-        let result = chapterLink(after: "ch2.html", in: linksWithFragments)
-        XCTAssertEqual(result?.href, "ch3.html#end")
-    }
-
     // MARK: - isBackwardNavigation(from:to:in:)
 
     func testIsBackwardNavigation_emptyReadingOrder_returnsFalse() {
@@ -175,5 +78,132 @@ final class ScrollModeNavigationTests: XCTestCase {
     func testIsBackwardNavigation_fragmentsStrippedBeforeComparison() {
         // ch3.html#end → ch1.html#intro: both stripped, newIdx(0) < oldIdx(2) → true
         XCTAssertTrue(isBackwardNavigation(from: "ch3.html#end", to: "ch1.html#intro", in: threeLinks))
+    }
+}
+
+/// The scroll-mode restore decision: which stored position, if any, the reader
+/// should navigate back to when the spine item changes.
+final class SpineItemPositionMemoryTests: XCTestCase {
+
+    // MARK: - Fixtures
+
+    private var threeLinks: [Link] {
+        [Link(href: "ch1.html"), Link(href: "ch2.html"), Link(href: "ch3.html")]
+    }
+
+    private func locator(_ href: String, _ progression: Double? = nil) -> Locator {
+        Locator(
+            href: URL(string: href)!,
+            mediaType: .html,
+            locations: .init(progression: progression))
+    }
+
+    /// `record` in scroll mode against the three-chapter reading order.
+    @discardableResult
+    private func moveTo(
+        _ memory: inout SpineItemPositionMemory,
+        _ href: String,
+        _ progression: Double? = nil,
+        isScrollMode: Bool = true
+    ) -> Locator? {
+        memory.record(
+            locator(href, progression), in: threeLinks, isScrollMode: isScrollMode)
+    }
+
+    // MARK: - record
+
+    func testFirstLocationRestoresNothing() {
+        var memory = SpineItemPositionMemory()
+        XCTAssertNil(moveTo(&memory, "ch1.html", 0.5))
+    }
+
+    func testForwardChapterChangeRestoresNothing() {
+        var memory = SpineItemPositionMemory()
+        // Visit ch2 first so it has a stored position, then approach it forwards.
+        moveTo(&memory, "ch2.html", 0.7)
+        moveTo(&memory, "ch1.html", 0.1)
+        XCTAssertNil(moveTo(&memory, "ch2.html", 0.0))
+    }
+
+    func testBackwardChapterChangeRestoresStoredPosition() {
+        var memory = SpineItemPositionMemory()
+        moveTo(&memory, "ch1.html", 0.6)
+        moveTo(&memory, "ch2.html", 0.0)
+
+        let restored = moveTo(&memory, "ch1.html", 1.0)
+
+        XCTAssertEqual(restored?.href.string, "ch1.html")
+        XCTAssertEqual(restored?.locations.progression, 0.6)
+    }
+
+    func testBackwardChapterChangeWithNothingStoredRestoresNothing() {
+        var memory = SpineItemPositionMemory()
+        // A TOC jump straight into ch3, then back to a chapter never visited.
+        moveTo(&memory, "ch3.html", 0.2)
+        XCTAssertNil(moveTo(&memory, "ch2.html", 0.9))
+    }
+
+    func testPaginatedModeNeverRestores() {
+        var memory = SpineItemPositionMemory()
+        XCTAssertNil(moveTo(&memory, "ch1.html", 0.6, isScrollMode: false))
+        XCTAssertNil(moveTo(&memory, "ch2.html", 0.0, isScrollMode: false))
+        XCTAssertNil(moveTo(&memory, "ch1.html", 1.0, isScrollMode: false))
+
+        // Paginated mode also stored nothing: the same backward move in scroll
+        // mode still has no ch2 position to restore.
+        moveTo(&memory, "ch3.html", 0.4)
+        XCTAssertNil(moveTo(&memory, "ch2.html", 0.8))
+    }
+
+    func testSameSpineItemIsNotAChapterChange() {
+        var memory = SpineItemPositionMemory()
+        moveTo(&memory, "ch1.html#top", 0.2)
+        XCTAssertNil(moveTo(&memory, "ch1.html#middle", 0.8))
+
+        // The second position replaced the first as ch1's remembered one.
+        moveTo(&memory, "ch2.html", 0.0)
+        XCTAssertEqual(moveTo(&memory, "ch1.html", 1.0)?.locations.progression, 0.8)
+    }
+
+    func testFragmentAndQueryAreStrippedWhenMatching() {
+        var memory = SpineItemPositionMemory()
+        moveTo(&memory, "ch1.html#sec2", 0.4)
+        moveTo(&memory, "ch2.html", 0.0)
+
+        let restored = moveTo(&memory, "ch1.html?p=1", 1.0)
+
+        XCTAssertEqual(restored?.locations.progression, 0.4)
+    }
+
+    func testForgetDropsTheStoredPosition() {
+        var memory = SpineItemPositionMemory()
+        moveTo(&memory, "ch1.html", 0.6)
+        moveTo(&memory, "ch2.html", 0.0)
+
+        memory.forget(href: "ch1.html#anything")
+
+        XCTAssertNil(moveTo(&memory, "ch1.html", 1.0))
+    }
+
+    func testUnknownHrefIsNotBackward() {
+        var memory = SpineItemPositionMemory()
+        moveTo(&memory, "ch2.html", 0.5)
+        // Leaving ch2 stores its position, but the reading order knows nothing
+        // about where we went, so the move back cannot be called backward.
+        moveTo(&memory, "outside.html", 0.0)
+
+        XCTAssertNil(moveTo(&memory, "ch2.html", 1.0))
+    }
+
+    func testStoredPositionIsTheOutgoingLocatorNotTheIncomingOne() {
+        var memory = SpineItemPositionMemory()
+        moveTo(&memory, "ch1.html", 0.3)
+        moveTo(&memory, "ch1.html", 0.7)
+        moveTo(&memory, "ch2.html", 0.9)
+
+        let restored = moveTo(&memory, "ch1.html", 0.0)
+
+        XCTAssertEqual(restored?.href.string, "ch1.html")
+        XCTAssertEqual(restored?.locations.progression, 0.7)
     }
 }
