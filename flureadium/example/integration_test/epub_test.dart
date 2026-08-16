@@ -243,9 +243,10 @@ void main() {
     });
 
     // The night theme itself cannot be verified from Dart: setEPUBPreferences
-    // returns Future<void> and no channel reports the active theme back. This
-    // case asserts the contract that is observable and has regressed before —
-    // applying preferences must not reset the reader or lose the position.
+    // returns Future<void> and no channel reports the active theme back
+    // (flureadium-8om). This case asserts the contract that is observable and
+    // has regressed before — applying preferences must not reset the reader or
+    // lose the position.
     testWidgets('applying night preferences keeps status and position', (
       tester,
     ) async {
