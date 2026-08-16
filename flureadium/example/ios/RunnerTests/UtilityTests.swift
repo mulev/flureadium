@@ -95,5 +95,10 @@ final class UtilityTests: XCTestCase {
         XCTAssertIdentical(child.superview, parent)
         XCTAssertFalse(child.translatesAutoresizingMaskIntoConstraints)
         XCTAssertEqual(parent.constraints.filter(\.isActive).count, 4)
+
+        // Counting constraints passes even when an anchor is paired to the wrong
+        // edge, so resolve the layout and check the geometry it produced.
+        parent.layoutIfNeeded()
+        XCTAssertEqual(child.frame, parent.bounds)
     }
 }

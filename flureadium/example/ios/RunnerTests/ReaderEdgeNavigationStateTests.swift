@@ -192,15 +192,21 @@ final class ReaderEdgeNavigationStateTests: XCTestCase {
     var state = ReaderEdgeNavigationState()
     state.edgeTapAreaPoints = 72.0
 
-    let scrolling = makeView()
+    // Production reconfigures the one overlay in place, so both modes run on the
+    // same view.
+    let view = makeView()
     state.configure(
-      edgeTapView: scrolling, navigator: navigator, isScrollMode: true, animated: true)
-    XCTAssertEqual(scrolling.edgeThresholdPoints, 44.0, "no zone to widen with the gate off")
+      edgeTapView: view, navigator: navigator, isScrollMode: false, animated: true)
+    XCTAssertTrue(view.interceptEdgeTaps)
+    XCTAssertEqual(view.edgeThresholdPoints, 72.0)
 
-    let paginated = makeView()
     state.configure(
-      edgeTapView: paginated, navigator: navigator, isScrollMode: false, animated: true)
-    XCTAssertEqual(paginated.edgeThresholdPoints, 72.0)
+      edgeTapView: view, navigator: navigator, isScrollMode: true, animated: true)
+
+    XCTAssertFalse(view.interceptEdgeTaps)
+    // The widened threshold is retained but inert: with interceptEdgeTaps false
+    // the overlay swallows nothing, so no zone is measured against it.
+    XCTAssertEqual(view.edgeThresholdPoints, 72.0)
   }
 
   // MARK: - Where a fired callback lands

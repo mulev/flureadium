@@ -30,7 +30,11 @@ final class EpubUserScriptsTests: XCTestCase {
 
         XCTAssertEqual(scripts[0].injectionTime, .atDocumentStart, "comics.js runs before the document")
         XCTAssertEqual(scripts[1].injectionTime, .atDocumentStart, "epub.js runs before the document")
-        XCTAssertEqual(scripts[2].injectionTime, .atDocumentStart, "platform flags must exist before the helpers run")
+        XCTAssertEqual(
+            scripts[2].injectionTime,
+            .atDocumentStart,
+            "platform flags are defined before the document loads, last of the three document-start scripts as the pre-refactor build injected them"
+        )
     }
 
     func testCssIsInjectedAtDocumentEnd() {
