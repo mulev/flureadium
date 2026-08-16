@@ -1,5 +1,9 @@
 ## 0.17.0
 
+### Breaking changes
+
+- **`ReadiumReaderWidget.loadingWidget` is gone.** It never rendered anything. The widget that drew it was removed in an earlier refactor and the parameter outlived it, so passing a loading widget and passing nothing produced the same blank platform view. There is no replacement parameter: a host that wants to cover the load stacks its own widget over the reader and drops it when `onReaderStatusChanged` reports `ready`. The reader widget's API reference has the recipe. Remove the argument from your call.
+
 ### Bug Fixes
 
 - **iOS stops turning pages in a band no host configured**: on a 393 pt iPhone with `enableEdgeTapNavigation` set to `false`, a single tap anywhere in 147.8 pt — 37.6% of the width — still turned a page. Two components claimed edge taps with two different widths, and only one of them read the preference: `EdgeTapInterceptView` absorbed `edgeTapAreaPoints` (44 pt by default) and Readium's `DirectionalNavigationAdapter` claimed `max(80, 0.3 × width)`, or 117.9 pt, ungated. Taps that landed between the two widths fell through the overlay to the adapter, which turned the page. The adapter is now built with an empty pointer policy, so the overlay is the only pointer edge owner on iOS and `enableEdgeTapNavigation` governs every edge tap. The adapter keeps its key observer, so arrow keys and the space bar still page. Android never had a second owner and is unaffected.
