@@ -201,9 +201,11 @@ delivers them in order to the first subscriber, so subscribing from
 `ReadiumReaderWidget.onReady` is still early enough.
 
 What it does not do: recover. A failed enable leaves the widget mounted with no
-navigator, so the reader keeps showing its `loadingWidget` forever. The `error`
-status is the signal to act on — show a message, remount the reader, or open a
-different publication. Nothing will change on its own.
+navigator — the platform view is an empty transparent container, so a host that
+stacked a load cover keeps showing it and one that did not sees through to
+whatever sits behind the reader. The `error` status is the signal to act on —
+show a message, remount the reader, or open a different publication. Nothing
+will change on its own.
 
 A reader method call that fails natively now completes with a `PlatformException`
 carrying the exception class, its message and the stack trace — the same shape

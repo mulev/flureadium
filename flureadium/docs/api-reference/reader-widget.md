@@ -19,7 +19,6 @@ ReadiumReaderWidget(
 ```dart
 const ReadiumReaderWidget({
   required Publication publication,
-  Widget loadingWidget = const Center(child: CircularProgressIndicator()),
   Locator? initialLocator,
   void Function(Offset position)? onTap,
   Function(String)? onExternalLinkActivated,
@@ -52,29 +51,6 @@ ReadiumReaderWidget(publication: comic)
 Assigning a different `Publication` to a mounted widget rebuilds the native reader view for the new publication. The check is instance identity, not equality — `openPublication` returns a fresh `Publication` for every call, including reopening the same file, and each of those is a real swap because the native side has already released the previous publication's navigator. Passing the same instance again changes nothing.
 
 A swap resets the widget's per-view state: the reading position, the last-skipped chapter, and the reader-ready signal all start over. A `getLocatorFragments` call still in flight resolves to `null`.
-
-### loadingWidget
-
-**Type:** `Widget`
-**Default:** `Center(child: CircularProgressIndicator())`
-
-Widget shown while the native reader is loading.
-
-```dart
-ReadiumReaderWidget(
-  publication: pub,
-  loadingWidget: const Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        CircularProgressIndicator(),
-        SizedBox(height: 16),
-        Text('Loading book...'),
-      ],
-    ),
-  ),
-)
-```
 
 ### initialLocator
 
@@ -211,6 +187,57 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 }
 ```
+
+## Covering the load
+
+The reader paints nothing between mount and the moment Readium reports content. There is no plugin-side parameter for that window — cover it yourself by stacking a widget over the reader and dropping it when the reader reports `ready`:
+
+```dart
+class _ReaderPageState extends State<ReaderPage> {
+  final _flureadium = Flureadium();
+  StreamSubscription<ReadiumReaderStatus>? _statusSub;
+  var _ready = false;
+
+  void _subscribe() {
+    _statusSub = _flureadium.onReaderStatusChanged.listen((status) {
+      if (mounted) setState(() => _ready = status.isReady);
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+        children: [
+          ReadiumReaderWidget(
+            publication: widget.publication,
+            onReady: _subscribe,
+          ),
+          if (!_ready)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Colors.white,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            ),
+        ],
+      );
+}
+```
+
+Two things about this recipe are load-bearing.
+
+**The reader stays in the tree.** Returning the cover *instead of* `ReadiumReaderWidget` never finishes loading: the platform view is what triggers creation, creation is what fires `onReady`, and `onReady` is where you subscribe. Swap the widget out and the status you are waiting for is never sent. Put the cover over the reader, not in place of it.
+
+**Subscribing from `onReady` is early enough.** On Android and iOS the reader reports `loading` while the platform view is still being created, before Flutter can reply to Dart, so the first status is sent before any host can be listening. Both platforms hold the latest status and hand it to the first subscriber, so `ready` reaches a host that subscribes from `onReady` even when it was sent before the subscription existed. Web keeps no such buffer, since its status stream is a plain broadcast stream, but web fires `onReady` from the first frame while the JavaScript reader is still loading. The subscription is in place well before `ready` either way.
+
+Whether the cover blocks input is your call. Wrap it in `IgnorePointer` to let touches through to the reader underneath, or leave it out to swallow them until the reader is up.
+
+See [onReaderStatusChanged](streams-events.md#onreaderstatuschanged) for the full status set.
 
 ## Interface Methods
 
@@ -398,9 +425,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
           ReadiumReaderWidget(
             publication: _publication!,
             initialLocator: _initialLocator,
-            loadingWidget: const Center(
-              child: CircularProgressIndicator(),
-            ),
             onTap: (position) {
               setState(() => _showControls = !_showControls);
             },
