@@ -26,6 +26,7 @@ flureadium/example/ios/RunnerTests/
 ├── EpubPageBridgeTests.swift          # Exact window.epubPage JavaScript per call, and every reply shape
 ├── EpubLocatorReporterTests.swift     # Page-changed publishing, the dispose race, external links
 ├── EpubReaderCommandTests.swift       # Method-channel argument decoding: order, optional defaults, malformed JSON
+├── PdfGestureSuppressionTests.swift # PDF gesture/interaction removal: every predicate, subtree recursion, retry schedule
 ├── StateSerializationTests.swift      # ReadiumTimebasedState toJson, toJsonString, Equatable
 ├── ReadiumExtensionsTests.swift       # Locator extensions, state mappings, EPUB/PDF preferences fromMap
 ├── FlutterMediaOverlayTests.swift     # FlutterMediaOverlayItem parsing/matching/locators

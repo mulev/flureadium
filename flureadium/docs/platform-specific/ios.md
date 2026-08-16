@@ -189,6 +189,7 @@ ios/Sources/flureadium/
 ├── EpubPageBridge.swift         # Every call into the window.epubPage JavaScript API
 ├── EpubLocatorReporter.swift    # Publishes fragment-resolved locators to the Flutter reader channel
 ├── EpubReaderCommand.swift      # Decodes a reader method-channel call into a typed command
+├── PdfGestureSuppression.swift  # Removes the built-in PDF gestures the host disabled
 ├── EdgeTapInterceptView.swift   # Edge tap and swipe overlay
 ├── ReaderEdgeNavigationState.swift # Host edge tap/swipe config, shared by all three visual readers
 ├── ReaderTapObserver.swift      # Registers Readium's tap observer on a navigator
@@ -203,6 +204,17 @@ the view does not implement, which the view answers with
 `FlutterMethodNotImplemented`. The view's switch then only executes. Argument
 order and the optional trailing flags (`isAudioBookWithText` on `go` and
 `setLocation`) are covered by `EpubReaderCommandTests`.
+
+PDF gesture suppression is one type, `PdfGestureSuppression`. It holds the four
+host flags (`disableDoubleTapZoom`, `disableTextSelection`, `disableDragGestures`,
+`disableDoubleTapTextSelection`) and walks the navigator's live view tree,
+matching UIKit recognizers and interactions by class and by runtime type name.
+`PdfReaderView` applies it in two places: when the navigator hands over its view
+(`setupPDFView`), and again on every `setNavigationConfig` call, so a flag flipped
+while a PDF is open takes effect without reopening. Because `PDFTextInputView` is
+attached asynchronously after a page renders, removing double-tap word selection
+is retried at 0.1s, 0.5s and 1.0s. `PdfGestureSuppressionTests` covers every
+predicate against synthetic view trees.
 
 ### Platform View
 

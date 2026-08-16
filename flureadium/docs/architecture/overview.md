@@ -179,6 +179,7 @@ ios/Sources/flureadium/
 ├── EpubPageBridge.swift       # The window.epubPage JavaScript API
 ├── EpubLocatorReporter.swift  # Fragment-resolved locators published to the reader channel
 ├── EpubReaderCommand.swift    # Reader method-channel calls decoded into typed commands
+├── PdfGestureSuppression.swift # Built-in PDF gestures the host disabled, removed from the view tree
 ├── ReaderEdgeNavigationState.swift # Edge tap/swipe config shared by the three visual readers
 ├── PageThumbnailExtractor.swift # Image-resource thumbnail extraction
 └── ...
