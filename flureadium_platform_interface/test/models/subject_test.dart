@@ -91,7 +91,7 @@ void main() {
         final subject = Subject.fromJson(json);
 
         expect(subject, isNotNull);
-        expect(subject!.name, isNotEmpty);
+        expect(subject!.name, equals('Science'));
       });
 
       test('parses subject with sortAs', () {
@@ -241,8 +241,8 @@ void main() {
 
         final json = subject.toJson();
 
-        expect(json['name'], isNotNull);
-        expect(json['sortAs'], isNotNull);
+        expect(json['name'], equals({'und': 'History'}));
+        expect(json['sortAs'], equals({'und': 'Hist'}));
         expect(json['scheme'], equals('LC'));
         expect(json['code'], equals('D'));
       });
@@ -272,8 +272,9 @@ void main() {
 
         final json = subject.toJson();
 
-        expect(json['links'], isNotNull);
-        expect(json['links'], isList);
+        expect(json['links'], hasLength(2));
+        expect(json['links'][0]['href'], equals('art.html'));
+        expect(json['links'][1]['href'], equals('category/art.html'));
       });
 
       test('roundtrip serialization preserves data', () {
@@ -376,8 +377,8 @@ void main() {
           }),
         );
 
-        expect(subject.name, isNotEmpty);
-        expect(subject.sortAs, isNotEmpty);
+        expect(subject.name, equals('The Art of Programming'));
+        expect(subject.sortAs, equals('Art of Programming, The'));
       });
     });
 

@@ -84,7 +84,7 @@ void main() {
         final collection = Collection.fromJson(json);
 
         expect(collection, isNotNull);
-        expect(collection!.name, isNotEmpty);
+        expect(collection!.name, equals('English Name'));
       });
 
       test('parses collection with single role string', () {
@@ -202,9 +202,9 @@ void main() {
 
         final json = collection.toJson();
 
-        expect(json['name'], isNotNull);
+        expect(json['name'], equals({'und': 'Test Collection'}));
         expect(json['identifier'], equals('col-123'));
-        expect(json['sortAs'], isNotNull);
+        expect(json['sortAs'], equals({'und': 'Collection, Test'}));
         expect(json['role'], equals(['series']));
         expect(json['position'], equals(2.5));
       });
@@ -416,7 +416,7 @@ void main() {
         final contributor = Contributor.fromJson(json);
 
         expect(contributor, isNotNull);
-        expect(contributor!.name, isNotEmpty);
+        expect(contributor!.name, equals('English Author'));
       });
 
       test('parses contributor with links', () {
@@ -523,9 +523,9 @@ void main() {
 
         final json = contributor.toJson();
 
-        expect(json['name'], isNotNull);
+        expect(json['name'], equals({'und': 'Test Author'}));
         expect(json['identifier'], equals('auth-123'));
-        expect(json['sortAs'], isNotNull);
+        expect(json['sortAs'], equals({'und': 'Author, Test'}));
         expect(json['role'], equals(['author', 'illustrator']));
       });
 
@@ -577,7 +577,6 @@ void main() {
 
         final collection = contributor.toCollection();
 
-        expect(collection, isA<Collection>());
         expect(collection.name, equals(contributor.name));
         expect(collection.identifier, equals(contributor.identifier));
         expect(collection.roles, equals(contributor.roles));
