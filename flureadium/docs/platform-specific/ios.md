@@ -184,6 +184,7 @@ ios/Sources/flureadium/
 ├── ImageReaderView.swift        # CBZ / DIVINA reader view
 ├── AudioReaderView.swift        # Audio-only reader host (no navigator)
 ├── EdgeTapInterceptView.swift   # Edge tap and swipe overlay
+├── ReaderTapObserver.swift      # Registers Readium's tap observer on a navigator
 └── PageThumbnailExtractor.swift # Downscaled JPEG thumbnails for image resources
 ```
 
@@ -354,6 +355,36 @@ Uses GCDWebServer to serve EPUB resources:
 - Runs on localhost (127.0.0.1)
 - Requires NSAppTransportSecurity exception
 - Automatically starts/stops with publication
+
+### Content Taps
+
+`ReadiumReaderWidget.onTap` fires for a tap on content — a tap that nothing else
+claimed. The plugin does not detect these taps itself: it registers Readium's own
+observer on the navigator, so the toolkit decides what counts as a content tap
+before the plugin hears about it.
+
+`observeTaps(on:reportingTo:)` (`ReaderTapObserver.swift`) adds an
+`ActivatePointerObserver` through `InputObservable.addObserver` and returns the
+token the view keeps. All three visual views register in `init` and unregister in
+their `dispose` handler. Coordinates come from `PointerEvent.location`, already in
+points relative to the navigator view, and cross the channel as `{"x": …, "y": …}`
+— the same unit Flutter calls logical pixels.
+
+**EPUB filters link taps for you.** Inside the WebView, Readium drops a pointer
+event that landed on an interactive element before any observer runs
+(`EPUBSpreadView.didReceivePointerEvent` checks `interactiveElement`, fed by
+`gestures.js`). A tap on a hyperlink or footnote navigates and reports no tap, so
+a host can safely toggle its chrome on every `onTap`.
+
+**PDF and CBZ do not.** That filter is WebView-specific. Tapping an internal link
+annotation in a PDF both follows the link and reports a tap. PDFKit exposes no way
+to ask whether an annotation consumed the touch, so the plugin does not guess —
+hosts that care can ignore taps that arrive alongside a page change.
+
+The observer returns `false`, meaning it never consumes the event. Anything
+registered behind it — including the edge-tap page turner — still sees the tap.
+Registration order matters: the tap observer is added after
+`DirectionalNavigationAdapter.bind(to:)`.
 
 ### Edge Tap and Swipe Navigation
 
