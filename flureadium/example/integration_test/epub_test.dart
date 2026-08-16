@@ -5,6 +5,7 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:flureadium_example/main.dart' as app;
 
+import 'helpers/locator_latch.dart';
 import 'helpers/pump_until.dart';
 import 'helpers/reader_status.dart';
 
@@ -14,6 +15,20 @@ Future<void> _waitForReader(WidgetTester tester) async {
     () => find.byType(ReadiumReaderWidget).evaluate().isNotEmpty,
     timeout: const Duration(seconds: 15),
   );
+}
+
+/// Pumps until [condition] holds, failing with [reason] when it never does.
+///
+/// [pumpUntil] reports a timeout in its return value, so every wait has to
+/// assert that value or a never-satisfied condition passes silently.
+Future<void> _expectEventually(
+  WidgetTester tester,
+  bool Function() condition, {
+  required String reason,
+  Duration timeout = const Duration(seconds: 15),
+}) async {
+  final satisfied = await pumpUntil(tester, condition, timeout: timeout);
+  expect(satisfied, isTrue, reason: reason);
 }
 
 void _navigationTests(String assetLabel, String Function() openButtonLabel) {
@@ -77,43 +92,84 @@ void _navigationTests(String assetLabel, String Function() openButtonLabel) {
         await tester.tap(find.text(openButtonLabel()));
         await _waitForReader(tester);
       }
-      await tester.tap(find.text('←'));
-      for (var i = 0; i < 3; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
+
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester).isNotEmpty,
+        reason: 'no starting locator to navigate from',
+      );
+      final start = locatorHref(tester);
+
+      // Forward first: on the opening resource a back-tap may legitimately
+      // have nowhere to go, so only forward-then-back has a provable trip.
       await tester.tap(find.text('→'));
-      for (var i = 0; i < 3; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester) != start,
+        reason: 'the locator never left "$start" after →',
+      );
+
+      await tester.tap(find.text('←'));
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester) == start,
+        reason: 'the locator never returned to "$start"',
+      );
     });
 
-    testWidgets('DartSkip+ does not crash', (tester) async {
+    testWidgets('DartSkip+ advances the reader', (tester) async {
       app.main();
       await _waitForReader(tester);
       if (openButtonLabel() != 'default') {
         await tester.tap(find.text(openButtonLabel()));
         await _waitForReader(tester);
       }
+
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester).isNotEmpty,
+        reason: 'no starting locator to skip from',
+      );
+      final before = locatorHref(tester);
+
       await tester.tap(find.text('DartSkip+'));
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester) != before,
+        reason: 'DartSkip+ did not move the reader from "$before"',
+      );
     });
 
-    testWidgets('DartSkip- does not crash', (tester) async {
+    testWidgets('DartSkip- returns the reader', (tester) async {
       app.main();
       await _waitForReader(tester);
       if (openButtonLabel() != 'default') {
         await tester.tap(find.text(openButtonLabel()));
         await _waitForReader(tester);
       }
+
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester).isNotEmpty,
+        reason: 'no starting locator to skip from',
+      );
+      final start = locatorHref(tester);
+
+      // Both fixtures open on their first TOC entry, so a backward skip has
+      // nowhere to land until a forward skip puts something behind us.
+      await tester.tap(find.text('DartSkip+'));
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester) != start,
+        reason: 'nothing to skip back from',
+      );
+
       await tester.tap(find.text('DartSkip-'));
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester) == start,
+        reason: 'DartSkip- did not return the reader to "$start"',
+      );
     });
   });
 }
@@ -134,37 +190,82 @@ void main() {
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
     });
 
-    testWidgets('long press on reader does not crash', (tester) async {
+    testWidgets('long press leaves the reader ready and error-free', (
+      tester,
+    ) async {
       app.main();
       await _waitForReader(tester);
 
-      final reader = find.byType(ReadiumReaderWidget);
-      expect(reader, findsOneWidget);
+      await _expectEventually(
+        tester,
+        () => readerStatus(tester) == 'ready',
+        reason: 'reader never reported ready',
+        timeout: const Duration(seconds: 30),
+      );
 
-      await tester.longPressAt(tester.getCenter(reader));
+      await tester.longPressAt(
+        tester.getCenter(find.byType(ReadiumReaderWidget)),
+      );
       await tester.pump(const Duration(seconds: 1));
 
-      expect(reader, findsOneWidget);
+      // Key('audio-error') carries every onErrorEvent message, not just audio.
+      final error =
+          (tester.widget<Text>(find.byKey(const Key('audio-error'))).data ?? '')
+              .replaceFirst('audio-error: ', '');
+      expect(readerStatus(tester), equals('ready'));
+      expect(error, isEmpty, reason: 'the long press surfaced "$error"');
     });
 
-    testWidgets('Go To Saved does not crash', (tester) async {
+    testWidgets('Go To Saved returns to the saved position', (tester) async {
       app.main();
       await _waitForReader(tester);
+
+      await _expectEventually(
+        tester,
+        () => savedLocatorHref(tester).isNotEmpty,
+        reason: 'nothing was ever saved',
+      );
+      final saved = savedLocatorHref(tester);
+
+      await tester.tap(find.text('→'));
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester) != saved,
+        reason: 'could not navigate away from "$saved"',
+      );
+
       await tester.tap(find.text('Go To Saved'));
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester) == saved,
+        reason: 'Go To Saved did not return to "$saved"',
+      );
     });
 
-    testWidgets('apply night theme preferences', (tester) async {
+    // The night theme itself cannot be verified from Dart: setEPUBPreferences
+    // returns Future<void> and no channel reports the active theme back. This
+    // case asserts the contract that is observable and has regressed before —
+    // applying preferences must not reset the reader or lose the position.
+    testWidgets('applying night preferences keeps status and position', (
+      tester,
+    ) async {
       app.main();
       await _waitForReader(tester);
+
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester).isNotEmpty,
+        reason: 'no locator before applying preferences',
+      );
+      final before = locatorHref(tester);
+
       await tester.tap(find.text('Night'));
       for (var i = 0; i < 3; i++) {
         await tester.pump(const Duration(seconds: 1));
       }
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
+
+      expect(readerStatus(tester), equals('ready'));
+      expect(locatorHref(tester), equals(before));
     });
 
     testWidgets('apply decoration to current locator', (tester) async {
@@ -221,14 +322,35 @@ void main() {
       expect(find.byType(ReadiumReaderWidget), findsNothing);
     });
 
-    testWidgets('Load Only does not crash', (tester) async {
+    testWidgets('Load Only loads a publication without opening a reader', (
+      tester,
+    ) async {
       app.main();
       await _waitForReader(tester);
-      await tester.tap(find.text('Load Only'));
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(seconds: 1));
+
+      // load must not mount a reader, and that is only observable from a
+      // state where none is mounted — so close the auto-opened one first.
+      await tester.tap(find.text('Close'));
+      await pumpUntil(
+        tester,
+        () => find.byType(ReadiumReaderWidget).evaluate().isEmpty,
+        timeout: const Duration(seconds: 15),
+      );
+
+      String loadedTitle() {
+        final text =
+            tester.widget<Text>(find.byKey(const Key('loaded-title'))).data ??
+            '';
+        return text.replaceFirst('loaded-title: ', '');
       }
-      // no crash = pass
+
+      await tester.tap(find.text('Load Only'));
+      await _expectEventually(
+        tester,
+        () => loadedTitle().isNotEmpty,
+        reason: 'loadPublication never reported a title',
+      );
+      expect(find.byType(ReadiumReaderWidget), findsNothing);
     });
   });
 
