@@ -186,6 +186,8 @@ ios/Sources/flureadium/
 ├── EpubUserScripts.swift        # The WKUserScripts the EPUB WebView injects
 ├── EpubNavigatorConfiguration.swift # The configuration handed to the Readium EPUB navigator
 ├── SpineItemPositionMemory.swift # The scroll position remembered per spine item, for swipe-back
+├── EpubPageBridge.swift         # Every call into the window.epubPage JavaScript API
+├── EpubLocatorReporter.swift    # Publishes fragment-resolved locators to the Flutter reader channel
 ├── EdgeTapInterceptView.swift   # Edge tap and swipe overlay
 ├── ReaderEdgeNavigationState.swift # Host edge tap/swipe config, shared by all three visual readers
 ├── ReaderTapObserver.swift      # Registers Readium's tap observer on a navigator

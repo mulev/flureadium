@@ -176,6 +176,8 @@ ios/Sources/flureadium/
 ├── EpubUserScripts.swift      # WKUserScripts injected into the EPUB WebView
 ├── EpubNavigatorConfiguration.swift # EPUB navigator configuration builder
 ├── SpineItemPositionMemory.swift # Scroll-mode position remembered per spine item
+├── EpubPageBridge.swift       # The window.epubPage JavaScript API
+├── EpubLocatorReporter.swift  # Fragment-resolved locators published to the reader channel
 ├── ReaderEdgeNavigationState.swift # Edge tap/swipe config shared by the three visual readers
 ├── PageThumbnailExtractor.swift # Image-resource thumbnail extraction
 └── ...
