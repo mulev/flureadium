@@ -237,6 +237,8 @@ Two things about this recipe are load-bearing.
 
 Whether the cover blocks input is your call. Wrap it in `IgnorePointer` to let touches through to the reader underneath, or leave it out to swallow them until the reader is up.
 
+One note for your own widget tests: an indeterminate `CircularProgressIndicator` schedules frames for as long as it is mounted, so `pumpAndSettle` never returns while the cover is up. Pump in bounded steps until the condition you care about holds — the reader reporting `ready`, a finder matching — instead.
+
 See [onReaderStatusChanged](streams-events.md#onreaderstatuschanged) for the full status set.
 
 ## Interface Methods
