@@ -142,7 +142,7 @@ void main() {
         final link = Link.fromJson(json);
 
         expect(link, isNotNull);
-        expect(link!.properties, isNotNull);
+        expect(link!.properties.page?.value, equals('left'));
       });
     });
 
@@ -331,10 +331,19 @@ void main() {
         expect(link.mediaType, equals(MediaType.binary));
       });
 
-      test('returns binary media type for invalid type', () {
-        final link = Link(href: 'file.xyz', type: 'invalid/type');
+      test(
+        'keeps a syntactically valid type even when it is not a known one',
+        () {
+          final link = Link(href: 'file.xyz', type: 'invalid/type');
 
-        expect(link.mediaType, isNotNull);
+          expect(link.mediaType.toString(), equals('invalid/type'));
+        },
+      );
+
+      test('falls back to binary when the type cannot be parsed', () {
+        final link = Link(href: 'file.xyz', type: 'nonsense');
+
+        expect(link.mediaType, equals(MediaType.binary));
       });
     });
 
@@ -424,13 +433,16 @@ void main() {
         expect(url, isNull);
       });
 
-      test('handles base URL null', () {
-        final link = Link(href: 'chapter.html');
+      test(
+        'resolves a relative href against the root when base URL is null',
+        () {
+          final link = Link(href: 'chapter.html');
 
-        final url = link.toUrl(null);
+          final url = link.toUrl(null);
 
-        expect(url, isNotNull);
-      });
+          expect(url, equals('/chapter.html'));
+        },
+      );
     });
 
     group('equality', () {
