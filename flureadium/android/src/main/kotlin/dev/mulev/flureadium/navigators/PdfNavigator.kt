@@ -78,6 +78,14 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
         fun onExternalLinkActivated(url: AbsoluteUrl)
 
         /**
+         * Called when the user tapped the content and Readium handled nothing
+         * internally — no internal link, no interactive element.
+         *
+         * Coordinates are logical pixels relative to the navigator view.
+         */
+        fun onTap(x: Double, y: Double)
+
+        /**
          * Called when the current locator has changed.
          */
         fun onVisualCurrentLocationChanged(locator: Locator)
@@ -94,6 +102,11 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
      * PdfReaderFragment instance used as navigator.
      */
     private var pdfNavigator: PdfReaderFragment? = null
+
+    /**
+     * Forwards content taps from whichever Readium navigator the fragment holds.
+     */
+    private val tapForwarder = NavigatorTapForwarder { x, y -> visualListener.onTap(x, y) }
 
     /**
      * Engine provider for PDF rendering.
@@ -228,6 +241,10 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
 
     override fun onPageLoaded() {
         Log.d(TAG, "::onPageLoaded")
+        // The fragment drops its Readium navigator on pause and builds a new one
+        // on resume, and hasNotifiedIsReady stops setupNavigatorListeners from
+        // running again — so the tap registration follows the page load instead.
+        tapForwarder.bindTo(pdfNavigator?.visualNavigator)
         visualListener.onPageLoaded()
 
         notifyIsReady()
@@ -264,6 +281,7 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
     }
 
     override suspend fun release() {
+        tapForwarder.unbind()
         super.dispose()
 
         pdfNavigator?.let { fragment ->
@@ -276,6 +294,7 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
     }
 
     override fun dispose() {
+        tapForwarder.unbind()
         super.dispose()
 
         mainScope.launch {

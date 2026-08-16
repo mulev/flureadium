@@ -83,6 +83,14 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         fun onExternalLinkActivated(url: AbsoluteUrl)
 
         /**
+         * Called when the user tapped the content and Readium handled nothing
+         * internally — no internal link, no interactive element.
+         *
+         * Coordinates are logical pixels relative to the navigator view.
+         */
+        fun onTap(x: Double, y: Double)
+
+        /**
          * Called when the current locator has changed.
          */
         fun onVisualCurrentLocationChanged(locator: Locator)
@@ -104,6 +112,11 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
      * Tracks which fragment instance we've subscribed to, to detect fragment recreation.
      */
     private var subscribedFragmentInstance: EpubReaderFragment? = null
+
+    /**
+     * Forwards content taps from whichever Readium navigator the fragment holds.
+     */
+    private val tapForwarder = NavigatorTapForwarder { x, y -> visualListener.onTap(x, y) }
 
     /**
      * Editor to modify EPUB preferences.
@@ -294,6 +307,11 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
             "subscribedInstance=$subscribedFragmentInstance, " +
             "currentInstance=$currentFragment")
 
+        // The fragment drops its Readium navigator on pause and builds a new one
+        // on resume, and hasNotifiedIsReady stops setupNavigatorListeners from
+        // running again — so the tap registration follows the page load instead.
+        tapForwarder.bindTo(currentFragment?.visualNavigator)
+
         visualListener.onPageLoaded()
 
         pendingScrollToLocations?.let { locations ->
@@ -354,6 +372,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
     }
 
     override suspend fun release() {
+        tapForwarder.unbind()
         super.dispose()
 
         epubNavigator?.let { fragment ->
@@ -366,6 +385,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
     }
 
     override fun dispose() {
+        tapForwarder.unbind()
         super.dispose()
 
         mainScope.launch {

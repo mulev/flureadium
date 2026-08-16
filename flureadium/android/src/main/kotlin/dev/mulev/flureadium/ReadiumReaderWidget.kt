@@ -316,6 +316,10 @@ class ReadiumReaderWidget(
         mainScope.launch { emitOnExternalLinkActivated(url) }
     }
 
+    override fun onTap(x: Double, y: Double) {
+        mainScope.launch { channel.onTap(x, y) }
+    }
+
     override fun onVisualCurrentLocationChanged(locator: Locator) {
         Log.d(TAG, "::onVisualCurrentLocationChanged ${locatorDebugSummary(locator)}")
 

@@ -1191,6 +1191,10 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         currentReaderWidget?.onExternalLinkActivated(url)
     }
 
+    override fun onTap(x: Double, y: Double) {
+        currentReaderWidget?.onTap(x, y)
+    }
+
     override fun onVisualCurrentLocationChanged(locator: Locator) {
         currentReaderWidget?.onVisualCurrentLocationChanged(locator)
     }

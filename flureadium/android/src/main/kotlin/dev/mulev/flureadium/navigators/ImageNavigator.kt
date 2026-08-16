@@ -45,12 +45,21 @@ class ImageNavigator(
 
         fun onExternalLinkActivated(url: AbsoluteUrl)
 
+        /**
+         * Called when the user tapped the content and Readium handled nothing
+         * internally. Coordinates are logical pixels relative to the view.
+         */
+        fun onTap(x: Double, y: Double)
+
         fun onVisualCurrentLocationChanged(locator: Locator)
 
         fun onVisualReaderIsReady()
     }
 
     private var imageNavigator: ImageNavigatorFragment? = null
+
+    /** Forwards content taps from the Readium navigator this class hosts. */
+    private val tapForwarder = NavigatorTapForwarder { x, y -> visualListener.onTap(x, y) }
 
     val currentLocator
         get() = imageNavigator?.currentLocator
@@ -91,6 +100,10 @@ class ImageNavigator(
     }
 
     override fun setupNavigatorListeners() {
+        // Above the locator guard on purpose: a CBZ opened before its first
+        // locator arrives would otherwise never report a tap.
+        tapForwarder.bindTo(imageNavigator)
+
         val currentLocator = currentLocator
         if (currentLocator == null) {
             Log.d(TAG, "::setupNavigatorListeners - currentLocator is null")
@@ -143,6 +156,7 @@ class ImageNavigator(
     }
 
     override suspend fun release() {
+        tapForwarder.unbind()
         super.dispose()
 
         imageNavigator?.let { fragment ->
@@ -155,6 +169,7 @@ class ImageNavigator(
     }
 
     override fun dispose() {
+        tapForwarder.unbind()
         super.dispose()
 
         mainScope.launch {
