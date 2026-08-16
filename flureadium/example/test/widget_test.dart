@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flureadium/flureadium.dart';
 import 'package:flureadium_example/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -53,6 +54,22 @@ Future<void> _emitEvent(String channelName, Object? payload) async {
       );
 }
 
+// The plugin decodes text-locator events with `Locator.fromJson(json.decode(
+// event))`, so the payload is a JSON string, and `href` and `type` are both
+// required for the decode to yield a locator.
+Future<void> _emitTextLocator(String href) => _emitEvent(
+  'dev.mulev.flureadium/text-locator',
+  json.encode({'href': href, 'type': 'application/xhtml+xml'}),
+);
+
+// The app subscribes to reader-status, text-locator and error from
+// ReadiumReaderWidget.onReady, which the native platform view fires once its
+// channels are up. A widget test creates no platform view, so it plays that
+// part itself.
+void _reportReaderReady(WidgetTester tester) => tester
+    .widget<ReadiumReaderWidget>(find.byType(ReadiumReaderWidget))
+    .onReady!();
+
 void _mockMainChannel({
   bool ttsCanSpeak = true,
   bool audioEnableThrows = false,
@@ -77,26 +94,29 @@ void _mockMainChannel({
       );
 }
 
+// Reads a keyed debug Text verbatim. The locator latches carry a raw value
+// with no 'key: ' prefix, so they are read through this directly.
+String _latchText(WidgetTester tester, String key) =>
+    tester.widget<Text>(find.byKey(Key(key))).data ?? '';
+
 // Reads a keyed 'key: value' debug Text and strips the 'key: ' prefix.
 String _keyedValue(WidgetTester tester, String key) =>
-    (tester.widget<Text>(find.byKey(Key(key))).data ?? '').replaceFirst(
-      '$key: ',
-      '',
-    );
+    _latchText(tester, key).replaceFirst('$key: ', '');
 
 // Opening a publication does real file I/O (_extractAsset), which only
-// completes on the real event loop, so it must run inside tester.runAsync.
-// Pumps a frame plus a real delay each tick until open-generation reaches
-// [target] or the bound is hit.
-Future<void> _pumpUntilGeneration(WidgetTester tester, String target) async {
+// completes on the real event loop, so these must run inside tester.runAsync.
+// Pumps a frame plus a real delay each tick until [done] holds or the bound is
+// hit.
+Future<void> _pumpUntil(WidgetTester tester, bool Function() done) async {
   for (var i = 0; i < 60; i++) {
     await tester.pump(const Duration(milliseconds: 50));
-    if (_keyedValue(tester, 'open-generation') == target) {
-      return;
-    }
+    if (done()) return;
     await Future<void>.delayed(const Duration(milliseconds: 20));
   }
 }
+
+Future<void> _pumpUntilGeneration(WidgetTester tester, String target) =>
+    _pumpUntil(tester, () => _keyedValue(tester, 'open-generation') == target);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -181,6 +201,59 @@ void main() {
     });
 
     expect(_keyedValue(tester, 'ended-seen'), 'false');
+  });
+
+  testWidgets('saved locator latches the first position, not the latest', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const ExampleApp());
+      await _pumpUntilGeneration(tester, '1');
+    });
+    _reportReaderReady(tester);
+
+    await _emitTextLocator('chapter1.xhtml');
+    await tester.pump();
+    await _emitTextLocator('chapter2.xhtml');
+    await tester.pump();
+
+    expect(_latchText(tester, 'locator_href'), 'chapter2.xhtml');
+    expect(_latchText(tester, 'saved_locator_href'), 'chapter1.xhtml');
+  });
+
+  testWidgets('opening a publication clears the saved locator', (tester) async {
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const ExampleApp());
+      await _pumpUntilGeneration(tester, '1');
+    });
+    _reportReaderReady(tester);
+
+    await _emitTextLocator('chapter1.xhtml');
+    await tester.pump();
+    expect(_latchText(tester, 'saved_locator_href'), 'chapter1.xhtml');
+
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Open EPUB'));
+      await _pumpUntilGeneration(tester, '2');
+    });
+
+    expect(_latchText(tester, 'saved_locator_href'), '');
+  });
+
+  testWidgets('Load Only latches the title loadPublication returned', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const ExampleApp());
+      await _pumpUntilGeneration(tester, '1');
+      await tester.tap(find.text('Load Only'));
+      await _pumpUntil(
+        tester,
+        () => _keyedValue(tester, 'loaded-title').isNotEmpty,
+      );
+    });
+
+    expect(_keyedValue(tester, 'loaded-title'), 'Test Book');
   });
 
   testWidgets('audio_enable_error_shows_snackbar', (tester) async {

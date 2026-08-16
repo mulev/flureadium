@@ -10,3 +10,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// breaks.
 String locatorHref(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const Key('locator_href'))).data ?? '';
+
+/// Reads the example app's `saved_locator_href` latch — the first href this
+/// publication reported, or `''` before any has arrived.
+///
+/// Distinct from [locatorHref] on purpose: the app latches this one once per
+/// open, so a test can navigate away and prove that "Go To Saved" came back.
+String savedLocatorHref(WidgetTester tester) =>
+    tester.widget<Text>(find.byKey(const Key('saved_locator_href'))).data ?? '';

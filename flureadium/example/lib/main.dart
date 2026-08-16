@@ -56,7 +56,13 @@ class _ReaderPageState extends State<ReaderPage> {
   final _flureadium = Flureadium();
   Publication? _publication;
   Locator? _locator;
+  // The first position this publication reported, latched once per open and
+  // cleared by _resetPublicationLatches. Deliberately not kept in step with
+  // _locator: "Go To Saved" is only worth tapping if it can navigate somewhere
+  // the reader is not, so the listener latches with `??=`, never `=`.
   Locator? _savedLocator;
+  // The title the last loadPublication returned, or '' before any load.
+  String _loadedTitle = '';
   ReadiumTimebasedState? _timebasedState;
   // Bumped each time a publication finishes opening (after openPublication
   // returns). Integration tests read this before tapping an "Open ..." button
@@ -145,7 +151,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _locatorSub = _flureadium.onTextLocatorChanged.listen(
       (l) => setState(() {
         _locator = l;
-        _savedLocator = l;
+        _savedLocator ??= l;
       }),
     );
     _errorSub = _flureadium.onErrorEvent.listen((e) {
@@ -409,6 +415,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _readerStatus = '';
     _locator = null;
     _savedLocator = null;
+    _loadedTitle = '';
     _lastAudioError = '';
     _cancelledStreamDisconnectSeen = false;
     _endedSeen = false;
@@ -654,9 +661,8 @@ class _ReaderPageState extends State<ReaderPage> {
     try {
       final path = await _extractAsset('assets/pubs/moby_dick.epub');
       final pub = await _flureadium.loadPublication(path);
-      debugPrint(
-        'Loaded: ${pub.metadata.title} (${pub.tableOfContents.length} chapters)',
-      );
+      if (!mounted) return;
+      setState(() => _loadedTitle = pub.metadata.title);
     } catch (e) {
       debugPrint('loadOnly error: $e');
     }
@@ -789,6 +795,22 @@ class _ReaderPageState extends State<ReaderPage> {
                     Text(
                       key: const Key('locator_href'),
                       _locator?.href ?? '',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('saved_locator_href'),
+                      _savedLocator?.href ?? '',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('loaded-title'),
+                      'loaded-title: $_loadedTitle',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 10,
