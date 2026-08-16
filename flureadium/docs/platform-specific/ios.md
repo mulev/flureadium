@@ -188,12 +188,21 @@ ios/Sources/flureadium/
 ├── SpineItemPositionMemory.swift # The scroll position remembered per spine item, for swipe-back
 ├── EpubPageBridge.swift         # Every call into the window.epubPage JavaScript API
 ├── EpubLocatorReporter.swift    # Publishes fragment-resolved locators to the Flutter reader channel
+├── EpubReaderCommand.swift      # Decodes a reader method-channel call into a typed command
 ├── EdgeTapInterceptView.swift   # Edge tap and swipe overlay
 ├── ReaderEdgeNavigationState.swift # Host edge tap/swipe config, shared by all three visual readers
 ├── ReaderTapObserver.swift      # Registers Readium's tap observer on a navigator
 ├── PageThumbnailExtractor.swift # Downscaled JPEG thumbnails for image resources
 └── utils/UIViewPinning.swift    # Adds a subview pinned to its parent's four edges
 ```
+
+`ReadiumReaderView` no longer reads channel arguments itself. Every call the
+EPUB reader receives goes through `EpubReaderCommand(call)` first, which turns
+the method name and its argument list into a typed command — or nil for a method
+the view does not implement, which the view answers with
+`FlutterMethodNotImplemented`. The view's switch then only executes. Argument
+order and the optional trailing flags (`isAudioBookWithText` on `go` and
+`setLocation`) are covered by `EpubReaderCommandTests`.
 
 ### Platform View
 

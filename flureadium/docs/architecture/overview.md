@@ -178,6 +178,7 @@ ios/Sources/flureadium/
 ├── SpineItemPositionMemory.swift # Scroll-mode position remembered per spine item
 ├── EpubPageBridge.swift       # The window.epubPage JavaScript API
 ├── EpubLocatorReporter.swift  # Fragment-resolved locators published to the reader channel
+├── EpubReaderCommand.swift    # Reader method-channel calls decoded into typed commands
 ├── ReaderEdgeNavigationState.swift # Edge tap/swipe config shared by the three visual readers
 ├── PageThumbnailExtractor.swift # Image-resource thumbnail extraction
 └── ...
