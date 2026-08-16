@@ -67,7 +67,20 @@ void main() {
         // so the remount is what asks native to enable a publication it has
         // already closed.
         await tester.tap(find.text('Close Native Only'));
-        await tester.pumpAndSettle();
+        // Not pumpAndSettle: the load cover's spinner is on screen from the
+        // moment the status leaves 'ready', and an indeterminate
+        // CircularProgressIndicator schedules frames forever. Wait for the
+        // close to land instead.
+        final closed = await pumpUntil(
+          tester,
+          () => readerStatus(tester) == 'closed',
+          timeout: const Duration(seconds: 15),
+        );
+        expect(
+          closed,
+          isTrue,
+          reason: 'reader status was "${readerStatus(tester)}"',
+        );
         await tester.tap(find.text('Remount Reader'));
 
         await pumpUntil(
@@ -90,7 +103,6 @@ void main() {
         // the native view by itself — a second remount tap would only throw away
         // the view that just came up.
         await tester.tap(find.text('Open EPUB'));
-        await tester.pumpAndSettle();
         await pumpUntil(
           tester,
           () => readerStatus(tester) == 'ready',
