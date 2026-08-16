@@ -1,4 +1,5 @@
 import XCTest
+import ReadiumNavigator
 @testable import flureadium
 
 final class EdgeTapInterceptViewTests: XCTestCase {
@@ -223,5 +224,37 @@ final class EdgeTapInterceptViewTests: XCTestCase {
         let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
         // 1 tap + 2 swipes = 3
         XCTAssertEqual(view.gestureRecognizers?.count, 3)
+    }
+
+    // MARK: - Single pointer edge owner
+
+    func testReaderViewGivesReadiumsAdapterNoPointerTypes() {
+        // This view is the only pointer edge owner on iOS. Readium's
+        // DirectionalNavigationAdapter keeps its unconditional key observer, so
+        // arrow keys still page, but any pointer type left in the policy adds a
+        // second edge owner with its own width — max(80, 0.3 * width) — that no
+        // host preference gates.
+        XCTAssertTrue(
+            ReadiumReaderView.edgeTapPointerPolicy.types.isEmpty,
+            "a pointer type here turns pages in a band edgeTapAreaPoints does not cover")
+    }
+
+    func testEdgeZonesAreInterceptedWhenPaginatedAndEdgeTapEnabled() {
+        XCTAssertTrue(shouldInterceptEdgeTaps(isScrollMode: false, edgeTapEnabled: true))
+    }
+
+    func testEdgeZonesAreNotInterceptedWhenEdgeTapIsDisabled() {
+        // The overlay would swallow the touch and do nothing with it, so the
+        // WebView — and the tap observer behind it — would never see a tap
+        // within edgeTapAreaPoints of either edge.
+        XCTAssertFalse(
+            shouldInterceptEdgeTaps(isScrollMode: false, edgeTapEnabled: false),
+            "intercepting without a callback is a dead band for onTap")
+    }
+
+    func testEdgeZonesAreNeverInterceptedInScrollMode() {
+        // WKWebView owns vertical scrolling; interception would fight it.
+        XCTAssertFalse(shouldInterceptEdgeTaps(isScrollMode: true, edgeTapEnabled: true))
+        XCTAssertFalse(shouldInterceptEdgeTaps(isScrollMode: true, edgeTapEnabled: false))
     }
 }

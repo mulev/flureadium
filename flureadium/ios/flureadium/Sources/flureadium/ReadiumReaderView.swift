@@ -31,6 +31,15 @@ func parseLocatorFragmentsResult(_ result: Any?) -> Locator? {
   return try? Locator(json: json, warnings: readiumBugLogger)
 }
 
+/// Whether the overlay swallows touches in its edge zones.
+///
+/// Only when it will act on them. Readium's adapter no longer claims pointers,
+/// so intercepting while edge tap is off would starve the WebView — and with it
+/// the tap observer — of every touch within `edgeTapAreaPoints` of an edge.
+func shouldInterceptEdgeTaps(isScrollMode: Bool, edgeTapEnabled: Bool) -> Bool {
+  !isScrollMode && edgeTapEnabled
+}
+
 class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, VisualNavigatorDelegate {
 
   private let channel: ReadiumReaderChannel
@@ -60,6 +69,15 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   /// The editing actions shown in the EPUB long-press selection menu.
   /// Keeping this as a static constant makes the native action set testable.
   static let epubEditingActions: [EditingAction] = [.copy, .lookup, .translate]
+
+  /// The pointer policy handed to Readium's `DirectionalNavigationAdapter`.
+  ///
+  /// Empty on purpose: `EdgeTapInterceptView` is the sole pointer edge owner on
+  /// iOS, carrying the host's width (`edgeTapAreaPoints`) and its gate
+  /// (`enableEdgeTapNavigation`). Two owners meant the adapter's own
+  /// `max(80, 0.3 × width)` band turned pages with edge tap switched off.
+  /// Keeping this as a static constant makes the constructed policy testable.
+  static let edgeTapPointerPolicy = DirectionalNavigationAdapter.PointerPolicy(types: [])
 
   func view() -> UIView {
     print(TAG, "::getView")
@@ -159,15 +177,15 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     currentReaderView = self
     publicationIdentifier = publication.metadata.identifier
 
-    /// This adapter will automatically turn pages when the user taps the
-    /// screen edges or press arrow keys.
+    /// Readium's adapter is kept for keyboard paging only — arrow keys and the
+    /// space bar. `bind(to:)` skips every pointer type absent from
+    /// `pointerPolicy.types` and registers the key observer unconditionally, so
+    /// an empty policy hands every touch to `EdgeTapInterceptView`.
     ///
     /// Bind it to the navigator before adding your own observers to prevent
     /// triggering your actions when turning pages.
     /// NOTE: Store in property to prevent ARC deallocation
-    directionalNavigationAdapter = DirectionalNavigationAdapter(
-        pointerPolicy: .init(types: [.mouse, .touch])
-    )
+    directionalNavigationAdapter = DirectionalNavigationAdapter(pointerPolicy: Self.edgeTapPointerPolicy)
     directionalNavigationAdapter?.bind(to: readiumViewController)
 
     tapObserverToken = observeTaps(
@@ -313,66 +331,55 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
 
   /// Configure edge tap handlers based on scroll mode.
   /// In scroll mode, all callbacks are nil — WKWebView handles native swipes.
-  /// In paginated mode, edge taps trigger goLeft/goRight for page navigation.
+  /// In paginated mode, edge taps trigger goLeft/goRight when the host enables them.
   private func configureEdgeTapHandlers(isScrollMode: Bool) {
     guard let edgeTapView = _view as? EdgeTapInterceptView else { return }
 
-    // In scroll mode, let WKWebView handle swipes natively — don't intercept.
-    // In paginated mode, always intercept edge zones so DirectionalNavigationAdapter
-    // cannot handle them, regardless of whether edge tap callbacks are set.
-    edgeTapView.interceptEdgeTaps = !isScrollMode
+    // Intercepting and acting are one condition: the overlay only swallows an
+    // edge touch when it has a page turn to run on it.
+    let edgeTapsActive = shouldInterceptEdgeTaps(
+      isScrollMode: isScrollMode, edgeTapEnabled: enableEdgeTapNavigation)
+    edgeTapView.interceptEdgeTaps = edgeTapsActive
 
-    if isScrollMode {
-      // Scroll mode: all callbacks nil.
-      // Swipes are handled natively by WKWebView — no interception needed.
+    if edgeTapsActive {
+      if let points = edgeTapAreaPoints {
+        edgeTapView.edgeThresholdPoints = points
+      }
+      edgeTapView.onLeftEdgeTap = { [weak self] in
+        guard let self = self else { return }
+        Task { @MainActor in
+          let _ = await self.readiumViewController.goLeft(options: NavigatorGoOptions(animated: true))
+        }
+      }
+      edgeTapView.onRightEdgeTap = { [weak self] in
+        guard let self = self else { return }
+        Task { @MainActor in
+          let _ = await self.readiumViewController.goRight(options: NavigatorGoOptions(animated: true))
+        }
+      }
+    } else {
       edgeTapView.onLeftEdgeTap = nil
       edgeTapView.onRightEdgeTap = nil
+    }
+
+    // Swipes are ours only in paginated mode — WKWebView handles them natively
+    // while scrolling.
+    if !isScrollMode && enableSwipeNavigation {
+      edgeTapView.onSwipeLeft = { [weak self] in
+        guard let self = self else { return }
+        Task { @MainActor in
+          let _ = await self.readiumViewController.goRight(options: NavigatorGoOptions(animated: true))
+        }
+      }
+      edgeTapView.onSwipeRight = { [weak self] in
+        guard let self = self else { return }
+        Task { @MainActor in
+          let _ = await self.readiumViewController.goLeft(options: NavigatorGoOptions(animated: true))
+        }
+      }
+    } else {
       edgeTapView.onSwipeLeft = nil
       edgeTapView.onSwipeRight = nil
-    } else {
-      // Enable edge tap navigation in paginated mode (if preference allows)
-      if enableEdgeTapNavigation {
-        if let points = edgeTapAreaPoints {
-          edgeTapView.edgeThresholdPoints = points
-        }
-        edgeTapView.onLeftEdgeTap = { [weak self] in
-          guard let self = self else { return }
-          print(TAG, "[FALLBACK] Triggering goLeft via fallback tap handler")
-          Task { @MainActor in
-            let _ = await self.readiumViewController.goLeft(options: NavigatorGoOptions(animated: true))
-          }
-        }
-        edgeTapView.onRightEdgeTap = { [weak self] in
-          guard let self = self else { return }
-          print(TAG, "[FALLBACK] Triggering goRight via fallback tap handler")
-          Task { @MainActor in
-            let _ = await self.readiumViewController.goRight(options: NavigatorGoOptions(animated: true))
-          }
-        }
-      } else {
-        edgeTapView.onLeftEdgeTap = nil
-        edgeTapView.onRightEdgeTap = nil
-      }
-
-      if enableSwipeNavigation {
-        edgeTapView.onSwipeLeft = { [weak self] in
-          guard let self = self else { return }
-          print(TAG, "[FALLBACK] Triggering goRight via swipe left handler")
-          Task { @MainActor in
-            let _ = await self.readiumViewController.goRight(options: NavigatorGoOptions(animated: true))
-          }
-        }
-        edgeTapView.onSwipeRight = { [weak self] in
-          guard let self = self else { return }
-          print(TAG, "[FALLBACK] Triggering goLeft via swipe right handler")
-          Task { @MainActor in
-            let _ = await self.readiumViewController.goLeft(options: NavigatorGoOptions(animated: true))
-          }
-        }
-      } else {
-        edgeTapView.onSwipeLeft = nil
-        edgeTapView.onSwipeRight = nil
-      }
     }
   }
 
