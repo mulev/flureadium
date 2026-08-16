@@ -17,8 +17,10 @@ Instead, tests live in the **example app's RunnerTests target** and run via `xco
 flureadium/example/ios/RunnerTests/
 ├── RunnerTests.swift                  # Plugin handler dispatch
 ├── FlutterTTSNavigatorTests.swift     # TTS navigator lifecycle, play/suppression, dispose, initNavigator errors
-├── UtilityTests.swift                 # clamp, firstMap, asyncCompactMap
-├── ModelTests.swift                   # ControlPanelInfoType, NavigationConfig, TTS/Audio/PDF preferences
+├── UtilityTests.swift                 # clamp, firstMap, asyncCompactMap, addPinnedSubview
+├── ModelTests.swift                   # ControlPanelInfoType, TTS/Audio/PDF preferences
+├── FlutterNavigationConfigTests.swift # setNavigationConfig dictionary decoding
+├── ReaderEdgeNavigationStateTests.swift # Edge tap/swipe gate matrix and page-turn direction
 ├── StateSerializationTests.swift      # ReadiumTimebasedState toJson, toJsonString, Equatable
 ├── ReadiumExtensionsTests.swift       # Locator extensions, state mappings, EPUB/PDF preferences fromMap
 ├── FlutterMediaOverlayTests.swift     # FlutterMediaOverlayItem parsing/matching/locators

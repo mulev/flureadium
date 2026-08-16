@@ -184,8 +184,10 @@ ios/Sources/flureadium/
 ├── ImageReaderView.swift        # CBZ / DIVINA reader view
 ├── AudioReaderView.swift        # Audio-only reader host (no navigator)
 ├── EdgeTapInterceptView.swift   # Edge tap and swipe overlay
+├── ReaderEdgeNavigationState.swift # Host edge tap/swipe config, shared by all three visual readers
 ├── ReaderTapObserver.swift      # Registers Readium's tap observer on a navigator
-└── PageThumbnailExtractor.swift # Downscaled JPEG thumbnails for image resources
+├── PageThumbnailExtractor.swift # Downscaled JPEG thumbnails for image resources
+└── utils/UIViewPinning.swift    # Adds a subview pinned to its parent's four edges
 ```
 
 ### Platform View
@@ -445,19 +447,30 @@ Flutter delivers a platform-view touch to whatever `hitTest` returns, and on iOS
 an edge-zone touch falls through to the WKWebView unless the overlay claims it. That
 claim turns a page when edge tap is on, and swallows a content tap when it is off —
 which would keep `onTap` from firing anywhere near an edge. So the property follows
-the gate rather than the mode alone:
+the gate rather than the mode alone.
 
-- **EPUB** — `interceptEdgeTaps = !isScrollMode && enableEdgeTapNavigation`, from the
-  `shouldInterceptEdgeTaps` helper. Paginated with edge tap on, the overlay absorbs
-  both edge zones and turns pages. With edge tap off, or in scroll mode, it absorbs
-  nothing: every tap reaches the WebView, and Readium reports it as a content tap.
-- **PDF reader** — `interceptEdgeTaps = enableEdgeTapNavigation`. PDF has no scroll
-  mode on this path.
-- **Image reader** — `interceptEdgeTaps = enableEdgeTapNavigation`. CBZ and DIVINA use
-  the same edge-tap and swipe overlay as the PDF path.
+All three visual readers run the same gate, held by one type —
+`ReaderEdgeNavigationState`. It keeps the host's `enableEdgeTapNavigation`,
+`enableSwipeNavigation` and `edgeTapAreaPoints`, and `configure(edgeTapView:navigator:isScrollMode:animated:)`
+points the overlay's callbacks at the navigator or clears them:
+
+- **EPUB** — passes its live scroll mode, so `interceptEdgeTaps = !isScrollMode && enableEdgeTapNavigation`,
+  from the `shouldInterceptEdgeTaps` helper. Paginated with edge tap on, the overlay
+  absorbs both edge zones and turns pages. With edge tap off, or in scroll mode, it
+  absorbs nothing: every tap reaches the WebView, and Readium reports it as a content
+  tap. Page turns are animated.
+- **PDF reader** — no scroll mode on this path, so it omits the argument and the
+  paginated gate always holds: `interceptEdgeTaps = enableEdgeTapNavigation`. Page
+  turns are animated.
+- **Image reader** — same gate as PDF. CBZ and DIVINA turn pages without animation.
+
+Swipes follow the same rule as taps except for the threshold: they are wired whenever
+the reader is paginated and the host left `enableSwipeNavigation` on. Swiping left
+advances, swiping right goes back.
 
 **Files:**
 - `EdgeTapInterceptView.swift` - Shared edge tap and swipe detection view
+- `ReaderEdgeNavigationState.swift` - The host's gate, and the wiring all three readers share
 - `ReadiumReaderView.swift` - EPUB reader using EdgeTapInterceptView
 - `PdfReaderView.swift` - PDF reader using EdgeTapInterceptView
 - `ImageReaderView.swift` - CBZ / DIVINA reader using EdgeTapInterceptView

@@ -173,6 +173,7 @@ ios/Sources/flureadium/
 ├── PdfReaderView.swift        # PDF reader view
 ├── ImageReaderView.swift      # CBZ / DIVINA reader view
 ├── AudioReaderView.swift      # Audio-only reader host (no navigator)
+├── ReaderEdgeNavigationState.swift # Edge tap/swipe config shared by the three visual readers
 ├── PageThumbnailExtractor.swift # Image-resource thumbnail extraction
 └── ...
 ```
