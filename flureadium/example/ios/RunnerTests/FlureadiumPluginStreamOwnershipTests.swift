@@ -75,6 +75,33 @@ final class FlureadiumPluginStreamOwnershipTests: XCTestCase {
     bare.sendTextLocator(nil)
   }
 
+  // MARK: - Subscribe-time answer
+
+  func testTextLocatorStreamAnswersANewSubscriberWithTheCurrentPosition() {
+    let json = #"{"href":"page1.jpg","type":"image/jpeg"}"#
+    let stream = TextLocatorEventStream(
+      withName: "text-locator-test", messenger: StubBinaryMessenger(),
+      currentLocatorJson: { json })
+    let sink = CapturingEventStreamSink()
+
+    _ = stream.onListen(withArguments: nil, eventSink: { sink.sendEvent($0) })
+
+    // An image publication emits its only locator for the page before Dart can
+    // subscribe, so without this a CBZ reader looks position-less.
+    XCTAssertEqual(sink.events.map { $0 as? String }, [json])
+  }
+
+  func testTextLocatorStreamSendsNothingWhenNoReaderHasAPosition() {
+    let stream = TextLocatorEventStream(
+      withName: "text-locator-test", messenger: StubBinaryMessenger(),
+      currentLocatorJson: { nil })
+    let sink = CapturingEventStreamSink()
+
+    _ = stream.onListen(withArguments: nil, eventSink: { sink.sendEvent($0) })
+
+    XCTAssertTrue(sink.events.isEmpty, "no reader open means nothing to report")
+  }
+
   // MARK: - Ownership
 
   func testPluginDisposeEndStreamsBothChannels() {
