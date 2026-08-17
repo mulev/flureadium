@@ -114,6 +114,41 @@ void main() {
             'position; Go To Saved would navigate the audiobook to it',
       );
     });
+
+    testWidgets('a fresh subscriber learns the current position', (
+      tester,
+    ) async {
+      await _latchAnEpubLocator(tester);
+
+      // 'Resubscribe Locator' clears the latch and re-runs the app's
+      // cancel-then-listen path — the same 0→1 transition ReadiumReaderWidget
+      // .onReady performs, which is where an image publication's only locator
+      // for the page is already gone by. Nothing navigates after this tap, so
+      // the latch can only refill from the subscribe-time read of the
+      // navigator.
+      await tester.tap(find.text('Resubscribe Locator'));
+      await tester.pump();
+      expect(
+        locatorHref(tester),
+        isEmpty,
+        reason: 'the tap must clear the latch first',
+      );
+
+      final answered = await pumpUntil(
+        tester,
+        () => locatorHref(tester).isNotEmpty,
+        timeout: const Duration(seconds: 15),
+      );
+
+      expect(
+        answered,
+        isTrue,
+        reason:
+            'the stream stayed silent for a subscriber that arrived after the '
+            'reader already had a position',
+      );
+      expect(locatorHref(tester), endsWith('.xhtml'));
+    });
   });
 }
 

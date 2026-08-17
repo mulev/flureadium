@@ -486,6 +486,15 @@ class _ReaderPageState extends State<ReaderPage> {
   /// change reaches native.
   void _remountReader() => setState(() => _readerMountGeneration++);
 
+  /// Drops the latched locator and re-runs the subscription path, so the app
+  /// becomes a fresh subscriber to a reader that is already open and already
+  /// has a position. That is the same cancel-then-listen `onReady` performs
+  /// after a publication swap, made reachable without one.
+  void _resubscribeLocator() {
+    setState(() => _locator = null);
+    _subscribeToChannels();
+  }
+
   Future<void> _setNightPreferences() async {
     await _flureadium.setEPUBPreferences(
       EPUBPreferences(
@@ -1009,6 +1018,10 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _remountReader,
                           child: const Text('Remount Reader'),
+                        ),
+                        TextButton(
+                          onPressed: _resubscribeLocator,
+                          child: const Text('Resubscribe Locator'),
                         ),
                       ],
                     ),
