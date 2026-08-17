@@ -44,12 +44,24 @@ its latest value for a first subscriber: a status describes where the reader
 *is*, while a locator describes a page turn that already happened. Replaying
 one would move a reader that never went there.
 
-The consequence for a host app: subscribe from
+A new subscriber still learns where the reader is. On subscribe the stream asks
+the mounted navigator for its position and sends that one locator, if there is
+one to send. That is a live read rather than a replay: it says where the reader
+is now, so it can never point at a page the reader has already left. With no
+publication open, or no reader view mounted, nothing is sent and the stream
+stays quiet until the first page change.
+
+For a host app the rule is unchanged: subscribe from
 [`ReadiumReaderWidget.onReady`](reader-widget.md), which fires once per
-platform view — including after a publication swap — and treat the stream as
-silent until the reader reports its first page. Do not carry a locator across
-a swap; an href from the publication that just closed does not resolve in the
-one replacing it.
+platform view, including after a publication swap. What changed is that the
+stream is no longer silent until the first page turn. Image publications (CBZ,
+DIVINA) are the case that needed it. They report one locator per page, and the
+first one is gone before the widget is ready.
+
+Still do not carry a locator across a publication swap. An href from the book
+that just closed does not resolve in the one replacing it, and you no longer
+need it to: the incoming reader answers with its own position when you
+resubscribe.
 
 ### Debouncing
 
