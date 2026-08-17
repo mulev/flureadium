@@ -60,7 +60,7 @@ extension Decoration {
   init(fromJson jsonString: String) throws {
     let jsonMap: Dictionary<String, String>?
     do {
-      jsonMap = try JSONSerialization.jsonObject(with: jsonString.data(using: .utf8)!) as? Dictionary<String, String>
+      jsonMap = try JSONSerialization.jsonObject(with: Data(jsonString.utf8)) as? Dictionary<String, String>
     } catch {
       print("Invalid Decoration object: \(error)")
       throw JSONError.parsing(Self.self)
@@ -71,19 +71,16 @@ extension Decoration {
   init(fromMap jsonMap: Dictionary<String, String>?) throws {
     guard let jsonObject = jsonMap,
           let idString = jsonObject["id"],
-          let locator = try Locator.init(jsonString: jsonObject["locator"]!),
+          let locatorJson = jsonObject["locator"],
+          let locator = try Locator(jsonString: locatorJson),
           let styleStr = jsonObject["style"],
           let tintHexStr = jsonObject["tint"],
           let tintColor = Color(hex: tintHexStr),
-          let style = try? Decoration.Style.init(withStyle: styleStr, tintColor: tintColor) else {
+          let style = try? Decoration.Style(withStyle: styleStr, tintColor: tintColor) else {
       print("Decoration parse error: `id`, `locator`, `style` and `tint` required")
       throw JSONError.parsing(Self.self)
     }
-    self.init(
-      id: idString as Id,
-      locator: locator,
-      style: style,
-    )
+    self.init(id: idString, locator: locator, style: style)
   }
 }
 

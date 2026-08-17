@@ -53,6 +53,7 @@
 		DDBBCC0011223344AABBCC0C /* ReaderViewKindRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC0B /* ReaderViewKindRoutingTests.swift */; };
 		DDBBCC0011223344AABBCC0E /* FlureadiumPluginStreamOwnershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC0D /* FlureadiumPluginStreamOwnershipTests.swift */; };
 		DDBBCC0011223344AABBCC10 /* ReaderTapObserverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC0F /* ReaderTapObserverTests.swift */; };
+		DDBBCC0011223344AABBCC12 /* FlureadiumPluginDecorationStyleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC11 /* FlureadiumPluginDecorationStyleTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		CA90AC1234567890ABCDEF22 /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA90AC1234567890ABCDEF21 /* CarPlaySceneDelegate.swift */; };
@@ -124,6 +125,7 @@
 		DDBBCC0011223344AABBCC09 /* AudioReaderViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioReaderViewTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC0B /* ReaderViewKindRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewKindRoutingTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC0D /* FlureadiumPluginStreamOwnershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginStreamOwnershipTests.swift; sourceTree = "<group>"; };
+		DDBBCC0011223344AABBCC11 /* FlureadiumPluginDecorationStyleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginDecorationStyleTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC0F /* ReaderTapObserverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderTapObserverTests.swift; sourceTree = "<group>"; };
 		E1F2A3B4C5D6E7F800008001 /* EpubNavigatorConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubNavigatorConfigurationTests.swift; sourceTree = "<group>"; };
 		E1F2A3B4C5D6E7F800009001 /* EpubUserScriptsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubUserScriptsTests.swift; sourceTree = "<group>"; };
@@ -237,6 +239,7 @@
 				DDBBCC0011223344AABBCC09 /* AudioReaderViewTests.swift */,
 				DDBBCC0011223344AABBCC0B /* ReaderViewKindRoutingTests.swift */,
 				DDBBCC0011223344AABBCC0D /* FlureadiumPluginStreamOwnershipTests.swift */,
+				DDBBCC0011223344AABBCC11 /* FlureadiumPluginDecorationStyleTests.swift */,
 				DDBBCC0011223344AABBCC0F /* ReaderTapObserverTests.swift */,
 			);
 			path = RunnerTests;
@@ -559,6 +562,7 @@
 				DDBBCC0011223344AABBCC0A /* AudioReaderViewTests.swift in Sources */,
 				DDBBCC0011223344AABBCC0C /* ReaderViewKindRoutingTests.swift in Sources */,
 				DDBBCC0011223344AABBCC0E /* FlureadiumPluginStreamOwnershipTests.swift in Sources */,
+				DDBBCC0011223344AABBCC12 /* FlureadiumPluginDecorationStyleTests.swift in Sources */,
 				DDBBCC0011223344AABBCC10 /* ReaderTapObserverTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -368,14 +368,23 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
     case "setDecorationStyle":
       let args = call.arguments as! [Any?]
 
-      if let uttDecorationMap = args[0] as? Dictionary<String, String> {
-        ttsUtteranceDecorationStyle = try! Decoration.Style(fromMap: uttDecorationMap)
-      }
+      do {
+        if let uttDecorationMap = args[0] as? Dictionary<String, String> {
+          ttsUtteranceDecorationStyle = try Decoration.Style(fromMap: uttDecorationMap)
+        }
 
-      if let rangeDecorationMap = args[1] as? Dictionary<String, String> {
-        ttsRangeDecorationStyle = try! Decoration.Style(fromMap: rangeDecorationMap)
+        if let rangeDecorationMap = args[1] as? Dictionary<String, String> {
+          ttsRangeDecorationStyle = try Decoration.Style(fromMap: rangeDecorationMap)
+        }
+        result(nil)
+      } catch {
+        // A style map missing `style` or `tint` is a wrong payload, not a reason
+        // to take the host process down. Both styles are optional to begin with.
+        result(FlutterError.init(
+          code: "InvalidArgument",
+          message: "setDecorationStyle: unusable decoration style: \(error)",
+          details: nil))
       }
-      result(nil)
     case "ttsSetPreferences":
       let args = call.arguments as? Dictionary<String, Any> ?? [:]
       guard let ttsNavigator = self.timebasedNavigator as? FlutterTTSNavigator else {

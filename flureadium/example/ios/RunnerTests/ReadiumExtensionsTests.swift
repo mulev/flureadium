@@ -283,3 +283,42 @@ final class TTSVoiceQualityExtensionTests: XCTestCase {
         XCTAssertEqual(TTSVoice.Quality.higher.toFlutterString, "high")
     }
 }
+
+// MARK: - Decoration Extension Tests
+
+final class DecorationExtensionTests: XCTestCase {
+
+    /// A locator JSON string Readium accepts, built by round-tripping a `Locator`.
+    private func locatorJson() -> String {
+        Locator(href: URL(string: "ch1.html")!, mediaType: .html).jsonString!
+    }
+
+    func testFromMapThrowsWhenLocatorKeyIsMissing() {
+        // This payload used to force-unwrap a missing key and kill the process,
+        // which no `try?` at the call site can catch.
+        XCTAssertThrowsError(
+            try Decoration(fromMap: ["id": "x", "style": "highlight", "tint": "#ffff00"]))
+    }
+
+    func testFromMapThrowsWhenLocatorIsNotValidJson() {
+        XCTAssertThrowsError(
+            try Decoration(fromMap: [
+                "id": "x", "locator": "not a locator", "style": "highlight", "tint": "#ffff00",
+            ]))
+    }
+
+    func testFromMapDecodesACompletePayload() {
+        // Guards the guard: rejecting bad payloads must not reject good ones.
+        let decoration = try? Decoration(fromMap: [
+            "id": "x", "locator": locatorJson(), "style": "highlight", "tint": "#ffff00",
+        ])
+
+        XCTAssertEqual(decoration?.id, "x")
+        XCTAssertEqual(decoration?.locator.href.string, "ch1.html")
+        XCTAssertEqual(decoration?.style.id, Decoration.Style.Id.highlight)
+    }
+
+    func testStyleFromMapThrowsWhenTintIsMissing() {
+        XCTAssertThrowsError(try Decoration.Style(fromMap: ["style": "highlight"]))
+    }
+}
