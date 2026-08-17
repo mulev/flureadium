@@ -9,7 +9,7 @@ Integration tests run the example app on a real device or simulator and assert w
 | `all_tests.dart` | Android, iOS | The only mobile runner — imports every file below into a single compilation unit. CI narrows it with `--exclude-tags`, never with a second import list |
 | `all_tests_web.dart` | Web | Web-specific runner — only includes tests that pass on web (see note below) |
 | `launch_test.dart` | All | App starts, MaterialApp renders |
-| `epub_test.dart` | Android, iOS | EPUB auto-opens, navigation/prefs/highlight don't crash, TTS sentence nav buttons appear, close removes widget |
+| `epub_test.dart` | Android, iOS | Each case opens its own EPUB, navigation/prefs/highlight don't crash, TTS sentence nav buttons appear, close removes widget |
 | `text_locator_test.dart` | Android, iOS | A page turn is pushed on the text-locator stream, the stream follows a publication swap, and a swap to audio leaves no locator behind |
 | `audiobook_host_test.dart` | Android, iOS | An audio-only publication mounts and reports `ready` from a host with no navigator. Split from `audiobook_test.dart` because it needs no player, so it runs where audio does not work |
 | `audiobook_test.dart` | Android, iOS (`native`) | Audiobook opens, play changes button label, seek doesn't crash, pause/resume button labels cycle correctly, playing the last track to its end surfaces `TimebasedState.ended` |
@@ -222,6 +222,39 @@ Conventions:
   TTS, audio, `ended-seen`, and the audio-error latch in its `setState`, so a
   reopen gives each test a clean slate.
 
+### Every suite opens the publication it asserts about
+
+`app.main()` followed by a wait for the reader widget does not open anything.
+`main()` is `runApp(ExampleApp(...))`, and `runApp` with an unchanged widget
+type reuses the existing element, so `_ReaderPageState.initState` never runs a
+second time. `initState` holds the app's only automatic open. The reader that
+the wait finds is the one the previous suite left mounted, still carrying that
+publication's `reader-status` and locator latches.
+
+Run such a file on its own and it looks correct: nothing is on screen yet, so
+the boot is real and the fixture is the right one. Run it inside
+`all_tests.dart` and the same code asserts against whichever book ran before
+it. That is what happened to `epub_test.dart`'s long-press case on iOS. Its
+wait for `ready` was answered by the audiobook group's latched `ready`, the
+EPUB view's own `init` reported `loading` a moment later, and the assertion
+after the long press read `loading` (flureadium-5ki).
+
+So every case opens its own fixture, with `openAfterColdBoot: true` so the
+`Open …` tap happens on the cold-boot arm too:
+
+```dart
+await ensureAppShowing(
+  tester,
+  initialAsset: 'assets/pubs/moby_dick.epub',
+  reopenButton: 'Open EPUB',
+  openAfterColdBoot: true,
+);
+```
+
+The open runs `_resetPublicationLatches`, so `reader-status`, the locator and
+the saved locator all start empty. A test then measures the reader it opened
+rather than a value it inherited.
+
 ### Audiobooks: boot the audiobook directly
 
 On Android an audiobook mounts the reader widget as an audio-only host: no visual
@@ -257,8 +290,8 @@ run. In `all_tests.dart` the launch group boots first and the audiobook group
 takes the reuse path, and Android CI excludes the group by tag — so no CI leg
 exercises the audiobook boot (`flureadium-p1q`).
 
-This is applied to all four group test files (`audiobook`, `cbz`, `divina`,
-`epub_tts`) — each boots once per group and reuses the running app between tests.
+The same pattern covers `audiobook`, `cbz`, `divina`, `epub_tts`, `text_locator`
+and `epub` — each group boots once and reuses the running app between tests.
 
 ## Prerequisites
 
