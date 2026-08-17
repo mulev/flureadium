@@ -209,6 +209,10 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     val pdfCurrentLocator: Locator?
         get() = pdfNavigator?.currentLocator?.value
 
+    /** The position the active reader is on right now, whatever kind it is. */
+    val currentTextLocator: Locator?
+        get() = currentReaderWidget?.currentKindLocator
+
     private var _pdfPreferences: FlutterPdfPreferences = FlutterPdfPreferences()
 
     /** Current PDF preferences (defaults if PDF hasn't been enabled yet). */
@@ -267,7 +271,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         errorEventChannel = ErrorEventChannel(messenger)
 
         textLocatorEventChannel?.dispose()
-        textLocatorEventChannel = TextLocatorEventChannel(messenger)
+        textLocatorEventChannel = TextLocatorEventChannel(messenger) { currentTextLocator }
 
         // store weak ref only
         (activity as? SavedStateRegistryOwner)?.savedStateRegistry?.let {

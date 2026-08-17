@@ -78,6 +78,18 @@ class ReadiumReaderWidget(
     private val isAudio: Boolean = readerKind == PublicationReaderKind.AUDIO
     private val isEpub: Boolean = readerKind == PublicationReaderKind.EPUB
 
+    /**
+     * The navigator's current position, without the EPUB fragment enrichment
+     * `getCurrentLocator` does. Deliberately not the same value: enrichment is
+     * `suspend`, and a subscribe-time answer cannot wait on the WebView.
+     */
+    val currentKindLocator: Locator?
+        get() = when (readerKind) {
+            PublicationReaderKind.PDF -> ReadiumReader.pdfCurrentLocator
+            PublicationReaderKind.IMAGE -> ReadiumReader.imageCurrentLocator
+            else -> ReadiumReader.epubCurrentLocator
+        }
+
     private var storedNavigationConfig: FlutterNavigationConfig? = null
 
     override fun getView(): View {

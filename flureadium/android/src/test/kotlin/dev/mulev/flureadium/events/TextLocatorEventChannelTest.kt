@@ -26,8 +26,15 @@ import kotlin.test.assertTrue
  *
  * A locator is a log, not a state: it describes a page turn that already
  * happened. Replaying one into a later subscriber would move a reader that
- * never went there, so nothing is buffered — and that difference from
- * ReaderStatusEventChannel is asserted here so nobody "fixes" it by symmetry.
+ * never went there, so nothing is buffered and nothing is replayed — a locator
+ * sent while no one listens is gone, and a delivered one never comes back.
+ * That difference from ReaderStatusEventChannel is asserted here so nobody
+ * "fixes" it by symmetry.
+ *
+ * A new subscriber is still told where the reader is: the channel asks the
+ * navigator for its position at subscribe time. That is a live read, not a
+ * replay — it describes where the reader is now, so it can never move a reader
+ * to a page it left.
  *
  * Robolectric is needed because Locator.toJSON builds a JSONObject.
  */
@@ -123,7 +130,33 @@ internal class TextLocatorEventChannelTest {
         )
     }
 
-    private fun newChannel() = TextLocatorEventChannel(mock(BinaryMessenger::class.java))
+    @Test
+    fun answersANewSubscriberWithTheCurrentPosition() {
+        val channel = newChannel { locator("page1.jpg") }
+        val sink = RecordingSink()
+
+        channel.onListen(null, sink)
+
+        // An image publication emits its only locator for the page before Dart
+        // can subscribe, so without this a CBZ reader looks position-less.
+        assertEquals(
+            listOf("page1.jpg"),
+            sink.events.map { JSONObject(it as String).getString("href") }
+        )
+    }
+
+    @Test
+    fun sendsNothingWhenNoReaderHasAPosition() {
+        val channel = newChannel { null }
+        val sink = RecordingSink()
+
+        channel.onListen(null, sink)
+
+        assertEquals(emptyList(), sink.events, "no reader open means nothing to report")
+    }
+
+    private fun newChannel(currentLocator: () -> Locator? = { null }) =
+        TextLocatorEventChannel(mock(BinaryMessenger::class.java), currentLocator)
 
     private fun locator(href: String) = Locator(
         href = org.readium.r2.shared.util.Url(href)!!,
