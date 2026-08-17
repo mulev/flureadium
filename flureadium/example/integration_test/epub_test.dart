@@ -3,19 +3,10 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:flureadium_example/main.dart' as app;
-
+import 'helpers/ensure_app_showing.dart';
 import 'helpers/locator_latch.dart';
 import 'helpers/pump_until.dart';
 import 'helpers/reader_status.dart';
-
-Future<void> _waitForReader(WidgetTester tester) async {
-  await pumpUntil(
-    tester,
-    () => find.byType(ReadiumReaderWidget).evaluate().isNotEmpty,
-    timeout: const Duration(seconds: 15),
-  );
-}
 
 /// Pumps until [condition] holds, failing with [reason] when it never does.
 ///
@@ -31,67 +22,62 @@ Future<void> _expectEventually(
   expect(satisfied, isTrue, reason: reason);
 }
 
-void _navigationTests(String assetLabel, String Function() openButtonLabel) {
+void _navigationTests(String assetLabel, String asset, String reopenButton) {
   group('navigation ($assetLabel)', () {
-    setUp(() async {});
+    // Every test opens this group's own book: `openAfterColdBoot` taps the
+    // reopen button on the cold-boot arm too, so the first test to run gets
+    // this fixture instead of whatever a previous suite left mounted.
+    Future<void> showFixture(WidgetTester tester) => ensureAppShowing(
+      tester,
+      initialAsset: asset,
+      reopenButton: reopenButton,
+      openAfterColdBoot: true,
+    );
 
     tearDown(() async {
       await Flureadium().closePublication();
     });
 
     testWidgets('opens and shows reader widget', (tester) async {
-      app.main();
-      await _waitForReader(tester);
-      if (openButtonLabel() != 'default') {
-        await tester.tap(find.text(openButtonLabel()));
-        await _waitForReader(tester);
-      }
+      await showFixture(tester);
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
     });
 
     testWidgets('the load cover tracks reader status', (tester) async {
-      app.main();
-      await _waitForReader(tester);
-      if (openButtonLabel() != 'default') {
-        await tester.tap(find.text(openButtonLabel()));
-        await _waitForReader(tester);
-      }
+      await showFixture(tester);
 
       final cover = find.byKey(const Key('reader-loading-cover'));
 
-      // _waitForReader only asks whether a reader is mounted, and for the
-      // non-default groups the previous publication's reader still is, carrying
-      // its 'ready'. Wait for the open to reset the status or the first sample
-      // below would end the test before the load it exists to watch.
-      final loading = await pumpUntil(
+      // ensureAppShowing returns on the open-generation bump, which lands in
+      // the same setState that clears _readerStatus — so this wait is a guard,
+      // not a delay: were a 'ready' still latched, the sampling loop below
+      // would return on it and never watch the load it exists to watch.
+      await _expectEventually(
         tester,
         () => readerStatus(tester) != 'ready',
-        timeout: const Duration(seconds: 15),
+        reason: 'the open never reset the reader status',
       );
-      expect(loading, isTrue, reason: 'the open never reset the reader status');
 
       // Sampled on every pump: covered exactly while the reader is loading.
       // 'error' and 'closed' are terminal, so the cover is gone there too.
-      final becameReady = await pumpUntil(tester, () {
-        final status = readerStatus(tester);
-        expect(
-          cover.evaluate().isNotEmpty,
-          status.isEmpty || status == 'loading',
-          reason: 'reader status was "$status"',
-        );
-        return status == 'ready';
-      }, timeout: const Duration(seconds: 30));
-
-      expect(becameReady, isTrue, reason: 'reader never reported ready');
+      await _expectEventually(
+        tester,
+        () {
+          final status = readerStatus(tester);
+          expect(
+            cover.evaluate().isNotEmpty,
+            status.isEmpty || status == 'loading',
+            reason: 'reader status was "$status"',
+          );
+          return status == 'ready';
+        },
+        reason: 'reader never reported ready',
+        timeout: const Duration(seconds: 30),
+      );
     });
 
     testWidgets('navigate left and right', (tester) async {
-      app.main();
-      await _waitForReader(tester);
-      if (openButtonLabel() != 'default') {
-        await tester.tap(find.text(openButtonLabel()));
-        await _waitForReader(tester);
-      }
+      await showFixture(tester);
 
       await _expectEventually(
         tester,
@@ -118,12 +104,7 @@ void _navigationTests(String assetLabel, String Function() openButtonLabel) {
     });
 
     testWidgets('DartSkip+ advances the reader', (tester) async {
-      app.main();
-      await _waitForReader(tester);
-      if (openButtonLabel() != 'default') {
-        await tester.tap(find.text(openButtonLabel()));
-        await _waitForReader(tester);
-      }
+      await showFixture(tester);
 
       await _expectEventually(
         tester,
@@ -141,12 +122,7 @@ void _navigationTests(String assetLabel, String Function() openButtonLabel) {
     });
 
     testWidgets('DartSkip- returns the reader', (tester) async {
-      app.main();
-      await _waitForReader(tester);
-      if (openButtonLabel() != 'default') {
-        await tester.tap(find.text(openButtonLabel()));
-        await _waitForReader(tester);
-      }
+      await showFixture(tester);
 
       await _expectEventually(
         tester,
@@ -178,23 +154,28 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('EPUB', () {
+    // As in _navigationTests: every test opens its own EPUB, so no case
+    // asserts against a publication another suite left mounted.
+    Future<void> showEpub(WidgetTester tester) => ensureAppShowing(
+      tester,
+      initialAsset: 'assets/pubs/moby_dick.epub',
+      reopenButton: 'Open EPUB',
+      openAfterColdBoot: true,
+    );
+
     tearDown(() async {
       await Flureadium().closePublication();
     });
 
-    testWidgets('app auto-opens EPUB and shows reader widget', (tester) async {
-      app.main();
-      // pumpAndSettle can hang when a PlatformView (WebView) keeps scheduling
-      // frames. Poll for the reader widget with bounded pump loops instead.
-      await _waitForReader(tester);
+    testWidgets('opens the EPUB and shows the reader widget', (tester) async {
+      await showEpub(tester);
       expect(find.byType(ReadiumReaderWidget), findsOneWidget);
     });
 
     testWidgets('long press leaves the reader ready and error-free', (
       tester,
     ) async {
-      app.main();
-      await _waitForReader(tester);
+      await showEpub(tester);
 
       await _expectEventually(
         tester,
@@ -217,8 +198,7 @@ void main() {
     });
 
     testWidgets('Go To Saved returns to the saved position', (tester) async {
-      app.main();
-      await _waitForReader(tester);
+      await showEpub(tester);
 
       await _expectEventually(
         tester,
@@ -250,8 +230,7 @@ void main() {
     testWidgets('applying night preferences keeps status and position', (
       tester,
     ) async {
-      app.main();
-      await _waitForReader(tester);
+      await showEpub(tester);
 
       await _expectEventually(
         tester,
@@ -270,8 +249,7 @@ void main() {
     });
 
     testWidgets('apply decoration to current locator', (tester) async {
-      app.main();
-      await _waitForReader(tester);
+      await showEpub(tester);
       await tester.tap(find.text('Highlight'));
       for (var i = 0; i < 3; i++) {
         await tester.pump(const Duration(seconds: 1));
@@ -292,8 +270,7 @@ void main() {
         onDone: () => streamClosed = true,
       );
 
-      app.main();
-      await _waitForReader(tester);
+      await showEpub(tester);
 
       // Dispose the reader — the old bug end-streamed the subscription here.
       await tester.tap(find.text('Close'));
@@ -309,8 +286,7 @@ void main() {
     });
 
     testWidgets('close publication removes reader widget', (tester) async {
-      app.main();
-      await _waitForReader(tester);
+      await showEpub(tester);
       await tester.tap(find.text('Close'));
       // After close, _publication is null and CircularProgressIndicator keeps
       // animating — pumpAndSettle would never settle. Poll instead: the widget
@@ -326,11 +302,10 @@ void main() {
     testWidgets('Load Only loads a publication without opening a reader', (
       tester,
     ) async {
-      app.main();
-      await _waitForReader(tester);
+      await showEpub(tester);
 
       // load must not mount a reader, and that is only observable from a
-      // state where none is mounted — so close the auto-opened one first.
+      // state where none is mounted — so close the reader opened above first.
       await tester.tap(find.text('Close'));
       await pumpUntil(
         tester,
@@ -359,6 +334,10 @@ void main() {
   // The hierarchical fixture has Part I → [Ch1, Ch2, Ch3] and
   // Part II → Section 1 → [Ch4, Ch5], verifying that flattenToc-based skip
   // navigation works with multi-level TOC structures.
-  _navigationTests('moby_dick', () => 'default');
-  _navigationTests('hierarchical_toc', () => 'Open Hierarchical');
+  _navigationTests('moby_dick', 'assets/pubs/moby_dick.epub', 'Open EPUB');
+  _navigationTests(
+    'hierarchical_toc',
+    'assets/pubs/hierarchical_toc.epub',
+    'Open Hierarchical',
+  );
 }
