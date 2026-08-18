@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flureadium/reader_channel.dart';
 import 'package:flureadium/src/reader/toc_skip_navigation_mixin.dart';
 import 'package:flureadium_platform_interface/flureadium_platform_interface.dart';
@@ -124,6 +126,70 @@ void main() {
       );
 
       expect(channel.goCallLog, isEmpty);
+    });
+
+    test(
+      'skipToNextChapter waits for the reader when the cache is cold',
+      () async {
+        final ready = Completer<Locator>();
+
+        final skip = navigator.skipToNextChapter(
+          publication: _hierarchicalPublication(),
+          currentLocator: null,
+          channel: channel,
+          whenReady: ready.future,
+        );
+
+        // The widget's cache is filled by onPageChanged, which lands after the
+        // host's subscribe-time locator — the window this fix closes.
+        expect(channel.goCallLog, isEmpty);
+
+        ready.complete(_at('ch1.xhtml'));
+        await skip;
+
+        expect(channel.goCallLog, hasLength(1));
+        expect(channel.goCallLog.single.locator.href, 'ch2.xhtml');
+      },
+    );
+
+    test(
+      'skipToNextChapter returns quietly when the view was released',
+      () async {
+        final ready = Completer<Locator>();
+
+        final skip = navigator.skipToNextChapter(
+          publication: _hierarchicalPublication(),
+          currentLocator: null,
+          channel: channel,
+          whenReady: ready.future,
+        );
+        // What _teardownCurrentView does to an unsettled completer on a
+        // publication swap (reader_widget.dart).
+        ready.completeError(
+          ReadiumError(
+            'Reader view was released before it reported a locator.',
+          ),
+        );
+
+        await skip;
+
+        expect(channel.goCallLog, isEmpty);
+      },
+    );
+
+    test('skipToNextChapter does not wait when the cache is warm', () async {
+      // Never completes: if the skip awaited it, this test would time out.
+      final ready = Completer<Locator>();
+
+      await navigator.skipToNextChapter(
+        publication: _hierarchicalPublication(),
+        currentLocator: _at('ch1.xhtml'),
+        channel: channel,
+        whenReady: ready.future,
+      );
+
+      expect(channel.goCallLog, hasLength(1));
+      expect(channel.goCallLog.single.locator.href, 'ch2.xhtml');
     });
 
     test('skipToNextChapter moves to the next flattened TOC entry', () async {

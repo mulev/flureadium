@@ -214,6 +214,7 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
     publication: widget.publication,
     currentLocator: _currentLocator,
     channel: _channel,
+    whenReady: _isReadyCompleter.future,
   );
 
   @override
@@ -222,6 +223,7 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
         publication: widget.publication,
         currentLocator: _currentLocator,
         channel: _channel,
+        whenReady: _isReadyCompleter.future,
       );
 
   @override
