@@ -48,6 +48,24 @@ final class FlureadiumPluginStreamOwnershipTests: XCTestCase {
     super.tearDown()
   }
 
+  /// Polls rather than sleeping a fixed amount, so a loaded machine costs time
+  /// instead of a failure — docs/05-testing/ios-unit-tests.md, "Async tests".
+  @MainActor
+  private func poll(until condition: () -> Bool) async {
+    for _ in 0..<200 {
+      if condition() { return }
+      try? await Task.sleep(nanoseconds: 5_000_000)
+    }
+  }
+
+  /// A stream on a stub messenger; `named` reaches the debug log, which is how
+  /// two live streams in one test are told apart.
+  @MainActor
+  private func makeStream(named name: String, reporting json: String?) -> TextLocatorEventStream {
+    return TextLocatorEventStream(
+      withName: name, messenger: StubBinaryMessenger(), currentLocatorJson: { json })
+  }
+
   // MARK: - Send paths
 
   func testSendReaderStatusRoutesToTheOwnedStream() {
@@ -77,29 +95,60 @@ final class FlureadiumPluginStreamOwnershipTests: XCTestCase {
 
   // MARK: - Subscribe-time answer
 
-  func testTextLocatorStreamAnswersANewSubscriberWithTheCurrentPosition() {
+  @MainActor
+  func testTextLocatorStreamAnswersANewSubscriberWithTheCurrentPosition() async {
     let json = #"{"href":"page1.jpg","type":"image/jpeg"}"#
-    let stream = TextLocatorEventStream(
-      withName: "text-locator-test", messenger: StubBinaryMessenger(),
-      currentLocatorJson: { json })
+    let stream = makeStream(named: "text-locator-test", reporting: json)
     let sink = CapturingEventStreamSink()
 
     _ = stream.onListen(withArguments: nil, eventSink: { sink.sendEvent($0) })
+
+    // The provider reads a main-actor navigator, so onListen must hand it to a
+    // hop and return. Reading it inline is what failed to compile.
+    XCTAssertTrue(sink.events.isEmpty, "the provider must not be read inside onListen")
 
     // An image publication emits its only locator for the page before Dart can
     // subscribe, so without this a CBZ reader looks position-less.
+    await poll { sink.events.count == 1 }
     XCTAssertEqual(sink.events.map { $0 as? String }, [json])
   }
 
-  func testTextLocatorStreamSendsNothingWhenNoReaderHasAPosition() {
-    let stream = TextLocatorEventStream(
-      withName: "text-locator-test", messenger: StubBinaryMessenger(),
-      currentLocatorJson: { nil })
+  @MainActor
+  func testTextLocatorStreamSendsNothingWhenNoReaderHasAPosition() async {
+    let silentSink = CapturingEventStreamSink()
+    let silent = makeStream(named: "text-locator-test", reporting: nil)
+    _ = silent.onListen(withArguments: nil, eventSink: { silentSink.sendEvent($0) })
+
+    // Control: an identical stream with a position must deliver
+    // (docs/05-testing/ios-unit-tests.md, "Negative assertions need a positive control").
+    let controlSink = CapturingEventStreamSink()
+    let control = makeStream(named: "text-locator-control", reporting: #"{"href":"page1.jpg"}"#)
+    _ = control.onListen(withArguments: nil, eventSink: { controlSink.sendEvent($0) })
+
+    await poll { !controlSink.events.isEmpty }
+    XCTAssertFalse(controlSink.events.isEmpty, "control never delivered — the assertion below proves nothing")
+    XCTAssertTrue(silentSink.events.isEmpty, "no reader open means nothing to report")
+  }
+
+  /// The hop turns delivery into a later turn, so a cancel can now land in
+  /// between. `onCancel` clears the sink, so the hop must find nothing to send.
+  @MainActor
+  func testTextLocatorStreamSendsNothingWhenTheSubscriberLeftBeforeTheHopLanded() async {
     let sink = CapturingEventStreamSink()
+    let stream = makeStream(named: "text-locator-test", reporting: #"{"href":"page1.jpg"}"#)
 
     _ = stream.onListen(withArguments: nil, eventSink: { sink.sendEvent($0) })
+    _ = stream.onCancel(withArguments: nil)
 
-    XCTAssertTrue(sink.events.isEmpty, "no reader open means nothing to report")
+    // Control: a live subscriber on the same class must deliver, so this case
+    // cannot pass on a stream that stopped answering altogether.
+    let liveSink = CapturingEventStreamSink()
+    let live = makeStream(named: "text-locator-control", reporting: #"{"href":"page1.jpg"}"#)
+    _ = live.onListen(withArguments: nil, eventSink: { liveSink.sendEvent($0) })
+
+    await poll { !liveSink.events.isEmpty }
+    XCTAssertFalse(liveSink.events.isEmpty, "control never delivered — the assertion below proves nothing")
+    XCTAssertTrue(sink.events.isEmpty, "a cancelled subscriber must not be sent to")
   }
 
   // MARK: - Ownership
