@@ -340,8 +340,10 @@ enough for the caller: a closure *literal* passed to a `@MainActor` parameter is
 so the call site needs no annotation of its own. `MainActor.assumeIsolated` would skip the hop but
 is iOS 17+, and the plugin targets 13.4 (`ios/flureadium/Package.swift`).
 
-`TextLocatorEventStream` (the provider handed to it by `FlureadiumPlugin.register(with:)`) and
-`EpubLocatorReporter` (`resolveFragments`, `sendTextLocator`, `isDisposed`) are the two examples.
+`TextLocatorEventStream` (the provider handed to it by `FlureadiumPlugin.register(with:)`),
+`EpubLocatorReporter` (`resolveFragments`, `sendTextLocator`, `isDisposed`) and
+`FlutterAudioNavigator`'s two playback-failure observers (`registerPlaybackFailureObservers`, whose
+`NotificationCenter` closures call the main-actor-isolated `handlePlaybackFailure`) are the examples.
 The cost is timing: the answer lands on the next main-actor turn, so a test for it polls instead of
 asserting inline.
 

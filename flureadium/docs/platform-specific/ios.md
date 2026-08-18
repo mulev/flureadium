@@ -305,6 +305,12 @@ ways:
   also registers best-effort observers for `AVPlayerItemFailedToPlayToEndTime`
   and `AVPlayerItemNewErrorLogEntry` (`object: nil`) over its lifetime, removed
   in `dispose()`. Both route through the same `handlePlaybackFailure` seam.
+  Each observer closure hands off with `Task { @MainActor in … }`, because the
+  closure `NotificationCenter` calls is nonisolated while `handlePlaybackFailure`
+  is main-actor isolated through the `AudioNavigatorDelegate` conformance. A
+  failure therefore reaches the listener one main-actor hop after the notification
+  posts — see [the hop rule](../architecture/overview.md#ios-a-stored-closure-that-reads-a-navigator-is-mainactor)
+  for why a hop rather than `MainActor.assumeIsolated`.
 
 **Limitation:** the container wrapper catches resource-load failures — a track
 that fails to load and never starts. It does not catch **post-load** problems:
