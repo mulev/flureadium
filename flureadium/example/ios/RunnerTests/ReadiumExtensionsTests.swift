@@ -288,30 +288,33 @@ final class TTSVoiceQualityExtensionTests: XCTestCase {
 
 final class DecorationExtensionTests: XCTestCase {
 
-    /// A locator JSON string Readium accepts, built by round-tripping a `Locator`.
-    private func locatorJson() -> String {
-        Locator(href: URL(string: "ch1.html")!, mediaType: .html).jsonString!
+    /// A locator in the shape Dart sends inside a decoration — `Locator.toJson()`
+    /// as the method channel delivers it.
+    private func locatorMap() -> [String: Any] {
+        Locator(href: URL(string: "ch1.html")!, mediaType: .html).json
     }
 
-    func testFromMapThrowsWhenLocatorKeyIsMissing() {
+    /// The valid style entry, so each test varies only the field under test.
+    private let styleMap: [String: Any] = ["style": "highlight", "tint": "#ffff00"]
+
+    func testFromDartMapThrowsWhenLocatorKeyIsMissing() {
         // This payload used to force-unwrap a missing key and kill the process,
         // which no `try?` at the call site can catch.
-        XCTAssertThrowsError(
-            try Decoration(fromMap: ["id": "x", "style": "highlight", "tint": "#ffff00"]))
+        XCTAssertThrowsError(try Decoration(fromDartMap: ["id": "x", "style": styleMap]))
     }
 
-    func testFromMapThrowsWhenLocatorIsNotValidJson() {
+    func testFromDartMapThrowsWhenLocatorIsNotValidJson() {
+        // A locator sent as a string is the pre-Phase-2 wire format; Readium's
+        // `Locator(json:)` rejects anything that is not a dictionary.
         XCTAssertThrowsError(
-            try Decoration(fromMap: [
-                "id": "x", "locator": "not a locator", "style": "highlight", "tint": "#ffff00",
-            ]))
+            try Decoration(
+                fromDartMap: ["id": "x", "locator": "not a locator", "style": styleMap]))
     }
 
-    func testFromMapDecodesACompletePayload() {
+    func testFromDartMapDecodesACompletePayload() {
         // Guards the guard: rejecting bad payloads must not reject good ones.
-        let decoration = try? Decoration(fromMap: [
-            "id": "x", "locator": locatorJson(), "style": "highlight", "tint": "#ffff00",
-        ])
+        let decoration = try? Decoration(
+            fromDartMap: ["id": "x", "locator": locatorMap(), "style": styleMap])
 
         XCTAssertEqual(decoration?.id, "x")
         XCTAssertEqual(decoration?.locator.href.string, "ch1.html")

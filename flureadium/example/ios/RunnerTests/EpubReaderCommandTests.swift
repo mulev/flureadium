@@ -25,10 +25,15 @@ final class EpubReaderCommandTests: XCTestCase {
       .jsonString!
   }
 
-  /// A decoration JSON string in the shape `Decoration(fromJson:)` expects.
-  private func decorationJson(id: String = "d1", href: String = "ch1.html") -> String {
-    let map = ["id": id, "locator": locatorJson(href), "style": "highlight", "tint": "#FF9800"]
-    return String(data: try! JSONSerialization.data(withJSONObject: map), encoding: .utf8)!
+  /// A locator in the shape Dart sends inside a decoration — `Locator.toJson()`
+  /// as the method channel delivers it.
+  private func locatorMap(_ href: String = "ch1.html") -> [String: Any] {
+    Locator(href: URL(string: href)!, mediaType: .html).json
+  }
+
+  /// A decoration in the canonical wire shape `Decoration(fromDartMap:)` expects.
+  private func decorationMap(id: String = "d1", href: String = "ch1.html") -> [String: Any] {
+    ["id": id, "locator": locatorMap(href), "style": ["style": "highlight", "tint": "#FF9800"]]
   }
 
   private func decode(_ method: String, _ arguments: Any? = nil) -> EpubReaderCommand? {
@@ -158,31 +163,86 @@ final class EpubReaderCommandTests: XCTestCase {
 
   // MARK: - applyDecorations
 
+  /// Decodes a one-decoration `applyDecorations` call and asserts the decoder
+  /// reported the failure as nil decorations while keeping the raw map, which the
+  /// view needs for the `FlutterError` it answers with.
+  private func assertDecorationRejected(
+    _ map: [String: Any], file: StaticString = #filePath, line: UInt = #line
+  ) {
+    guard case let .applyDecorations(_, decorations, raw) = decode(
+      "applyDecorations", ["user-highlight", [map]])
+    else { return XCTFail("applyDecorations did not decode", file: file, line: line) }
+
+    XCTAssertNil(decorations, file: file, line: line)
+    XCTAssertEqual(raw.count, 1, file: file, line: line)
+  }
+
   func testApplyDecorationsDecodesGroupAndDecorations() {
-    let json = [decorationJson(id: "first"), decorationJson(id: "second", href: "ch2.html")]
+    let payload = [decorationMap(id: "first"), decorationMap(id: "second", href: "ch2.html")]
 
     guard case let .applyDecorations(group, decorations, raw) = decode(
-      "applyDecorations", ["user-highlight", json])
+      "applyDecorations", ["user-highlight", payload])
     else { return XCTFail("applyDecorations did not decode") }
 
     XCTAssertEqual(group, "user-highlight")
     XCTAssertEqual(decorations?.map(\.id), ["first", "second"])
     XCTAssertEqual(decorations?.map(\.locator.href.string), ["ch1.html", "ch2.html"])
-    XCTAssertEqual(raw, json)
+    XCTAssertEqual(decorations?.first?.style.id, Decoration.Style.Id(rawValue: "highlight"))
+    XCTAssertEqual(raw.map { $0["id"] as? String }, ["first", "second"])
   }
 
-  func testApplyDecorationsReturnsNilDecorationsForMalformedJson() {
-    // The view answers a FlutterError for this case, so the decoder reports the
-    // failure as nil decorations while keeping the raw strings for the message.
-    let json = ["{\"id\":\"no-locator\"}"]
+  func testApplyDecorationsReturnsNilDecorationsForMissingLocator() {
+    var map = decorationMap()
+    map["locator"] = nil
 
-    guard case let .applyDecorations(group, decorations, raw) = decode(
-      "applyDecorations", ["user-highlight", json])
-    else { return XCTFail("applyDecorations did not decode") }
+    assertDecorationRejected(map)
+  }
 
-    XCTAssertEqual(group, "user-highlight")
-    XCTAssertNil(decorations)
-    XCTAssertEqual(raw, json)
+  func testApplyDecorationsReturnsNilDecorationsForMissingId() {
+    var map = decorationMap()
+    map["id"] = nil
+
+    assertDecorationRejected(map)
+  }
+
+  func testApplyDecorationsReturnsNilDecorationsForMissingStyle() {
+    var map = decorationMap()
+    map["style"] = nil
+
+    assertDecorationRejected(map)
+  }
+
+  func testApplyDecorationsReturnsNilDecorationsForMissingTint() {
+    // The tint lives one level down, inside `style` — reading it off the top
+    // level is the mistake the old flat payload shape encoded.
+    var map = decorationMap()
+    map["style"] = ["style": "highlight"]
+
+    assertDecorationRejected(map)
+  }
+
+  func testApplyDecorationsReturnsNilDecorationsForUnparseableLocator() {
+    var map = decorationMap()
+    map["locator"] = ["nope": true]
+
+    assertDecorationRejected(map)
+  }
+
+  func testApplyDecorationsReturnsNilDecorationsForNonHexTint() {
+    var map = decorationMap()
+    map["style"] = ["style": "highlight", "tint": "rebeccapurple"]
+
+    assertDecorationRejected(map)
+  }
+
+  func testApplyDecorationsReturnsNilDecorationsForLocatorSentAsString() {
+    // The pre-Phase-2 wire format put the locator in as a JSON string. Readium's
+    // `Locator(json:)` rejects a non-dictionary, so the decode must report nil —
+    // not trap, and not silently build a decoration at the wrong position.
+    var map = decorationMap()
+    map["locator"] = locatorJson()
+
+    assertDecorationRejected(map)
   }
 
   // MARK: - Argument-free commands
