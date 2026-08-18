@@ -39,6 +39,8 @@ Gradle skips `:flureadium:testDebugUnitTest` when its inputs haven't changed, re
 
 **Gradle (Android).** Tests run through the example app's Gradle wrapper at `example/android/gradlew`, so no separate Gradle install is needed. The task is `:flureadium:testDebugUnitTest`. Robolectric runs on the JVM, so no device or emulator is involved.
 
+**`org.json` on the JVM is not the `org.json` on a device.** The Android unit tests link JSON-java (`org.json:json:20240303`), while a real device runs AOSP's own `org.json`, and the two disagree about JSON-null values. `optString(key, fallback)` returns the fallback on JSON-java but the literal string `"null"` on AOSP; `getString(key)` throws on JSON-java but returns `"null"` on AOSP. Read a nullable JSON field with `isNull(key)`, which answers the same way in both, and expect that a JSON-null parsing bug cannot be reproduced from the JVM suite — it only shows up on hardware.
+
 **Simulator (iOS, macOS only).** It uses a booted simulator if one is running, otherwise it lists the installed iPhone simulators and boots the one you pick. It builds the example app for the simulator first — `flutter build ios --simulator --debug` — because XCTest fails silently without a fresh build when test files or dependencies changed. iOS is skipped with a reason on non-macOS hosts. The script leaves your simulators as it found them: one it booted itself is shut down on exit, and one that was already running is left running. `xcodebuild test` tears down its own test destination and can shut down a simulator it did not boot, so if it closes an already-running simulator the script re-boots it on exit.
 
 ## Logs
