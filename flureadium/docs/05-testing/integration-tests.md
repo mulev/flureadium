@@ -10,7 +10,7 @@ Integration tests run the example app on a real device or simulator and assert w
 | `all_tests_web.dart` | Web | Web-specific runner — only includes tests that pass on web (see note below) |
 | `launch_test.dart` | All | App starts, MaterialApp renders |
 | `epub_test.dart` | Android, iOS | Each case opens its own EPUB, navigation/prefs/highlight don't crash, TTS sentence nav buttons appear, close removes widget |
-| `text_locator_test.dart` | Android, iOS | A page turn is pushed on the text-locator stream, the stream follows a publication swap, and a swap to audio leaves no locator behind |
+| `text_locator_test.dart` | Android, iOS | A page turn is pushed on the text-locator stream, the stream follows a publication swap, a swap to audio leaves no locator behind, and a subscriber that arrives after the reader already has a position is answered on subscribe |
 | `audiobook_host_test.dart` | Android, iOS | An audio-only publication mounts and reports `ready` from a host with no navigator. Split from `audiobook_test.dart` because it needs no player, so it runs where audio does not work |
 | `audiobook_test.dart` | Android, iOS (`native`) | Audiobook opens, play changes button label, seek doesn't crash, pause/resume button labels cycle correctly, playing the last track to its end surfaces `TimebasedState.ended` |
 | `cbz_test.dart` | Android, iOS | CBZ auto-opens, navigation works, `goToLocator` reaches an image page, `extractPageThumbnail` returns JPEG bytes/null as appropriate |

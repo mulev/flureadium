@@ -105,16 +105,22 @@ Every assertion has to be able to go red. A sweep across the Dart suites removed
 | `expect(c, equals(c))` on the same canonicalized `const` | Equatable's `==` short-circuits on `identical`, and both operands are the same object |
 | a finder asserted before an action, then the identical finder asserted after it | the widget was mounted before the action and nothing in the action unmounts it, so only a crash fails it |
 | key presence or non-emptiness where the test name promises a value | `expect(json['metadata'], isNotNull)` in a test called "serializes publication to JSON" passes on `{}` |
+| a latch asserted to be transiently cleared, when the feature under test refills it | `LiveTestWidgetsFlutterBinding` gives the refill the same frame the clear happened in, so the intermediate state is never observable — and the latch value cannot distinguish "refilled" from "never cleared". `expect(locatorHref(tester), isEmpty)` one pump after a resubscribe passed on a stale href |
 
 Assert the value instead: the one the fixture or the mock actually produced. In an integration test, read the before-value from a latch, run the action, then assert that the after-value changed the way the test name claims.
 
 ### Latches, not finders
 
-The example app publishes every fact worth asserting as a keyed debug `Text`, and `example/integration_test/helpers/` reads them back: `locatorHref` and `savedLocatorHref` in `locator_latch.dart`, `readerStatus` in `reader_status.dart`, `currentTrackHref` in `audiobook_track.dart`. `pumpUntil` in `pump_until.dart` polls one of those until it moves. Copy that pattern: capture the latch, act, `pumpUntil` the value changes, assert `pumpUntil`'s own result with a `reason`, then assert the value.
+The example app publishes every fact worth asserting as a keyed debug `Text`, and `example/integration_test/helpers/` reads them back: `locatorHref`, `savedLocatorHref` and `locatorEvents` in `locator_latch.dart`, `readerStatus` in `reader_status.dart`, `currentTrackHref` in `audiobook_track.dart`. `pumpUntil` in `pump_until.dart` polls one of those until it moves. Copy that pattern: capture the latch, act, `pumpUntil` the value changes, assert `pumpUntil`'s own result with a `reason`, then assert the value.
 
-Two examples already in the suites:
+Where the values repeat, a value latch cannot carry the assertion: the app writes the same href it wrote before, so a test cannot tell a fresh delivery from the old one. Publish a monotonic counter beside the value latch and assert it rose. `locator-events` is the worked example — the app increments it in the same `setState` that writes `_locator`, `_resetPublicationLatches` zeroes it per publication, and `locatorEvents` in `locator_latch.dart` reads it with `int.parse` so a renamed latch fails the suite instead of reading 0. Read a quiescent baseline before the action, or an event still in flight from the setup satisfies the rise.
+
+A transient clear *is* observable in `example/test/widget_test.dart`: the mocked `text-locator` channel answers nothing on subscribe, so nothing refills the latch and the cleared state holds. Assertions about a clear belong there, not in a device suite.
+
+Three examples already in the suites:
 
 - `text_locator_test.dart`, `'a page turn is pushed to Dart'` — taps `→`, waits for `locatorHref` to fill, then asserts the href ends in `.xhtml`.
+- `text_locator_test.dart`, `'a fresh subscriber learns the current position'` — pumps to quiescence, reads `locatorEvents`, taps `Resubscribe Locator`, waits for the count to rise.
 - `epub_test.dart`, `'the load cover tracks reader status'` — waits for the open to reset `readerStatus`, then samples the loading-cover invariant on every pump until the status reads `ready`.
 
 ### Shape checks that are fine
