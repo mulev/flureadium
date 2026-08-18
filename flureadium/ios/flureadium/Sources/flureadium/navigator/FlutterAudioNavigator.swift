@@ -273,7 +273,9 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
       queue: .main
     ) { [weak self] note in
       let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
-      self?.handlePlaybackFailure(error, description: "AVPlayerItemFailedToPlayToEndTime")
+      Task { @MainActor in
+        self?.handlePlaybackFailure(error, description: "AVPlayerItemFailedToPlayToEndTime")
+      }
     }
     let errorLogToken = center.addObserver(
       forName: .AVPlayerItemNewErrorLogEntry,
@@ -288,7 +290,9 @@ public class FlutterAudioNavigator: FlutterTimebasedNavigator, AudioNavigatorDel
           userInfo: [NSLocalizedDescriptionKey: event.errorComment ?? "AVPlayerItemNewErrorLogEntry"]
         )
       }
-      self?.handlePlaybackFailure(error, description: "AVPlayerItemNewErrorLogEntry")
+      Task { @MainActor in
+        self?.handlePlaybackFailure(error, description: "AVPlayerItemNewErrorLogEntry")
+      }
     }
     playbackFailureObservers = [failedToken, errorLogToken]
   }

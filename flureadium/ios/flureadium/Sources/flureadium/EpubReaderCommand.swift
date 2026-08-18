@@ -6,9 +6,11 @@ import ReadiumShared
 ///
 /// Decoding is separated from execution because the argument shapes — index
 /// order, optional trailing flags, the raw locator strings — are the part of the
-/// channel a refactor can break silently. Force-unwraps are deliberate and
-/// unchanged: a malformed call from our own Dart layer is a programming error,
-/// and turning it into a Flutter error is a separate change.
+/// channel a refactor can break silently. Force-unwraps are deliberate: a
+/// malformed call from our own Dart layer is a programming error, and turning it
+/// into a Flutter error is a separate change. `setNavigationConfig` is the
+/// exception: its decoder already reads a missing map as "no override", so it
+/// downcasts optionally.
 enum EpubReaderCommand {
   case go(locator: Locator, animated: Bool, isAudioBookWithText: Bool)
   case goLeft(animated: Bool)
@@ -61,7 +63,7 @@ enum EpubReaderCommand {
       self = .setPreferences(EPUBPreferences(fromMap: call.arguments as! [String: String]))
     case "setNavigationConfig":
       self = .setNavigationConfig(
-        FlutterNavigationConfig(fromMap: call.arguments as! [String: Any]))
+        FlutterNavigationConfig(fromMap: call.arguments as? [String: Any]))
     case "applyDecorations":
       let args = call.arguments as! [Any?]
       let json = args[1] as! [[String: Any]]
