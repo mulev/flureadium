@@ -161,6 +161,19 @@ final class EpubReaderCommandTests: XCTestCase {
     XCTAssertEqual(config.disableDoubleTapTextSelection, false)
   }
 
+  /// Dart always sends a `Map` here, so a non-map argument is a bug on the
+  /// sending side. Decoding must report it as "no override" rather than trapping
+  /// the host process.
+  func testSetNavigationConfigWithNonMapArgumentDecodesToEmptyConfig() {
+    guard case let .setNavigationConfig(config) = decode("setNavigationConfig", "not-a-map")
+    else { return XCTFail("setNavigationConfig did not decode") }
+
+    XCTAssertNil(config.enableEdgeTapNavigation,
+      "a non-map argument must decode to a config with no edge-tap override")
+    XCTAssertNil(config.enableSwipeNavigation)
+    XCTAssertNil(config.edgeTapAreaPoints)
+  }
+
   // MARK: - applyDecorations
 
   /// Decodes a one-decoration `applyDecorations` call and asserts the decoder

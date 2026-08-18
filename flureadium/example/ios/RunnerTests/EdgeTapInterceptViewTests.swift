@@ -228,6 +228,9 @@ final class EdgeTapInterceptViewTests: XCTestCase {
 
     // MARK: - Single pointer edge owner
 
+    // `edgeTapPointerPolicy` inherits `ReadiumReaderView`'s main-actor
+    // isolation, and `XCTAssertTrue` reads it through a nonisolated autoclosure.
+    @MainActor
     func testReaderViewGivesReadiumsAdapterNoPointerTypes() {
         // This view is the only pointer edge owner on iOS. Readium's
         // DirectionalNavigationAdapter keeps its unconditional key observer, so
