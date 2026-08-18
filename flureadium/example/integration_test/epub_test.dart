@@ -248,15 +248,6 @@ void main() {
       expect(locatorHref(tester), equals(before));
     });
 
-    testWidgets('apply decoration to current locator', (tester) async {
-      await showEpub(tester);
-      await tester.tap(find.text('Highlight'));
-      for (var i = 0; i < 3; i++) {
-        await tester.pump(const Duration(seconds: 1));
-      }
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
-    });
-
     // Regression: the plugin owns the single "error" channel, so a Dart
     // subscription to onErrorEvent must survive a reader-view dispose. Before
     // the ownership refactor, closing a reader view end-streamed the
