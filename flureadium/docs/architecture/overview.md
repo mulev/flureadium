@@ -326,6 +326,25 @@ iOS method channel handlers run on a background thread. Publication cleanup (nul
 
 This mirrors the Android pattern where `closePublication()` uses `mainScope.async { ... }.await()` instead of `launch { ... }`.
 
+### iOS: a stored closure that reads a navigator is `@MainActor`
+
+Every reader view conforms to `VisualNavigatorDelegate`, which readium declares `@MainActor`, so
+SE-0316 isolates the whole conforming class. A read like `getCurrentLocation()` is therefore
+main-actor-isolated even where nothing in our own code is annotated, and the compiler only says so
+at the point where a nonisolated context calls it.
+
+So a closure that is stored for a nonisolated Flutter callback — a stream handler's `onListen`, a
+method-channel handler — must be typed `@MainActor () -> …` on both the stored property and the
+init parameter, and its body must run from `Task { @MainActor in … }`. Typing the parameter is
+enough for the caller: a closure *literal* passed to a `@MainActor` parameter is inferred isolated,
+so the call site needs no annotation of its own. `MainActor.assumeIsolated` would skip the hop but
+is iOS 17+, and the plugin targets 13.4 (`ios/flureadium/Package.swift`).
+
+`TextLocatorEventStream` (the provider handed to it by `FlureadiumPlugin.register(with:)`) and
+`EpubLocatorReporter` (`resolveFragments`, `sendTextLocator`, `isDisposed`) are the two examples.
+The cost is timing: the answer lands on the next main-actor turn, so a test for it polls instead of
+asserting inline.
+
 ### Car bridge (CarPlay / Android Auto)
 
 How the native car surfaces (CarPlay scene, Android `MediaLibraryService`) obtain host library data that lives only in Dart, with no Flutter UI alive, is decided in [car-bridge-decision.md](car-bridge-decision.md): an app-scoped headless `FlutterEngine` + `MethodChannel` (variant a). The host registers a `CarContentProvider` (see [car content](../api-reference/car-content.md)) that answers browse, search, and play requests over that channel.
