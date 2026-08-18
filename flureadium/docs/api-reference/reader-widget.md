@@ -285,6 +285,8 @@ Future<void> skipToNext({bool animated = true})
 
 Moves to the next TOC entry. For EPUB3 books with a nested `toc.xhtml`, this is the next chapter at any depth — not the next top-level sibling. If the current page has no TOC entry, scans the reading order to find the nearest TOC entry ahead.
 
+On a reader that has not yet reported a page, the call waits for the first reported position instead of returning silently. A host that subscribes from `onReady` and skips right away gets the skip it asked for, rather than a no-op. If the view is released before it reports anything — a publication swap, for instance — the call returns without navigating.
+
 ### skipToPrevious
 
 Skip to the previous chapter.
@@ -293,7 +295,7 @@ Skip to the previous chapter.
 Future<void> skipToPrevious({bool animated = true})
 ```
 
-Moves to the previous TOC entry, with the same hierarchical and between-entries behavior as `skipToNext`.
+Moves to the previous TOC entry, with the same hierarchical and between-entries behavior as `skipToNext`. It also waits for the first reported position on a reader that has not reported one yet, and returns without navigating if the view is released first.
 
 ### getCurrentLocator
 
