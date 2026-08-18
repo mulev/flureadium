@@ -185,7 +185,7 @@ await flureadium.applyDecorations('search', []);
 
 ### Rejected Decorations
 
-A decoration the native side cannot read is dropped instead of drawn. That happens when `locator` is missing, when `locator` is not valid JSON, or when the style carries no usable `tint`.
+A decoration the native side cannot read fails the whole call, so nothing in that batch is drawn. That happens when `id` is missing, when `locator` is missing or is not a locator map, or when the style carries no usable `tint`.
 
 The call still answers. `applyDecorations` throws a `PlatformException` naming the payload it could not map, and the group keeps whatever it had before, so the reader is left as it was and nothing is applied halfway. `setDecorationStyle` works the same way: an unusable style map comes back as an error and the styles already in use stay put.
 

@@ -116,6 +116,14 @@ The plugin also declares `PluginMediaService` with an intent filter that adverti
 
 ## Implementation Details
 
+### Decoration Payload Decoding
+
+`applyDecorations` receives each decoration as a map of three keys: `id`, `locator`, and `style`. `locator` is the map `Locator.toJson()` produces, not a JSON string, and `style` is a nested `{style, tint}` map whose `tint` is a CSS hex colour (`#RRGGBB` or `#AARRGGBB`). `decorationFromMap` in `ReadiumExtensions.kt` reads those keys and builds the Readium `Decoration`. The locator goes through `JSONObject(Map)`, which wraps nested maps recursively, so `locations` and `text` survive the conversion and the decoration lands on the selected range instead of the top of the resource.
+
+A decoration the decoder cannot read fails the whole `applyDecorations` call. It raises `IllegalArgumentException` naming the decoration, the method-channel handler catches it and answers `result.error`, and Dart receives a `PlatformException` whose message identifies the payload. Earlier versions logged the failure and dropped that decoration from the list, so a mismatched payload looked like a silent no-op.
+
+An unrecognised `style` string is not a failure. `decorationStyleFromMap` maps `underline` to an underline and anything else to a highlight, so a style name Android does not know draws a highlight instead of rejecting the call.
+
 ### Android Auto Browse Tree
 
 `PluginMediaService` runs as a media3 `MediaLibraryService` (not just `MediaSessionService`) and advertises the legacy `android.media.browse.MediaBrowserService` action in its intent filter. Android Auto connects as a platform `MediaBrowser` client, so it needs both: the `MediaLibraryService` to browse content and the legacy browse action to discover the app in the first place.
