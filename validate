@@ -1,0 +1,139 @@
+#!/bin/sh
+# Repo validators — generic runner. Copy this file verbatim to a repo root and
+# write the repo's rules in ./validators.conf next to it. The runner decides
+# nothing; the config decides everything.
+#
+# Usage:
+#   ./validate list   <stage>
+#   ./validate run    <stage>
+#   ./validate verify <stage> <ledger-file>
+#
+# Stages (defined by the execute skill):
+#   phase-exit  every phase, run by whoever executed it, before plan update /
+#               commit / bead close. Main runs it once as the epic baseline.
+#   finalize    once per execution, run by the main session.
+#   user        never run automatically; recorded as PENDING-USER and handed over.
+#
+# Exit codes:
+#   0  every row for the stage passed (or was handed over); `list` on a stage with
+#      no rows also exits 0 — "nothing to hand over" is an answer, not an error
+#   1  a row failed, or verification found a missing/stale row → fix and re-run
+#   2  misconfigured: usage error, missing config, or `run`/`verify` on a stage
+#      this repo does not define → do not loop, fix the config
+#
+# Doctrine, config format and per-stack recipes:
+#   /Users/mulev/Documents/projects/skills/_shared/validators.md
+set -u
+
+CONF=${VALIDATORS_CONF:-./validators.conf}
+ESC=$(printf '\033')
+TODAY=$(date +%F)
+
+sub=${1:-}
+stage=${2:-}
+ledger=${3:-}
+
+case $sub in
+list | run | verify) ;;
+*)
+	echo "usage: validate list|run|verify <stage> [ledger-file]" >&2
+	exit 2
+	;;
+esac
+[ -n "$stage" ] || {
+	echo "validate: stage required (phase-exit, finalize, user)" >&2
+	exit 2
+}
+if [ "$sub" = verify ]; then
+	[ -n "$ledger" ] || {
+		echo "validate: verify needs a ledger file" >&2
+		exit 2
+	}
+	[ -f "$ledger" ] || {
+		echo "validate: no such ledger file: $ledger" >&2
+		exit 2
+	}
+fi
+[ -f "$CONF" ] || {
+	echo "validate: no $CONF in $(pwd)" >&2
+	exit 2
+}
+
+# Rows go to a temp file, not a pipe: a `while` in a pipeline runs in a subshell
+# and would discard $rc. The awk pass drops comments/blank lines and splits on
+# the first two `|` only — stage and id are trimmed, the command keeps every byte
+# after its first non-blank character, so `|` and `||` inside commands survive.
+rows=$(mktemp) || exit 2
+trap 'rm -f "$rows"' EXIT
+awk '
+	/^[ \t]*#/ { next }
+	/^[ \t]*$/ { next }
+	{
+		i = index($0, "|"); if (i == 0) next
+		row_stage = substr($0, 1, i - 1); rest = substr($0, i + 1)
+		j = index(rest, "|"); if (j == 0) next
+		id = substr(rest, 1, j - 1); cmd = substr(rest, j + 1)
+		gsub(/^[ \t]+|[ \t]+$/, "", row_stage)
+		gsub(/^[ \t]+|[ \t]+$/, "", id)
+		sub(/^[ \t]+/, "", cmd)
+		if (row_stage == "" || id == "" || cmd == "") next
+		print row_stage "|" id "|" cmd
+	}
+' "$CONF" >"$rows"
+
+found=0
+rc=0
+while IFS='|' read -r row_stage id cmd; do
+	[ "$row_stage" = "$stage" ] || continue
+	found=1
+	case $sub in
+	list)
+		printf '%s\t%s\n' "$id" "$cmd"
+		;;
+	run)
+		if [ "$stage" = user ]; then
+			printf '%s\tPENDING-USER\t%s\t%s\n' "$id" "$TODAY" "$cmd"
+			continue
+		fi
+		out=$(sh -c "$cmd" 2>&1)
+		if [ $? -eq 0 ]; then
+			result=PASS
+		else
+			result=FAIL
+			rc=1
+		fi
+		# Last line that actually says something: strip ANSI and CR, then keep only
+		# lines with a word character, so box-drawing rules and blank spacers from
+		# pretty runners never become the ledger's evidence.
+		evidence=$(printf '%s\n' "$out" |
+			sed -e "s/${ESC}\[[0-9;]*[A-Za-z]//g" -e 's/\r//g' |
+			grep -E '[A-Za-z0-9]' | tail -n 1 | cut -c1-120)
+		[ -n "$evidence" ] || evidence='(no output)'
+		printf '%s\t%s\t%s\t%s\n' "$id" "$result" "$TODAY" "$evidence"
+		;;
+	verify)
+		want=PASS
+		[ "$stage" = user ] && want=PENDING-USER
+		# The id is data, not a pattern: escape ERE metacharacters so `a.c` cannot
+		# match `abc`. The date must be today's — a row copied from an earlier phase,
+		# an old bug round, or typed by hand proves nothing about this run.
+		id_re=$(printf '%s' "$id" | sed 's/[][\.^$*+?(){}|\\]/\\&/g')
+		if grep -qE "^${id_re}[[:space:]]+${want}[[:space:]]+${TODAY}([[:space:]]|\$)" "$ledger"; then
+			:
+		else
+			echo "validate: $id is not $want dated $TODAY in $ledger" >&2
+			rc=1
+		fi
+		;;
+	esac
+done <"$rows"
+
+# An empty stage is a real answer for `list` — "nothing to hand over" is not an
+# error. For `run` and `verify` it means someone asked about a stage this repo
+# does not define, which is a mistake worth stopping for.
+[ "$found" = 1 ] || {
+	[ "$sub" = list ] && exit 0
+	echo "validate: no '$stage' rows in $CONF" >&2
+	exit 2
+}
+exit $rc
