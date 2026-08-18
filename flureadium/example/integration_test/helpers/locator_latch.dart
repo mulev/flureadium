@@ -18,3 +18,15 @@ String locatorHref(WidgetTester tester) =>
 /// open, so a test can navigate away and prove that "Go To Saved" came back.
 String savedLocatorHref(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const Key('saved_locator_href'))).data ?? '';
+
+/// Reads the example app's `locator-events` counter — how many locators the
+/// text-locator stream has delivered since this publication opened.
+///
+/// A count rather than a value, because the values repeat: a locator delivered
+/// to a fresh subscriber can name the page already latched, so only a number
+/// that must rise proves the delivery happened. `int.parse` throws rather than
+/// defaulting, so a missing or renamed latch fails loudly instead of reading 0.
+int locatorEvents(WidgetTester tester) => int.parse(
+  (tester.widget<Text>(find.byKey(const Key('locator-events'))).data ?? '')
+      .replaceFirst('locator-events: ', ''),
+);

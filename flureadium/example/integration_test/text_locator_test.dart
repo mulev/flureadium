@@ -120,23 +120,30 @@ void main() {
     ) async {
       await _latchAnEpubLocator(tester);
 
+      // Long enough that a locator still in flight from the page turn would
+      // land, so `before` cannot be beaten by an event the tap did not cause.
+      await tester.pump(const Duration(seconds: 2));
+      final before = locatorEvents(tester);
+
       // 'Resubscribe Locator' clears the latch and re-runs the app's
-      // cancel-then-listen path — the same 0→1 transition ReadiumReaderWidget
-      // .onReady performs, which is where an image publication's only locator
-      // for the page is already gone by. Nothing navigates after this tap, so
-      // the latch can only refill from the subscribe-time read of the
-      // navigator.
+      // cancel-then-listen path — the same 0→1 transition
+      // ReadiumReaderWidget.onReady performs, which is where an image
+      // publication's only locator for the page is already gone by. Nothing
+      // navigates after this tap, so a new delivery can only come from the
+      // subscribe-time read of the navigator.
+      //
+      // The count, not the latch: the app does clear _locator, but the answer
+      // lands inside the same frame budget under
+      // LiveTestWidgetsFlutterBinding, so an empty latch is not observable and
+      // the value alone cannot tell "answered on subscribe" from "never
+      // cleared". A count that must rise can be satisfied by neither. The
+      // clear itself is asserted in example/test/widget_test.dart, where the
+      // mocked channel answers nothing.
       await tester.tap(find.text('Resubscribe Locator'));
-      await tester.pump();
-      expect(
-        locatorHref(tester),
-        isEmpty,
-        reason: 'the tap must clear the latch first',
-      );
 
       final answered = await pumpUntil(
         tester,
-        () => locatorHref(tester).isNotEmpty,
+        () => locatorEvents(tester) > before,
         timeout: const Duration(seconds: 15),
       );
 

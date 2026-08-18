@@ -69,6 +69,12 @@ class _ReaderPageState extends State<ReaderPage> {
   // and poll until it increments, so they wait exactly until the new
   // publication is loaded instead of a fixed duration.
   int _openGeneration = 0;
+  // How many locators the text-locator stream has delivered since this
+  // publication opened, cleared by _resetPublicationLatches. A count rather
+  // than a value because the values repeat: only a number that must rise
+  // proves a delivery arrived when the href it carries is the one already
+  // latched.
+  int _locatorEvents = 0;
   bool _endedSeen = false;
   bool _controlsVisible = true;
   bool _ttsEnabled = false;
@@ -152,6 +158,10 @@ class _ReaderPageState extends State<ReaderPage> {
       (l) => setState(() {
         _locator = l;
         _savedLocator ??= l;
+        // Monotonic within one publication: a delivery that repeats the href
+        // already latched still moves this, which is what lets an integration
+        // test prove a subscribe-time answer arrived.
+        _locatorEvents++;
       }),
     );
     _errorSub = _flureadium.onErrorEvent.listen((e) {
@@ -414,6 +424,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _openGeneration++;
     _readerStatus = '';
     _locator = null;
+    _locatorEvents = 0;
     _savedLocator = null;
     _loadedTitle = '';
     _lastAudioError = '';
@@ -738,6 +749,14 @@ class _ReaderPageState extends State<ReaderPage> {
                     Text(
                       key: const Key('open-generation'),
                       'open-generation: $_openGeneration',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('locator-events'),
+                      'locator-events: $_locatorEvents',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 10,

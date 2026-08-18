@@ -240,6 +240,58 @@ void main() {
     expect(_latchText(tester, 'saved_locator_href'), '');
   });
 
+  testWidgets('locator-events counts every delivery and resets on open', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const ExampleApp());
+      await _pumpUntilGeneration(tester, '1');
+    });
+    _reportReaderReady(tester);
+
+    expect(_keyedValue(tester, 'locator-events'), '0');
+
+    await _emitTextLocator('chapter1.xhtml');
+    await tester.pump();
+    await _emitTextLocator('chapter2.xhtml');
+    await tester.pump();
+
+    // Monotonic: two deliveries, two counts, even though the second one
+    // overwrites the latch the first one wrote.
+    expect(_keyedValue(tester, 'locator-events'), '2');
+
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Open EPUB'));
+      await _pumpUntilGeneration(tester, '2');
+    });
+
+    // The count is a fact about one publication, like every other latch
+    // _resetPublicationLatches clears.
+    expect(_keyedValue(tester, 'locator-events'), '0');
+  });
+
+  testWidgets('Resubscribe Locator clears the latched locator', (tester) async {
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const ExampleApp());
+      await _pumpUntilGeneration(tester, '1');
+    });
+    _reportReaderReady(tester);
+
+    await _emitTextLocator('chapter1.xhtml');
+    await tester.pump();
+    expect(_latchText(tester, 'locator_href'), 'chapter1.xhtml');
+    final delivered = _keyedValue(tester, 'locator-events');
+
+    await tester.tap(find.text('Resubscribe Locator'));
+    await tester.pump();
+
+    // The mocked channel answers nothing on subscribe, so the cleared state is
+    // observable here — on a device the real stream refills it within the
+    // frame, which is why the integration case asserts the count instead.
+    expect(_latchText(tester, 'locator_href'), '');
+    expect(_keyedValue(tester, 'locator-events'), delivered);
+  });
+
   testWidgets('Load Only latches the title loadPublication returned', (
     tester,
   ) async {
