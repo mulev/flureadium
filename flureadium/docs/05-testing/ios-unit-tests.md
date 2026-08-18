@@ -25,10 +25,11 @@ flureadium/example/ios/RunnerTests/
 ├── EpubNavigatorConfigurationTests.swift # Content insets, preload counts, decorations, editing actions, preferences
 ├── EpubPageBridgeTests.swift          # Exact window.epubPage JavaScript per call, and every reply shape
 ├── EpubLocatorReporterTests.swift     # Page-changed publishing, the dispose race, external links
-├── EpubReaderCommandTests.swift       # Method-channel argument decoding: order, optional defaults, malformed JSON
+├── EpubReaderCommandTests.swift       # Method-channel argument decoding: order, optional defaults, malformed JSON, decoration maps (valid payload + every malformed field)
 ├── PdfGestureSuppressionTests.swift # PDF gesture/interaction removal: every predicate, subtree recursion, retry schedule
 ├── StateSerializationTests.swift      # ReadiumTimebasedState toJson, toJsonString, Equatable
-├── ReadiumExtensionsTests.swift       # Locator extensions, state mappings, EPUB/PDF preferences fromMap
+├── ReadiumExtensionsTests.swift       # Locator extensions, state mappings, EPUB/PDF preferences fromMap, Decoration/Decoration.Style fromMap (valid map, missing locator, unusable style)
+├── FlureadiumPluginDecorationStyleTests.swift # setDecorationStyle argument decoding: valid style maps, and malformed ones answered as a FlutterError instead of trapping
 ├── FlutterMediaOverlayTests.swift     # FlutterMediaOverlayItem parsing/matching/locators
 ├── ReadiumErrorTests.swift            # ReadiumError/FlureadiumError to FlutterError conversions
 ├── EdgeTapInterceptViewTests.swift   # hitTest geometry, edge interception, subview bypass, property behavior

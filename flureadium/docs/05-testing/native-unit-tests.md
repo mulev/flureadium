@@ -58,6 +58,8 @@ Reach for the script for the common case: run all native tests, or all of one pl
 
 Android test sources live in `android/src/test/kotlin/`. The script runs the whole `testDebugUnitTest` task; there is no single-class flag on the Android side yet.
 
+`ReadiumExtensionsDecorationTest.kt` is the JVM guard for the decoration wire format — the happy path plus every malformed field. It pairs with the iOS `EpubReaderCommandTests` and `ReadiumExtensionsTests` decoration cases and with the format written down in [decorations.md](../api-reference/decorations.md); change one and the other two have to move with it.
+
 ## Continuous integration
 
 These native suites also run in CI on every push and pull request (`.github/workflows/test.yml`), so a regression is caught without running them by hand:

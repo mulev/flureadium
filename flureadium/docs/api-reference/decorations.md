@@ -191,6 +191,50 @@ The call still answers. `applyDecorations` throws a `PlatformException` naming t
 
 A wrong payload is never fatal. The plugin rejects it and replies instead of trapping, so a bad decoration cannot take the host app down.
 
+```dart
+try {
+  await flureadium.applyDecorations('highlights', [decoration]);
+} on PlatformException catch (e) {
+  // e.message names the decoration that could not be decoded.
+}
+```
+
+The exception `code` is platform-specific and is not part of the contract: iOS sends `JSON mapping error` ([`ReadiumReaderView.swift:385-390`](../../ios/flureadium/Sources/flureadium/ReadiumReaderView.swift)), Android sends the thrown exception's class name from its generic handler (`class java.lang.IllegalArgumentException`, [`ReadiumReaderWidget.kt:873`](../../android/src/main/kotlin/dev/mulev/flureadium/ReadiumReaderWidget.kt)). What both platforms guarantee is the type — `PlatformException` — and a message naming the offending decoration.
+
+## Method-Channel Wire Format
+
+`applyDecorations` is forwarded to the active reader view over that view's method channel ([`lib/reader_channel.dart:121-130`](../../lib/reader_channel.dart)). The arguments are a two-element list — the group id, then the decorations:
+
+```json
+[
+  "highlights",
+  [
+    {
+      "id": "highlight-1",
+      "locator": { "href": "chapter1.xhtml", "type": "application/xhtml+xml" },
+      "style": { "style": "highlight", "tint": "#ffff00" }
+    }
+  ]
+]
+```
+
+| Key | Type on the wire | Produced by |
+|---|---|---|
+| `id` | String | `ReaderDecoration.toJson()` |
+| `locator` | Map — the full `Locator.toJson()`, not a JSON string | `Locator.toJson()` |
+| `style.style` | String — the `DecorationStyle` enum name, `highlight` or `underline` | `DecorationStyle.name` |
+| `style.tint` | String — lowercase CSS hex, `#rrggbb`, or `#aarrggbb` when the colour's alpha is below 1 | `Color.toCSS()` |
+
+`locator` is a nested map, and so is `style` — neither is flattened onto the decoration and neither is JSON-encoded into a string. Both native decoders read this shape and nothing else. The producers are `ReaderDecoration.toJson()` and `ReaderDecorationStyle.toJson()` ([`reader_decoration.dart:36-40`, `:49`](../../../flureadium_platform_interface/lib/src/reader/reader_decoration.dart)), and the hex comes from `toCSS()` ([`readium_color_extension.dart:4-15`](../../../flureadium_platform_interface/lib/src/extensions/readium_color_extension.dart)), which prepends the alpha byte only when the colour is translucent.
+
+### Readers that accept the call and do nothing
+
+Decorations only render in the EPUB reader. The other readers answer the call successfully so callers do not have to branch on publication type:
+
+- **CBZ / DiViNa (iOS)** — `ImageReaderView.swift:228-229` answers `result(nil)`.
+- **Audiobooks (iOS)** — `AudioReaderView.swift:51-54` answers `result(nil)`; the comment there notes Dart types the method as `Future<void>`, so `nil` is the whole contract.
+- **Web** — `lib/reader_widget_web.dart:152-157` logs `applyDecorations not implemented in web version` and returns.
+
 ## Common Use Cases
 
 ### Creating Highlights
@@ -382,7 +426,7 @@ Future<void> openBook(String bookId, String path) async {
   },
   "style": {
     "style": "highlight",
-    "tint": "rgba(255, 255, 0, 1.0)"
+    "tint": "#ffff00"
   }
 }
 ```
