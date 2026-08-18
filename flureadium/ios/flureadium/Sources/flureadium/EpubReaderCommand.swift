@@ -5,7 +5,7 @@ import ReadiumShared
 /// A decoded `ReadiumReaderWidget` method-channel call.
 ///
 /// Decoding is separated from execution because the argument shapes — index
-/// order, optional trailing flags, the JSON string arrays — are the part of the
+/// order, optional trailing flags, the raw locator strings — are the part of the
 /// channel a refactor can break silently. Force-unwraps are deliberate and
 /// unchanged: a malformed call from our own Dart layer is a programming error,
 /// and turning it into a Flutter error is a separate change.
@@ -24,8 +24,9 @@ enum EpubReaderCommand {
   case setPreferences(EPUBPreferences)
   case setNavigationConfig(FlutterNavigationConfig)
   /// `decorations` is nil when `json` did not map — the caller answers a
-  /// `FlutterError` naming `json`, as it does today.
-  case applyDecorations(group: String, decorations: [Decoration]?, json: [String])
+  /// `FlutterError` naming `json`, as it does today. `json` carries the raw
+  /// decoration maps Dart sent, purely for that message.
+  case applyDecorations(group: String, decorations: [Decoration]?, json: [[String: Any]])
   case dispose
 
   /// - Returns: nil for a method this view does not implement.
@@ -63,10 +64,10 @@ enum EpubReaderCommand {
         FlutterNavigationConfig(fromMap: call.arguments as! [String: Any]))
     case "applyDecorations":
       let args = call.arguments as! [Any?]
-      let json = args[1] as! [String]
+      let json = args[1] as! [[String: Any]]
       self = .applyDecorations(
         group: args[0] as! String,
-        decorations: try? json.map { try Decoration(fromJson: $0) },
+        decorations: try? json.map { try Decoration(fromDartMap: $0) },
         json: json)
     case "dispose":
       self = .dispose
