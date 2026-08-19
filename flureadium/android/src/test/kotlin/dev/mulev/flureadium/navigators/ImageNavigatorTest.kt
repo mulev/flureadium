@@ -19,10 +19,13 @@ import org.junit.runner.RunWith
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.readium.r2.navigator.image.ImageNavigatorFragment
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.data.ReadError
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -95,6 +98,19 @@ internal class ImageNavigatorTest {
         navigator.onCurrentLocatorChanges(locator)
 
         verify(listener).onVisualCurrentLocationChanged(locator)
+    }
+
+    @Test
+    fun `onResourceLoadFailed does not notify the visual listener`() {
+        val listener = mockListener()
+        val navigator = createNavigator(listener)
+
+        navigator.onResourceLoadFailed(
+            href = Url("images/page-1.jpg")!!,
+            error = mock(ReadError::class.java),
+        )
+
+        verifyNoInteractions(listener)
     }
 
     @Test
