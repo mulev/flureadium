@@ -170,6 +170,7 @@ android/src/main/kotlin/dev/mulev/flureadium/
 │   └── PdfReaderViewModel.kt    # PDF reader state
 └── navigators/
     ├── EpubNavigator.kt             # EPUB navigation controller
+    ├── EpubNavigatorState.kt        # Saved-state bundle codec
     ├── EpubPageScript.kt            # window.epubPage JavaScript contract
     ├── EpubScrollRestore.kt         # Deferred restore scroll and its decision
     ├── ImageNavigator.kt            # CBZ / DIVINA navigation controller
