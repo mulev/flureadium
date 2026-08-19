@@ -535,7 +535,7 @@ Test restore stability by repeating the close/reopen cycle:
 7. **Success criteria**: Position remains stable across all reopens (no drift to different chapters or positions)
 
 **Platform-Specific Validation:**
-- **Android**: Check logs for `::goToLocator - stay at <href>, delta=<n>`, which is the line the navigator prints when it decides the position is already correct and skips the scroll
+- **Android**: Check logs for `::goTo - Stay <href> -> <href> prog=<n> -> <n>`, the line `EpubScrollRestore` prints when it decides the position is already correct and skips the scroll
 - **iOS**: Position should be set via `initialLocation` parameter during navigator initialization
 
 ### Common Issues
@@ -544,7 +544,7 @@ Test restore stability by repeating the close/reopen cycle:
 
 **Cause**: JavaScript `scrollToLocations()` recalculates progression from element bounding rect geometry, producing slightly different values than saved progression, then overwrites StateFlow
 
-**Fix**: The Android implementation now skips `scrollToLocations()` when already positioned correctly (within 1% delta)
+**Fix**: `restoreDecision` in `EpubScrollRestore.kt` returns `Stay` when the target sits within 1% of the current progression in the same resource, so no scroll is sent and nothing overwrites the position
 
 **Issue**: Position jumps to end of chapter on restore
 
@@ -554,26 +554,31 @@ Test restore stability by repeating the close/reopen cycle:
 
 ### Automated Tests
 
-The plugin includes unit tests for restore behavior:
+The plugin includes unit tests for restore behavior. `android/` has no Gradle wrapper, so run the
+suite through the repo's validator or call the cached Gradle binary directly:
 
 ```bash
-# Run Android unit tests
-cd flureadium/example/android
-./gradlew testDebugUnitTest
+# All Android JVM tests, via the repo validator
+cd flureadium
+./validate run phase-exit
 
-# Run specific test class
-./gradlew testDebugUnitTest --tests "*.EpubNavigatorRestoreTest"
+# Or call Gradle directly for one test class
+cd flureadium/flureadium/android
+GRADLE_BIN=$(find ~/.gradle/wrapper/dists/gradle-8.14-all -name gradle -type f | head -1)
+JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+  "$GRADLE_BIN" testDebugUnitTest --tests "*.EpubScrollRestoreTest"
 ```
 
 **Test Coverage:**
-- Progression delta calculation (1% threshold)
-- Small drift detection (JavaScript recalculation)
-- Large progression differences requiring scroll
-- Null progression value handling
-- Edge cases (start/end of chapter)
-- Locator href equivalence
+- The branch `restoreDecision` picks for each case: another resource, no current locator, no scroll
+  data in the target, and a real distance within the same resource
+- Both sides of the 1% threshold, including the boundary where the delta equals 1% and the scroll
+  goes ahead
+- A missing progression on either side, which scrolls rather than skipping
+- The order of `arm`, `flush` and `clear`: a flush scrolls at most once per arming, `clear` drops
+  the armed scroll, and navigating to another resource arms the scroll the next page load performs
 
-See: [android/src/test/kotlin/dev/mulev/flureadium/navigators/EpubNavigatorRestoreTest.kt](../../android/src/test/kotlin/dev/mulev/flureadium/navigators/EpubNavigatorRestoreTest.kt)
+See: [android/src/test/kotlin/dev/mulev/flureadium/navigators/EpubScrollRestoreTest.kt](../../android/src/test/kotlin/dev/mulev/flureadium/navigators/EpubScrollRestoreTest.kt)
 
 ### Debug Logging
 
@@ -581,15 +586,15 @@ Enable verbose logging to diagnose restore issues:
 
 **Android:**
 ```bash
-adb logcat | grep -E "(EpubNavigator|EpubReaderFragment|ReadiumReaderWidget)"
+adb logcat | grep -E "(EpubNavigator|EpubScrollRestore|EpubPageScript|EpubReaderFragment|ReadiumReaderWidget)"
 ```
 
 **Key log messages to look for:**
 - `::locator - href=... prog=...` - Position the plugin reported to your app
-- `::onPageLoaded - href=... pendingScroll=...` - A page loaded, and whether a restore is still queued
+- `::onPageLoaded - href=...` - A page loaded
 - `::onPageLoaded - fragment recreated, resubscribing` - The reader fragment was rebuilt after pause/resume
-- `::goToLocator - ...` - What restore decided: go to another resource, stay put, or scroll
-- `::scrollToLocations - ...` - The locations sent to the page's JavaScript
+- `::goTo - <decision> <href> -> <href> prog=<n> -> <n>` - What restore decided: `Go` to another resource, `Stay` put, or `Scroll` within the page
+- `::scrollTo - ...` - The script sent to the page's JavaScript
 - `::restoreState - ...` - The locator and preferences read back from a saved state bundle
 - `restore: settled after Xms` - Restore window lifecycle
 - `SUPPRESS late jump during grace period!` - Grace period validation

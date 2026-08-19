@@ -738,7 +738,7 @@ No public API changed.
 
 ### Testing
 
-- Add comprehensive unit tests for Android EPUB restore behavior ([EpubNavigatorRestoreTest.kt](android/src/test/kotlin/dev/mulev/flureadium/navigators/EpubNavigatorRestoreTest.kt)).
+- Add comprehensive unit tests for Android EPUB restore behavior (`EpubNavigatorRestoreTest.kt`, replaced in 0.17.0 by `EpubScrollRestoreTest.kt`).
 - Add manual reopen-loop validation procedure to documentation.
 - Improve diagnostic logging for restore flow investigation.
 
