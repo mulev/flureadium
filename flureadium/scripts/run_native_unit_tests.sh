@@ -295,8 +295,11 @@ resolve_ios_simulator() {
     names+=("$name"); ids+=("$id")
   done < <(xcrun simctl list devices available 2>/dev/null | grep -E 'iPhone')
 
+  # Same rule as the JDK path above: a skip nobody chose is a failure, not a pass.
+  # Reporting success with the whole iOS target unrun is how a crashing test ships.
   if [ ${#ids[@]} -eq 0 ]; then
     log "  ${RED}No iPhone simulators installed.${NC} Create one in Xcode, then re-run."
+    OVERALL_EXIT=1
     return 1
   fi
 

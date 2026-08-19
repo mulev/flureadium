@@ -199,7 +199,7 @@ try {
 }
 ```
 
-The exception `code` is platform-specific and is not part of the contract: iOS sends `JSON mapping error` ([`ReadiumReaderView.swift:385-390`](../../ios/flureadium/Sources/flureadium/ReadiumReaderView.swift)), Android sends the thrown exception's class name from its generic handler (`class java.lang.IllegalArgumentException`, [`ReadiumReaderWidget.kt:873`](../../android/src/main/kotlin/dev/mulev/flureadium/ReadiumReaderWidget.kt)). What both platforms guarantee is the type — `PlatformException` — and a message naming the offending decoration.
+The exception `code` is platform-specific and is not part of the contract: iOS sends `JSON mapping error` ([`ReadiumReaderView.swift:387-394`](../../ios/flureadium/Sources/flureadium/ReadiumReaderView.swift)), Android sends the thrown exception's class name from its generic handler (`class java.lang.IllegalArgumentException`, [`ReadiumReaderWidget.kt:873`](../../android/src/main/kotlin/dev/mulev/flureadium/ReadiumReaderWidget.kt)). What both platforms guarantee is the type — `PlatformException` — and a message naming the offending decoration.
 
 ## Method-Channel Wire Format
 
