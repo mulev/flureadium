@@ -48,6 +48,7 @@ dev_dependencies:
   plugin_platform_interface: ^2.0.2
   mocktail: ^1.0.0
   fake_async: ^1.3.0
+  wakelock_plus_platform_interface: ^1.3.0
 
 executables:
   copy_js_file: copy_js_file
