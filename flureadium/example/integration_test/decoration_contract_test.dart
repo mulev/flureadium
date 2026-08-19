@@ -25,15 +25,39 @@ void main() {
       await Flureadium().closePublication();
     });
 
+    // `currentReaderWidget` is written by the reader widget's lifecycle mixin
+    // when the platform view is created
+    // (`flureadium/lib/src/reader/reader_lifecycle_mixin.dart:15`), which lands
+    // after the open-generation bump `ensureAppShowing` waits on. Reading it on
+    // that same frame is what failed on Android: the registration was still
+    // null. Wait for the registration and the first locator, then read it once.
+    Future<ReadiumReaderWidgetInterface> registeredReader(
+      WidgetTester tester,
+    ) async {
+      final arrived = await pumpUntil(
+        tester,
+        () =>
+            FlureadiumPlatform.instance.currentReaderWidget != null &&
+            readerStatus(tester) == 'ready' &&
+            locatorHref(tester).isNotEmpty,
+        timeout: const Duration(seconds: 30),
+      );
+      expect(
+        arrived,
+        isTrue,
+        reason: 'no reader widget registered with a locator',
+      );
+      return FlureadiumPlatform.instance.currentReaderWidget!;
+    }
+
     testWidgets('a decoration for the current locator is accepted', (
       tester,
     ) async {
       await showEpub(tester);
 
-      final reader = FlureadiumPlatform.instance.currentReaderWidget;
-      expect(reader, isNotNull, reason: 'no reader widget registered');
+      final reader = await registeredReader(tester);
 
-      final locator = await reader!.getCurrentLocator();
+      final locator = await reader.getCurrentLocator();
       expect(locator, isNotNull, reason: 'reader reported no current locator');
 
       // The awaited call is the assertion: a native decode failure arrives here
@@ -58,8 +82,7 @@ void main() {
     ) async {
       await showEpub(tester);
 
-      final reader = FlureadiumPlatform.instance.currentReaderWidget;
-      expect(reader, isNotNull, reason: 'no reader widget registered');
+      final reader = await registeredReader(tester);
 
       // `type` is the media type both platforms validate: iOS rejects it in
       // MediaType(typeString) (Pods/ReadiumShared/.../Locator.swift:76-79),
@@ -79,7 +102,7 @@ void main() {
       // handler. What both guarantee is a PlatformException whose message names
       // the decoration it could not read.
       await expectLater(
-        reader!.applyDecorations('highlights', [broken]),
+        reader.applyDecorations('highlights', [broken]),
         throwsA(
           isA<PlatformException>().having(
             (e) => '${e.message}',
