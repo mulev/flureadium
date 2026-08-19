@@ -5,6 +5,7 @@ import org.readium.adapter.pdfium.navigator.PdfiumPreferences
 import org.readium.adapter.pdfium.navigator.PdfiumPreferencesEditor
 import org.readium.adapter.pdfium.navigator.PdfiumSettings
 import org.readium.r2.navigator.pdf.PdfNavigatorFactory
+import org.readium.r2.shared.ExperimentalReadiumApi
 
 open class PdfReaderViewModel : ReaderViewModel() {
     var fit: org.readium.r2.navigator.preferences.Fit? = null
@@ -12,6 +13,9 @@ open class PdfReaderViewModel : ReaderViewModel() {
     var spread: org.readium.r2.navigator.preferences.Spread? = null
     var offsetFirstPage: Boolean? = null
 
+    @OptIn(ExperimentalReadiumApi::class)
     var navigatorFactory: PdfNavigatorFactory<PdfiumSettings, PdfiumPreferences, PdfiumPreferencesEditor>? = null
+
+    @OptIn(ExperimentalReadiumApi::class)
     var engineProvider: PdfiumEngineProvider? = null
 }

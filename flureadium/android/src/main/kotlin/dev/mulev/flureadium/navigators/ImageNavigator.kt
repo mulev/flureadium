@@ -147,8 +147,8 @@ class ImageNavigator(
         visualListener.onVisualCurrentLocationChanged(locator)
     }
 
-    override fun onResourceLoadFailed(url: Url, error: ReadError) {
-        Log.e(TAG, "::onResourceLoadFailed $url $error")
+    override fun onResourceLoadFailed(href: Url, error: ReadError) {
+        Log.e(TAG, "::onResourceLoadFailed $href $error")
     }
 
     override fun onJumpToLocator(locator: Locator) {

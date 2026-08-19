@@ -19,8 +19,6 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
-import org.readium.adapter.pdfium.navigator.PdfiumPreferences
-import org.readium.adapter.pdfium.navigator.PdfiumSettings
 import org.readium.r2.navigator.pdf.PdfNavigatorFragment
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
@@ -62,7 +60,7 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
     private val instance = ++instanceNo
 
     private var pdfNavigator
-        get() = navigator as? PdfNavigatorFragment<PdfiumSettings, PdfiumPreferences>
+        get() = navigator as? PdfNavigatorFragment<*, *>
         set(value) {
             navigator = value
         }
@@ -263,7 +261,11 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
         val pdfNavigatorFragment = fragmentFactory.instantiate(
             requireActivity().classLoader,
             PdfNavigatorFragment::class.java.name
-        ) as PdfNavigatorFragment<PdfiumSettings, PdfiumPreferences>
+        ) as? PdfNavigatorFragment<*, *>
+        if (pdfNavigatorFragment == null) {
+            Log.e(TAG, "::attachNavigator() - $instance - factory returned a non-PDF fragment")
+            return
+        }
 
         Log.d(TAG, "::attachNavigator - $instance - add fragment")
         childFragmentManager.commitNow {

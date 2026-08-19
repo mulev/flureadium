@@ -7,7 +7,6 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.widget.FrameLayout
-import androidx.core.view.GestureDetectorCompat
 import kotlin.math.abs
 
 private const val TAG = "EdgeTapInterceptView"
@@ -51,7 +50,7 @@ class EdgeTapInterceptView @JvmOverloads constructor(
 
     // ── Gesture detector ──────────────────────────────────────────────────────
 
-    private val gestureDetector = GestureDetectorCompat(context, object : GestureDetector.SimpleOnGestureListener() {
+    private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
 
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
             val thresholdPx = dpToPx(edgeTapThresholdDp, resources.displayMetrics.density)
