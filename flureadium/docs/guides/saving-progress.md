@@ -535,7 +535,7 @@ Test restore stability by repeating the close/reopen cycle:
 7. **Success criteria**: Position remains stable across all reopens (no drift to different chapters or positions)
 
 **Platform-Specific Validation:**
-- **Android**: Check logs for `::goToLocator: Already at ... with correct progression, skipping scroll to avoid drift`
+- **Android**: Check logs for `::goToLocator - stay at <href>, delta=<n>`, which is the line the navigator prints when it decides the position is already correct and skips the scroll
 - **iOS**: Position should be set via `initialLocation` parameter during navigator initialization
 
 ### Common Issues
@@ -585,9 +585,12 @@ adb logcat | grep -E "(EpubNavigator|EpubReaderFragment|ReadiumReaderWidget)"
 ```
 
 **Key log messages to look for:**
-- `::setupNavigatorListeners - StateFlow emit` - Position updates
-- `::onPageLoaded` - Page load events and pending scroll execution
-- `::goToLocator: Already at ... skipping scroll` - Drift prevention
+- `::locator - href=... prog=...` - Position the plugin reported to your app
+- `::onPageLoaded - href=... pendingScroll=...` - A page loaded, and whether a restore is still queued
+- `::onPageLoaded - fragment recreated, resubscribing` - The reader fragment was rebuilt after pause/resume
+- `::goToLocator - ...` - What restore decided: go to another resource, stay put, or scroll
+- `::scrollToLocations - ...` - The locations sent to the page's JavaScript
+- `::restoreState - ...` - The locator and preferences read back from a saved state bundle
 - `restore: settled after Xms` - Restore window lifecycle
 - `SUPPRESS late jump during grace period!` - Grace period validation
 
