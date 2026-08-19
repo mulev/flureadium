@@ -188,6 +188,19 @@ void f(String value) {
 ''');
   }
 
+  Future<void> test_prefixedMatcher_isFlagged() async {
+    await assertDiagnostics(
+      r'''
+import 'package:matcher/matcher.dart' as m;
+
+void f(String value) {
+  m.expect(value, m.isA<String>());
+}
+''',
+      [lint(86, 15)],
+    );
+  }
+
   Future<void> test_singleArgumentExpect_isNotFlagged() async {
     await assertNoDiagnostics(r'''
 void expect(Object? actual) {}
@@ -339,5 +352,18 @@ void f(int value) {
   expect(value, isA<int>());
 }
 ''');
+  }
+
+  Future<void> test_prefixedMatcher_isFlagged() async {
+    await assertDiagnostics(
+      r'''
+import 'package:matcher/matcher.dart' as m;
+
+void f(String value) {
+  m.expect(value, m.isNotNull);
+}
+''',
+      [lint(86, 11)],
+    );
   }
 }

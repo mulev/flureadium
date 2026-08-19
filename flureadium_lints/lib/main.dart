@@ -112,7 +112,11 @@ class _TypeVisitor extends SimpleAstVisitor<void> {
     if (actualType == null) return;
     final matcher = arguments.matcher;
     if (matcher is! MethodInvocation) return;
-    if (matcher.methodName.name != 'isA' || matcher.target != null) return;
+    // `isA` reached through an import prefix is still matcher's `isA`; an `isA`
+    // method on some object is not. The declaring library check below is what
+    // decides provenance, so ask the element, not the syntax.
+    if (matcher.methodName.name != 'isA') return;
+    if (matcher.methodName.element is! TopLevelFunctionElement) return;
     final matcherType = matcher.staticType;
     if (matcherType is! InterfaceType) return;
     if (matcherType.element.name != 'TypeMatcher') return;
@@ -139,7 +143,14 @@ class _NotNullVisitor extends SimpleAstVisitor<void> {
     final actualType = arguments.actual.staticType;
     if (actualType == null) return;
     final matcher = arguments.matcher;
-    if (matcher is! SimpleIdentifier || matcher.name != 'isNotNull') return;
+    // `m.isNotNull` behind an import prefix is a PrefixedIdentifier; its
+    // declaring library, checked below, is what decides provenance.
+    final matcherName = matcher is PrefixedIdentifier
+        ? matcher.identifier
+        : matcher;
+    if (matcherName is! SimpleIdentifier || matcherName.name != 'isNotNull') {
+      return;
+    }
     final matcherType = matcher.staticType;
     if (matcherType is! InterfaceType) return;
     final matcherLibraryUri = matcherType.element.library.uri.toString();
