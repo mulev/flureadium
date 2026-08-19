@@ -74,6 +74,12 @@ jobs:
         working-directory: flureadium/example
         run: dart analyze --fatal-infos
 
+      # Positive control: dart analyze exits 0 whether the rules ran or never
+      # loaded, so require both diagnostics on a planted violation.
+      - name: Plugin lints - wiring canary
+        working-directory: .
+        run: ./flureadium/scripts/check_lint_wiring.sh
+
   pub-score:
     name: Pub.dev Score Check
     runs-on: ubuntu-latest
