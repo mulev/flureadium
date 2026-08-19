@@ -56,6 +56,24 @@ jobs:
         working-directory: flureadium
         run: flutter analyze --fatal-infos --fatal-warnings
 
+      - name: Get dependencies - example
+        working-directory: flureadium/example
+        run: flutter pub get
+
+      # dart analyze is what enforces the two flureadium_lints rules; flutter
+      # analyze reports nothing. See flureadium/docs/05-testing/lint-rules.md.
+      - name: Plugin lints - platform interface
+        working-directory: flureadium_platform_interface
+        run: dart analyze --fatal-infos
+
+      - name: Plugin lints - main package
+        working-directory: flureadium
+        run: dart analyze --fatal-infos
+
+      - name: Plugin lints - example
+        working-directory: flureadium/example
+        run: dart analyze --fatal-infos
+
   pub-score:
     name: Pub.dev Score Check
     runs-on: ubuntu-latest
