@@ -21,8 +21,6 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import org.json.JSONObject
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubPreferences
@@ -34,8 +32,6 @@ import org.readium.r2.shared.util.AbsoluteUrl
 import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "EpubNavigator"
-private const val currentVisualCurrentLocatorKey = "currentVisualCurrentLocator"
-private const val epubPreferencesKey = "epubPreferences"
 
 /**
  * EpubNavigator is a wrapper around the EpubReaderFragment and provides methods to interact with it.
@@ -55,8 +51,8 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         this.initialPreferences = initialPreferences
         this.visualListener = visualListener
 
-        this.state[currentVisualCurrentLocatorKey] = initialLocator
-        this.state[epubPreferencesKey] = initialPreferences
+        this.state[EpubNavigatorState.LOCATOR_KEY] = initialLocator
+        this.state[EpubNavigatorState.PREFERENCES_KEY] = initialPreferences
     }
 
     /**
@@ -223,7 +219,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
                 mainScope.launch {
                     epubNavigator?.updatePreferences(preferences)
                 }
-                state[epubPreferencesKey] = preferences
+                state[EpubNavigatorState.PREFERENCES_KEY] = preferences
             }
         } catch (ex: Exception) {
             Log.e(TAG, "Error applying EpubPreferences: $ex")
@@ -244,7 +240,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
                 .onEach { locator ->
                     Log.d(TAG, "::locator - href=${locator.href} prog=${locator.locations.progression}")
                     onCurrentLocatorChanges(locator)
-                    state[currentVisualCurrentLocatorKey] = locator
+                    state[EpubNavigatorState.LOCATOR_KEY] = locator
                 }
                 .launchIn(mainScope)
                 .let { jobs.add(it) }
@@ -255,21 +251,8 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         }
     }
 
-    override fun storeState(): Bundle {
-        return Bundle().apply {
-            putString(
-                currentVisualCurrentLocatorKey,
-                (state[currentVisualCurrentLocatorKey] as? Locator)?.toJSON()?.toString()
-            )
-
-            preferences?.let { prefs ->
-                putString(
-                    epubPreferencesKey,
-                    Json.encodeToString(EpubPreferences.serializer(), prefs)
-                )
-            }
-        }
-    }
+    override fun storeState(): Bundle =
+        EpubNavigatorState.toBundle(state[EpubNavigatorState.LOCATOR_KEY] as? Locator, preferences)
 
     override fun onPageLoaded() {
         val currentFragment = epubNavigator
@@ -314,7 +297,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         locator: Locator
     ) {
         visualListener.onPageChanged(pageIndex, totalPages, locator)
-        state[currentVisualCurrentLocatorKey] = locator
+        state[EpubNavigatorState.LOCATOR_KEY] = locator
     }
 
     override fun onExternalLinkActivated(url: AbsoluteUrl) {
@@ -453,15 +436,9 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
             listener: VisualListener,
             state: Bundle
         ): EpubNavigator {
-            val locator = state.getString(currentVisualCurrentLocatorKey)
-                ?.let { json -> Locator.fromJSON(JSONObject(json)) }
-            val preferences = state.getString(epubPreferencesKey)
-                ?.let { string -> Json.decodeFromString<EpubPreferences>(string) }
-                ?: EpubPreferences()
+            val restored = EpubNavigatorState.fromBundle(state)
 
-            Log.d(TAG, "::restoreState - locator: $locator, preferences: $preferences")
-
-            return EpubNavigator(publication, locator, listener, preferences)
+            return EpubNavigator(publication, restored.locator, listener, restored.preferences)
         }
     }
 }
