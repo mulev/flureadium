@@ -7,7 +7,6 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.commitNow
 import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.ReadiumReaderWidget.Companion.NAVIGATOR_FRAGMENT_TAG
-import dev.mulev.flureadium.canScroll
 import dev.mulev.flureadium.fragments.EpubReaderFragment
 import dev.mulev.flureadium.models.EpubReaderViewModel
 import dev.mulev.flureadium.throttleLatest
@@ -123,11 +122,6 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
     private var editor: EpubPreferencesEditor? = null
 
     /**
-     * Pending scroll target to be applied when the page is loaded.
-     */
-    var pendingScrollToLocations: Locator.Locations? = null
-
-    /**
      * Current EPUB preferences.
      */
     val preferences: EpubPreferences?
@@ -153,11 +147,17 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         verticalScroll = { editor?.preferences?.scroll ?: false },
     )
 
+    /**
+     * Holds a restore scroll until a page load can perform it.
+     */
+    private val scrollRestore = EpubScrollRestore(
+        page = pageScript,
+        currentLocator = { epubNavigator?.currentLocator?.value },
+        go = { locator, animated -> go(locator, animated) },
+    )
+
     override suspend fun initNavigator() {
-        pendingScrollToLocations =
-            initialLocator?.locations?.let { locations ->
-                if (canScroll(locations)) locations else null
-            }
+        scrollRestore.arm(initialLocator)
 
         epubNavigator = EpubReaderFragment().apply {
             vm = EpubReaderViewModel().apply {
@@ -273,11 +273,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
 
     override fun onPageLoaded() {
         val currentFragment = epubNavigator
-        Log.d(
-            TAG,
-            "::onPageLoaded - href=${currentFragment?.currentLocator?.value?.href} " +
-                "pendingScroll=${pendingScrollToLocations != null}",
-        )
+        Log.d(TAG, "::onPageLoaded - href=${currentFragment?.currentLocator?.value?.href}")
 
         // The fragment drops its Readium navigator on pause and builds a new one
         // on resume, and hasNotifiedIsReady stops setupNavigatorListeners from
@@ -286,13 +282,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
 
         visualListener.onPageLoaded()
 
-        pendingScrollToLocations?.let { locations ->
-            mainScope.async {
-                // Keep follow-up scrolling consistent with explicit goToLocator behavior.
-                pageScript.scrollTo(locations, toStart = false)
-            }
-            pendingScrollToLocations = null
-        }
+        mainScope.async { scrollRestore.flush() }
 
         // If fragment recreated (pause/resume), re-subscribe
         if (currentFragment != null && currentFragment !== subscribedFragmentInstance) {
@@ -447,51 +437,14 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
      * Go to a specific locator in the EPUB navigator, this scrolls to the locator position if needed.
      */
     suspend fun goToLocator(locator: Locator, animated: Boolean) {
-        mainScope.async {
-            val locations = locator.locations
-            val shouldScroll = canScroll(locations)
-            val locatorHref = locator.href
-            val currentHref = currentLocator?.value?.href
-            val shouldGo = currentHref?.isEquivalent(locatorHref) == false
-
-            // TODO: Figure out why we can't just use rely on Readium's own go-function to scroll
-            // the locator.
-            if (shouldGo) {
-                Log.d(TAG, "::goToLocator - go $currentHref -> $locatorHref")
-                pendingScrollToLocations = locations
-                go(locator, animated)
-            } else if (!shouldScroll) {
-                Log.d(TAG, "::goToLocator - stay at $locatorHref, no scroll data")
-            } else {
-                // Check if we're already at the correct progression to avoid unnecessary scroll
-                // that would recalculate position from bounding rect and introduce drift.
-                // This matches iOS behavior which doesn't re-scroll during restore.
-                val currentProgression = currentLocator?.value?.locations?.progression
-                val targetProgression = locations.progression
-
-                if (currentProgression != null && targetProgression != null) {
-                    val progressionDelta = kotlin.math.abs(currentProgression - targetProgression)
-                    if (progressionDelta < 0.01) {  // Within 1% - already positioned correctly
-                        Log.d(TAG, "::goToLocator - stay at $locatorHref, delta=$progressionDelta")
-                        return@async
-                    }
-                }
-
-                Log.d(TAG, "::goToLocator - scroll $currentProgression -> $targetProgression")
-
-                pageScript.scrollTo(locations, toStart = false)
-            }
-        }.await()
+        mainScope.async { scrollRestore.goTo(locator, animated) }.await()
     }
 
     /**
      * Clears any deferred scroll that was queued before an explicit external restore/navigation call.
      */
     fun clearPendingScrollTarget() {
-        if (pendingScrollToLocations != null) {
-            Log.d(TAG, "::clearPendingScrollTarget")
-        }
-        pendingScrollToLocations = null
+        scrollRestore.clear()
     }
 
     companion object {
