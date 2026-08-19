@@ -91,7 +91,7 @@ internal class PluginSimpleBasePlayerTest {
         `when`(player.surfaceSize).thenReturn(Size.UNKNOWN)
         `when`(player.videoSize).thenReturn(VideoSize.UNKNOWN)
         `when`(player.trackSelectionParameters)
-            .thenReturn(TrackSelectionParameters.DEFAULT_WITHOUT_CONTEXT)
+            .thenReturn(TrackSelectionParameters.DEFAULT)
         `when`(player.seekBackIncrement).thenReturn(5000L)
         `when`(player.seekForwardIncrement).thenReturn(5000L)
     }

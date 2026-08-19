@@ -30,6 +30,7 @@ import org.robolectric.Robolectric
  * ReadiumReader outlives each test class, so a field left behind leaks into the
  * next one. Call this in both setUp and tearDown.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 internal fun resetReaderState() {
     setReaderField("_currentPublication", null)
     setReaderField("epubNavigator", null)
