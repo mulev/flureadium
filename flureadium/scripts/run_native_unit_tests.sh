@@ -350,6 +350,8 @@ if [ "$SKIP_ANDROID" = false ]; then
     log "  Run 'flutter pub get' in $EXAMPLE_DIR first."
     OVERALL_EXIT=1
   elif ! detect_java; then
+    # Unattended, detect_java already set OVERALL_EXIT; a human who typed "skip"
+    # chose this, so the exit code is theirs to keep at 0.
     log "  Skipped — no usable JDK ${MIN_JAVA_MAJOR}+."
   else
     log "  JDK:    $RESOLVED_JAVA_HOME"
@@ -383,12 +385,16 @@ log ""
 log "${CYAN}── iOS (Swift/XCTest) ───────────────────────────────────────────────${NC}"
 if [ "$SKIP_IOS" = false ]; then
   if [ "$(uname)" != "Darwin" ]; then
-    log "  Skipped — iOS tests require macOS."
+    # Not a chosen skip: the caller asked for iOS tests on a host that cannot run
+    # them. Pass --skip-ios to say you meant to run without them.
+    log "  ${RED}NOT RUN — iOS tests require macOS.${NC} Pass --skip-ios to run without them."
+    OVERALL_EXIT=1
   elif ! command -v xcrun > /dev/null 2>&1; then
     log "  ${RED}xcrun not found.${NC} Install Xcode and command-line tools, then re-run."
     OVERALL_EXIT=1
   elif ! resolve_ios_simulator; then
-    log "  Skipped — no simulator available."
+    log "  ${RED}NOT RUN — no simulator available.${NC} Boot one, or pass --skip-ios."
+    OVERALL_EXIT=1
   else
     # Mandatory: build before testing, or XCTest fails silently.
     log "  Building example app for the simulator (required before XCTest)..."
