@@ -33,6 +33,17 @@ It runs both platforms in sequence, keeps going if one fails, and prints a pass/
 
 Gradle skips `:flureadium:testDebugUnitTest` when its inputs haven't changed, reporting the task as `UP-TO-DATE` and running no tests — so re-running on an unchanged tree looks like a pass without actually executing anything. Pass `--rerun` to force a real run; it re-executes the test task while still skipping unnecessary recompilation.
 
+### Seeing compiler warnings
+
+`testDebugUnitTest` prints test results, not Kotlin compiler warnings, so a green suite says nothing about the warning census. Compile the module directly through the same wrapper, and force the task to re-execute — an `UP-TO-DATE` `compileDebugKotlin` emits zero warnings whether or not a fix landed:
+
+```sh
+cd example/android
+./gradlew :flureadium:compileDebugKotlin --rerun-tasks 2>&1 | grep '^w:' | sort -u
+```
+
+Warnings from `~/fvm/versions/*/packages/flutter_tools/` belong to the Flutter SDK, not this repo; filter on the repo path when you want only our own lines.
+
 ## What it detects
 
 **Java (Android).** Gradle 8.x needs JDK 17 or newer. The script looks in this order: `$JAVA_HOME`, the `--java-home` value, the macOS `java_home` helper, the JetBrains Runtime bundled with Android Studio, and `java` on `PATH`. If none of them is a JDK 17+, it asks you to type a path (or `skip`).
