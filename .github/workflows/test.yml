@@ -121,8 +121,10 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # --enforce-lockfile so a lock that no longer resolves fails here instead
+      # of being silently rewritten; run_all_tests.sh resolves the same way.
       - name: Install dependencies
-        run: dart pub get
+        run: dart pub get --enforce-lockfile
 
       - name: Analyze
         run: dart analyze
