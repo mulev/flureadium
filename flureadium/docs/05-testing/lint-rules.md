@@ -89,7 +89,7 @@ Plugin diagnostics are namespaced by plugin name:
 
 ```dart
 // ignore: flureadium_lints/vacuous_type_assertion
-expect(locator, isA<ReadiumLocator>());
+expect(locator, isA<Locator>());
 ```
 
 Use it for a case the rule genuinely gets wrong, and say why in the line above. A
