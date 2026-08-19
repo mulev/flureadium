@@ -73,7 +73,7 @@ stay a review concern.
 
 ```sh
 cd flureadium_lints
-dart pub get
+dart pub get --enforce-lockfile
 dart test
 ```
 
