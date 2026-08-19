@@ -33,6 +33,8 @@ It runs both platforms in sequence, keeps going if one fails, and prints a pass/
 
 Gradle skips `:flureadium:testDebugUnitTest` when its inputs haven't changed, reporting the task as `UP-TO-DATE` and running no tests — so re-running on an unchanged tree looks like a pass without actually executing anything. Pass `--rerun` to force a real run; it re-executes the test task while still skipping unnecessary recompilation.
 
+The same caching applies to `:flureadium:compileDebugKotlin` and `:flureadium:compileDebugUnitTestKotlin`: an empty warning grep proves nothing unless the log shows those task lines without `UP-TO-DATE` next to them (see [Seeing compiler warnings](#seeing-compiler-warnings)).
+
 ### Seeing compiler warnings
 
 `testDebugUnitTest` prints test results, not Kotlin compiler warnings, so a green suite says nothing about the warning census. Compile the module directly through the same wrapper, and force the task to re-execute — an `UP-TO-DATE` `compileDebugKotlin` emits zero warnings whether or not a fix landed:
