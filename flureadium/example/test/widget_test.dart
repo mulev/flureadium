@@ -57,9 +57,13 @@ Future<void> _emitEvent(String channelName, Object? payload) async {
 // The plugin decodes text-locator events with `Locator.fromJson(json.decode(
 // event))`, so the payload is a JSON string, and `href` and `type` are both
 // required for the decode to yield a locator.
-Future<void> _emitTextLocator(String href) => _emitEvent(
+Future<void> _emitTextLocator(String href, {double? progression}) => _emitEvent(
   'dev.mulev.flureadium/text-locator',
-  json.encode({'href': href, 'type': 'application/xhtml+xml'}),
+  json.encode({
+    'href': href,
+    'type': 'application/xhtml+xml',
+    if (progression != null) 'locations': {'progression': progression},
+  }),
 );
 
 // The app subscribes to reader-status, text-locator and error from
@@ -219,6 +223,26 @@ void main() {
 
     expect(_latchText(tester, 'locator_href'), 'chapter2.xhtml');
     expect(_latchText(tester, 'saved_locator_href'), 'chapter1.xhtml');
+  });
+
+  testWidgets('the progression latch follows the last locator', (tester) async {
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const ExampleApp());
+      await _pumpUntilGeneration(tester, '1');
+    });
+    _reportReaderReady(tester);
+
+    // Empty before any delivery, like the two href latches beside it.
+    expect(_latchText(tester, 'locator_progression'), '');
+
+    await _emitTextLocator('chapter1.xhtml', progression: 0.25);
+    await tester.pump();
+    await _emitTextLocator('chapter2.xhtml', progression: 0.75);
+    await tester.pump();
+
+    // The last locator's progression, not the first — the saved-locator latch
+    // beside it is the one that keeps the first.
+    expect(_latchText(tester, 'locator_progression'), '0.75');
   });
 
   testWidgets('opening a publication clears the saved locator', (tester) async {

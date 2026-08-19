@@ -837,6 +837,14 @@ class _ReaderPageState extends State<ReaderPage> {
                       ),
                     ),
                     Text(
+                      key: const Key('locator_progression'),
+                      _locator?.locations?.progression?.toString() ?? '',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
                       key: const Key('loaded-title'),
                       'loaded-title: $_loadedTitle',
                       style: const TextStyle(
