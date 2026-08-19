@@ -169,9 +169,11 @@ android/src/main/kotlin/dev/mulev/flureadium/
 ├── models/
 │   └── PdfReaderViewModel.kt    # PDF reader state
 └── navigators/
-    ├── ImageNavigator.kt           # CBZ / DIVINA navigation controller
-    ├── NavigatorTapForwarder.kt    # Readium InputListener → logical-pixel taps
-    └── PdfNavigator.kt             # PDF navigation controller
+    ├── EpubNavigator.kt             # EPUB navigation controller
+    ├── EpubPageScript.kt            # window.epubPage JavaScript contract
+    ├── ImageNavigator.kt            # CBZ / DIVINA navigation controller
+    ├── NavigatorTapForwarder.kt     # Readium InputListener → logical-pixel taps
+    └── PdfNavigator.kt              # PDF navigation controller
 ```
 
 ### Plugin Lifecycle
