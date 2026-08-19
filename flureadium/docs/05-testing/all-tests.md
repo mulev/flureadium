@@ -146,6 +146,12 @@ up — `validators.conf`'s `static-plugin` row and the `Plugin lints` steps in
 `quality.yml` run `dart analyze --fatal-infos` in all three packages, which is what
 keeps these two forms out of `main`.
 
+A clean `dart analyze` is not by itself proof that the rules ran: it exits 0 whether
+they reported nothing or never loaded. `flureadium/scripts/check_lint_wiring.sh`
+closes that hole by planting a known-vacuous assertion in each package and requiring
+both diagnostics back; it runs as the `static-plugin-canary` validator row and as a
+CI step.
+
 When a flagged assertion is genuinely the right one — a shape check on a `dynamic`
 value the analyzer has narrowed for a different reason — suppress that single line:
 

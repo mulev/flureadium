@@ -57,6 +57,8 @@ are exact — and they stay quiet whenever the assertion can genuinely fail:
 | `expect(maybe, isA<Foo>())` where `maybe` is `Foo?` | The null case makes the matcher fallible |
 | `expect(() => …, throwsA(isA<FormatException>()))` | The `isA` belongs to `throwsA`, not to `expect` |
 | `expect(value, isA<int>().having(…))` | A `having` chain is a value check wearing a type matcher |
+| An `expect` that is not a top-level function — `helper.expect(…)`, an instance or extension member reached through an implicit `this` | Resolved by element, not by syntax: someone else's two-argument method is not this matcher API |
+| `isA<T>()` or `isNotNull` declared outside `package:matcher/` | Both rules check the matcher's declaring library, so another package's identically named matcher is left alone |
 
 `expect(json['metadata'], isNotNull)` is also not reported: a map lookup has static
 type `Object?`, so that assertion really can fail.
@@ -141,9 +143,9 @@ Three files carry that section, one per analyzed package:
 
 | File | `path:` | Covers |
 |---|---|---|
-| `flureadium/analysis_options.yaml` | `../flureadium_lints` | `flureadium/` minus `example/` — 42 test files |
+| `flureadium/analysis_options.yaml` | `../flureadium_lints` | `flureadium/` minus `example/` — 16 test files |
 | `flureadium_platform_interface/analysis_options.yaml` | `../flureadium_lints` | `flureadium_platform_interface/` — 27 test files |
-| `flureadium/example/analysis_options.yaml` | `../../flureadium_lints` | `flureadium/example/` — 26 test files |
+| `flureadium/example/analysis_options.yaml` | `../../flureadium_lints` | `flureadium/example/` — 27 files under `test/` and `integration_test/` |
 
 `plugins:` is top-level in each — a sibling of `include:`, `analyzer:` and `linter:`,
 never a key under `analyzer:`. `path:` is relative to the options file holding it and
@@ -173,8 +175,8 @@ analyzer:
     - example/**
 ```
 
-and `example/` carries its own section. The `flureadium/` run then checks its own 42
-files; `example/`'s 26 are checked by the run from `example/` itself —
+and `example/` carries its own section. The `flureadium/` run then checks its own 16
+files; `example/`'s 27 are checked by the run from `example/` itself —
 `validators.conf`'s `static-plugin` row and `quality.yml`'s `Plugin lints - example`
 step both do that. An ancestor's `plugins:` section does not apply at another package's
 root, so without example's own section a run there reports nothing.
@@ -207,6 +209,28 @@ Both commands are wired up, doing different jobs:
   vacuous assertion.
 - CI — `quality.yml`'s `analyze` job keeps its `Analyze - …` steps and gains three
   `Plugin lints - …` steps running `dart analyze --fatal-infos`.
+
+`flureadium_lints` itself is not in that list. It carries an
+`analysis_options.yaml` with `include: package:lints/recommended.yaml` and no
+`plugins:` section: pointing the plugin at its own package would reload the rules
+into the analysis server on every edit to them, and this package's assertions live
+inside raw strings that the rules never resolve.
+
+### The canary, because a clean analyze proves nothing
+
+`dart analyze --fatal-infos` exits 0 both when the rules ran and found nothing and
+when they never loaded — and this page lists three measured ways they stop loading
+while analysis stays green. So enforcement carries a positive control:
+`flureadium/scripts/check_lint_wiring.sh` plants a known-vacuous assertion in each
+of the three packages, requires both diagnostics back, and deletes the probe on
+exit. It runs as `validators.conf`'s `static-plugin-canary` row and as
+`quality.yml`'s `Plugin lints - wiring canary` step.
+
+Verified in both directions: with the blocks correct it reports
+`PASS` for all three packages and exits 0; with `example`'s `diagnostics:` map
+moved to the top level — the documented silent-failure shape — it exits 1 with
+`FAIL flureadium/example — plugin reported nothing`, while that package's own
+`dart analyze` still printed `No issues found!`.
 
 Never replace a `flutter analyze` invocation with `dart analyze` on the strength of
 this: the two report overlapping but different sets, and the Flutter-specific
