@@ -375,7 +375,9 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
 
     case .isReaderReady: returnJSResult(result: result) { await self.page.isReaderReady() }
 
-    case let .setPreferences(preferences): setUserPreferences(preferences: preferences)
+    case let .setPreferences(preferences):
+      setUserPreferences(preferences: preferences)
+      result(nil)
 
     case let .setNavigationConfig(config):
       edgeNavigation.apply(config)
@@ -389,6 +391,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
           details: nil))
       }
       applyDecorations(decorations, forGroup: group)
+      result(nil)
 
     case .dispose:
       print(TAG, "Disposing readiumViewController")
