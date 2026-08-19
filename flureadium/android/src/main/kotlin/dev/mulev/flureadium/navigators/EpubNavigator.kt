@@ -9,7 +9,6 @@ import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.ReadiumReaderWidget.Companion.NAVIGATOR_FRAGMENT_TAG
 import dev.mulev.flureadium.canScroll
 import dev.mulev.flureadium.fragments.EpubReaderFragment
-import dev.mulev.flureadium.jsonDecode
 import dev.mulev.flureadium.models.EpubReaderViewModel
 import dev.mulev.flureadium.throttleLatest
 import dev.mulev.flureadium.withScope
@@ -147,12 +146,12 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         get() = epubNavigator!!.started
 
     /**
-     * Whether the EPUB navigator is in vertical scroll mode.
+     * The Kotlin side of the `window.epubPage` JavaScript contract.
      */
-    private val isVerticalScroll: Boolean
-        get() {
-            return editor?.preferences?.scroll ?: false
-        }
+    private val pageScript = EpubPageScript(
+        evaluate = { script -> evaluateJavascript(script) },
+        verticalScroll = { editor?.preferences?.scroll ?: false },
+    )
 
     override suspend fun initNavigator() {
         pendingScrollToLocations =
@@ -290,7 +289,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         pendingScrollToLocations?.let { locations ->
             mainScope.async {
                 // Keep follow-up scrolling consistent with explicit goToLocator behavior.
-                scrollToLocations(locations, toStart = false)
+                pageScript.scrollTo(locations, toStart = false)
             }
             pendingScrollToLocations = null
         }
@@ -420,29 +419,8 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         }
     }
 
-    suspend fun getLocatorFragments(locator: Locator): Locator? {
-        val json =
-            evaluateJavascript("window.epubPage.getLocatorFragments(${locator.toJSON()}, $isVerticalScroll)")
-        try {
-            if (json == null || json == "null" || json == "undefined") {
-                Log.e(
-                    TAG,
-                    "getLocatorFragments: window.epubPage.getVisibleRange failed!"
-                )
-                return null
-            }
-            val jsonLocator = jsonDecode(json) as JSONObject
-            val locatorWithFragments = Locator.fromJSON(jsonLocator)
-
-            return locatorWithFragments
-        } catch (e: Exception) {
-            Log.e(
-                TAG,
-                "getLocatorFragments: window.epubPage.getVisibleRange json: $json failed! $e"
-            )
-        }
-        return null
-    }
+    suspend fun getLocatorFragments(locator: Locator): Locator? =
+        pageScript.locatorFragments(locator)
 
     suspend fun firstVisibleElementLocator(): Locator? {
         val navigator = epubNavigator
@@ -463,16 +441,6 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         mainScope.async {
             epubNavigator?.applyDecorations(decorations, group)
         }.await()
-    }
-
-    private suspend fun scrollToLocations(
-        locations: Locator.Locations,
-        toStart: Boolean
-    ) {
-        val json = locations.toJSON().toString()
-        Log.d(TAG, "::scrollToLocations - $json vertical=$isVerticalScroll toStart=$toStart")
-
-        evaluateJavascript("window.epubPage.scrollToLocations($json,$isVerticalScroll,$toStart);")
     }
 
     /**
@@ -511,7 +479,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
 
                 Log.d(TAG, "::goToLocator - scroll $currentProgression -> $targetProgression")
 
-                scrollToLocations(locations, false)
+                pageScript.scrollTo(locations, toStart = false)
             }
         }.await()
     }
