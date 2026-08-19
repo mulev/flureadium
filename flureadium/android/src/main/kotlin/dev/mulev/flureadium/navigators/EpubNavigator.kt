@@ -202,8 +202,6 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
                 return@withScope false
             }
 
-            Log.d(TAG, "::go - returned true")
-
             return@withScope true
         }
     }
@@ -212,10 +210,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
      * Update EPUB navigator preferences.
      */
     fun updatePreferences(preferences: EpubPreferences) {
-        val currentLocatorValue = epubNavigator?.currentLocator?.value
-        Log.d(TAG, "::updatePreferences - currentLocator BEFORE=${currentLocatorValue?.let {
-            "href=${it.href}, prog=${it.locations.progression}"
-        } ?: "null"}, preferences=$preferences")
+        Log.d(TAG, "::updatePreferences - $preferences")
 
         try {
             editor?.apply {
@@ -228,11 +223,6 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
 
                 mainScope.launch {
                     epubNavigator?.updatePreferences(preferences)
-
-                    val afterLocatorValue = epubNavigator?.currentLocator?.value
-                    Log.d(TAG, "::updatePreferences - currentLocator AFTER=${afterLocatorValue?.let {
-                        "href=${it.href}, prog=${it.locations.progression}"
-                    } ?: "null"}")
                 }
                 state[epubPreferencesKey] = preferences
             }
@@ -250,28 +240,17 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
 
         val currentLocator = navigator.currentLocator
         if (currentLocator != null) {
-            // Log the current value before subscribing
-            val currentValue = currentLocator.value
-            val subscribeTime = System.currentTimeMillis()
-            Log.d(TAG, "::setupNavigatorListeners - BEFORE subscribe at t=${subscribeTime}, currentLocator.value = " +
-                "href=${currentValue.href}, progression=${currentValue.locations.progression}")
-
-            var emissionCount = 0
             currentLocator.throttleLatest(100.milliseconds)
                 .distinctUntilChanged()
                 .onEach { locator ->
-                    emissionCount++
-                    val emitTime = System.currentTimeMillis()
-                    val elapsedMs = emitTime - subscribeTime
-                    Log.d(TAG, "::setupNavigatorListeners - StateFlow emit #$emissionCount at t=$emitTime (elapsed=${elapsedMs}ms): " +
-                        "href=${locator.href}, progression=${locator.locations.progression}")
+                    Log.d(TAG, "::locator - href=${locator.href} prog=${locator.locations.progression}")
                     onCurrentLocatorChanges(locator)
                     state[currentVisualCurrentLocatorKey] = locator
                 }
                 .launchIn(mainScope)
                 .let { jobs.add(it) }
 
-            subscribedFragmentInstance = navigator  // Track subscribed fragment
+            subscribedFragmentInstance = navigator
         } else {
             Log.d(TAG, "::setupNavigatorListeners - currentLocator is null - navigator not ready?")
         }
@@ -293,19 +272,13 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         }
     }
 
-    private var pageLoadCount = 0
-
     override fun onPageLoaded() {
-        pageLoadCount++
         val currentFragment = epubNavigator
-        val currentLocatorValue = currentFragment?.currentLocator?.value
-        Log.d(TAG, "::onPageLoaded #$pageLoadCount - " +
-            "currentLocator=${currentLocatorValue?.let {
-                "href=${it.href}, prog=${it.locations.progression}"
-            } ?: "null"}, " +
-            "pendingScroll=${pendingScrollToLocations != null}, " +
-            "subscribedInstance=$subscribedFragmentInstance, " +
-            "currentInstance=$currentFragment")
+        Log.d(
+            TAG,
+            "::onPageLoaded - href=${currentFragment?.currentLocator?.value?.href} " +
+                "pendingScroll=${pendingScrollToLocations != null}",
+        )
 
         // The fragment drops its Readium navigator on pause and builds a new one
         // on resume, and hasNotifiedIsReady stops setupNavigatorListeners from
@@ -315,24 +288,16 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         visualListener.onPageLoaded()
 
         pendingScrollToLocations?.let { locations ->
-            Log.d(TAG, "::onPageLoaded #$pageLoadCount - executing pendingScrollToLocations: $locations")
-
             mainScope.async {
                 // Keep follow-up scrolling consistent with explicit goToLocator behavior.
                 scrollToLocations(locations, toStart = false)
             }
-
             pendingScrollToLocations = null
-
         }
 
         // If fragment recreated (pause/resume), re-subscribe
         if (currentFragment != null && currentFragment !== subscribedFragmentInstance) {
-            Log.d(TAG, "::onPageLoaded #$pageLoadCount - fragment changed detected! " +
-                "current=$currentFragment, subscribed=$subscribedFragmentInstance, " +
-                "currentLocator=${currentFragment.currentLocator?.value?.let {
-                    "href=${it.href}, prog=${it.locations.progression}"
-                }}")
+            Log.d(TAG, "::onPageLoaded - fragment recreated, resubscribing")
             hasNotifiedIsReady = false
             jobs.forEach { it.cancel() }
             jobs.clear()
@@ -505,18 +470,9 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         toStart: Boolean
     ) {
         val json = locations.toJSON().toString()
-        val beforeScroll = epubNavigator?.currentLocator?.value
-        Log.d(TAG, "::scrollToLocations: BEFORE scroll - currentLocator=${beforeScroll?.let {
-            "href=${it.href}, prog=${it.locations.progression}"
-        } ?: "null"}")
-        Log.d(TAG, "::scrollToLocations: Go to locations $json, toStart: $toStart")
+        Log.d(TAG, "::scrollToLocations - $json vertical=$isVerticalScroll toStart=$toStart")
 
         evaluateJavascript("window.epubPage.scrollToLocations($json,$isVerticalScroll,$toStart);")
-
-        val afterScroll = epubNavigator?.currentLocator?.value
-        Log.d(TAG, "::scrollToLocations: AFTER scroll - currentLocator=${afterScroll?.let {
-            "href=${it.href}, prog=${it.locations.progression}"
-        } ?: "null"}")
     }
 
     /**
@@ -533,11 +489,11 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
             // TODO: Figure out why we can't just use rely on Readium's own go-function to scroll
             // the locator.
             if (shouldGo) {
-                Log.d(TAG, "::goToLocator: Go to $locatorHref from $currentHref")
+                Log.d(TAG, "::goToLocator - go $currentHref -> $locatorHref")
                 pendingScrollToLocations = locations
                 go(locator, animated)
             } else if (!shouldScroll) {
-                Log.d(TAG, "::goToLocator: Already at $locatorHref, no scroll data, staying put")
+                Log.d(TAG, "::goToLocator - stay at $locatorHref, no scroll data")
             } else {
                 // Check if we're already at the correct progression to avoid unnecessary scroll
                 // that would recalculate position from bounding rect and introduce drift.
@@ -548,15 +504,12 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
                 if (currentProgression != null && targetProgression != null) {
                     val progressionDelta = kotlin.math.abs(currentProgression - targetProgression)
                     if (progressionDelta < 0.01) {  // Within 1% - already positioned correctly
-                        Log.d(TAG, "::goToLocator: Already at $locatorHref with correct progression " +
-                            "(current=$currentProgression, target=$targetProgression, delta=$progressionDelta), " +
-                            "skipping scroll to avoid drift")
+                        Log.d(TAG, "::goToLocator - stay at $locatorHref, delta=$progressionDelta")
                         return@async
                     }
                 }
 
-                Log.d(TAG, "::goToLocator: Already at $locatorHref, scroll to position " +
-                    "(current=${currentProgression}, target=${targetProgression})")
+                Log.d(TAG, "::goToLocator - scroll $currentProgression -> $targetProgression")
 
                 scrollToLocations(locations, false)
             }
