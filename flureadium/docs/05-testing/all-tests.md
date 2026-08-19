@@ -2,13 +2,13 @@
 
 `scripts/run_all_tests.sh` runs every Flureadium test suite in one pass and prints a single consolidated summary. It ties the three test toolchains together so you don't invoke them one at a time:
 
-1. **Unit / widget tests** — `flutter test` in each Dart package: the plugin (`flureadium/`), the platform interface (`flureadium_platform_interface/`), and the example app (`example/`). Headless and fastest, so they run first.
+1. **Unit / widget tests** — the Dart suites: `flutter test` in the plugin (`flureadium/`), the platform interface (`flureadium_platform_interface/`), and the example app (`example/`), plus `dart test` in the analyzer-plugin package (`flureadium_lints/`). Headless and fastest, so they run first.
 2. **Native unit tests** — delegates to [`run_native_unit_tests.sh`](native-unit-tests.md): Android Kotlin/Robolectric on the JVM and iOS Swift/XCTest on a simulator.
 3. **Integration tests** — delegates to [`run_integration_tests.sh`](integration-tests.md): the example app's full flows on Android, iOS, and Web.
 
 Suites run fastest-first (unit → native → integration). By default every suite runs even if an earlier one fails, so one command shows the whole picture; the exit code is non-zero if any suite that ran failed.
 
-The unit step is three separate rows in the summary — one per package — so a failure points at the exact package rather than a single lumped "unit" result.
+The unit step is four separate rows in the summary — one per package — so a failure points at the exact package rather than a single lumped "unit" result.
 
 ## Usage
 
@@ -56,7 +56,7 @@ Behaviour:
 
 ## What needs a device
 
-The three Dart unit suites are headless, so `--unit-only` runs with no device. Native Android (Robolectric) runs on the JVM with no emulator. Everything else needs hardware:
+The four Dart unit suites are headless, so `--unit-only` runs with no device. Native Android (Robolectric) runs on the JVM with no emulator. Everything else needs hardware:
 
 - Native iOS and the iOS integration leg need macOS with a booted simulator (auto-booted if none is running).
 - The Android integration leg needs an emulator or connected device.
@@ -91,6 +91,8 @@ The runner never lets `flutter test` silently rewrite a `pubspec.lock`. Left to 
 
 A package whose lock is gitignored (the plugin itself) needs its dependencies resolved beforehand. If they aren't, that row fails and asks you to resolve them first and commit any lock changes intentionally — the runner won't re-resolve for you, because resolving a plugin can also update the example app's committed lock.
 
+`flureadium_lints/` follows the same rule with the Dart toolchain: its `pubspec.lock` is version-controlled, so the runner does `dart pub get --enforce-lockfile` and then `dart test`. The test command must never be `flutter test` — the analyzer rule harness pulls `test_reflective_loader`, which imports `dart:mirrors`, and the Flutter test runtime rejects that import. Worse than failing, it then retries the load indefinitely instead of exiting, so a run wired to the wrong tool hangs the whole suite rather than reporting a red row.
+
 ## Logs
 
 Each run writes to `test_logs/all_tests/run_<timestamp>/` (gitignored):
@@ -101,6 +103,7 @@ Each run writes to `test_logs/all_tests/run_<timestamp>/` (gitignored):
 | `unit_plugin.log` | `flutter test` output for the plugin package |
 | `unit_platform_interface.log` | `flutter test` output for the platform interface package |
 | `unit_example.log` | `flutter test` output for the example app |
+| `unit_lints.log` | `dart test` output for the analyzer-plugin package (`flureadium_lints/`) |
 | `native.log` | Output from the delegated native runner |
 | `integration.log` | Output from the delegated integration runner |
 
