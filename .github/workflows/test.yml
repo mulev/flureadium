@@ -103,6 +103,33 @@ jobs:
         working-directory: .
         run: .github/scripts/android_integration_tests_test.sh
 
+  # The rule tests run under `dart test`, never `flutter test`:
+  # test_reflective_loader imports dart:mirrors, which the Flutter test runtime
+  # rejects — and then hangs retrying the load instead of exiting.
+  test-lints:
+    name: Test Lint Rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: flureadium_lints
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Analyze
+        run: dart analyze
+
+      - name: Run tests
+        run: dart test
+
   test-android-native:
     name: Test Android Native (Robolectric)
     runs-on: ubuntu-latest
