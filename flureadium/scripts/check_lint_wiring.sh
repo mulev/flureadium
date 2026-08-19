@@ -62,7 +62,11 @@ for entry in "${PACKAGES[@]}"; do
 	printf '%s' "$PROBE_SOURCE" >"$probe_path"
 	probe_files+=("$probe_path")
 
-	output=$(cd "$REPO_ROOT/$package_dir" && dart analyze "$probe_rel" 2>&1)
+	# No path argument, deliberately: `dart analyze <path>` ignores
+	# `analyzer: exclude`, so a path-based probe would pass while the row it
+	# guards — plain `dart analyze --fatal-infos` — walked an excluded tree and
+	# checked nothing. Run what the gate runs.
+	output=$(cd "$REPO_ROOT/$package_dir" && dart analyze 2>&1)
 
 	missing=()
 	for code in vacuous_not_null_assertion vacuous_type_assertion; do
@@ -78,8 +82,9 @@ for entry in "${PACKAGES[@]}"; do
 		echo "PASS $package_dir — both rules reported on the probe"
 	else
 		echo "FAIL $package_dir — plugin reported nothing for: ${missing[*]}"
-		echo "     the rules are not wired up here. Check the plugins: block in"
-		echo "     $package_dir/analysis_options.yaml — see flureadium/docs/05-testing/lint-rules.md"
+		echo "     the rules are not wired up here. Check the plugins: block and the"
+		echo "     analyzer: exclude list in $package_dir/analysis_options.yaml —"
+		echo "     see flureadium/docs/05-testing/lint-rules.md"
 		echo "$output" | sed 's/^/     /'
 		exit_code=1
 	fi
