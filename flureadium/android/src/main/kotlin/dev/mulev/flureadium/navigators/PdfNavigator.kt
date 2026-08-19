@@ -10,15 +10,11 @@ import dev.mulev.flureadium.FlutterPdfPreferences
 import dev.mulev.flureadium.ReadiumReaderWidget.Companion.NAVIGATOR_FRAGMENT_TAG
 import dev.mulev.flureadium.fragments.PdfReaderFragment
 import dev.mulev.flureadium.models.PdfReaderViewModel
-import dev.mulev.flureadium.throttleLatest
 import dev.mulev.flureadium.withScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,7 +25,6 @@ import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.AbsoluteUrl
-import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "PdfNavigator"
 private const val currentVisualCurrentLocatorKey = "currentVisualCurrentLocator"
@@ -107,6 +102,12 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
      * Forwards content taps from whichever Readium navigator the fragment holds.
      */
     private val tapForwarder = NavigatorTapForwarder { x, y -> visualListener.onTap(x, y) }
+
+    /**
+     * Reports throttled locator changes. Subscribed once, when the first page
+     * load marks the navigator ready.
+     */
+    private val locatorSubscription = VisualLocatorSubscription()
 
     /**
      * Engine provider for PDF rendering.
@@ -208,19 +209,17 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
             return
         }
 
-        val currentLocator = navigator.currentLocator
-        if (currentLocator != null) {
-            currentLocator.throttleLatest(100.milliseconds)
-                .distinctUntilChanged()
-                .onEach { locator ->
-                    onCurrentLocatorChanges(locator)
-                    state[currentVisualCurrentLocatorKey] = locator
-                }
-                .launchIn(mainScope)
-                .let { jobs.add(it) }
-        } else {
-            Log.d(TAG, "::setupNavigatorListeners - currentLocator is null - navigator not ready?")
+        val job = locatorSubscription.subscribe(navigator.currentLocator, mainScope) { locator ->
+            onCurrentLocatorChanges(locator)
+            state[currentVisualCurrentLocatorKey] = locator
         }
+
+        if (job == null) {
+            Log.d(TAG, "::setupNavigatorListeners - currentLocator is null - navigator not ready?")
+            return
+        }
+
+        jobs.add(job)
     }
 
     override fun storeState(): Bundle {

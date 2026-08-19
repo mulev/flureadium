@@ -7,14 +7,10 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.commitNow
 import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.ReadiumReaderWidget.Companion.NAVIGATOR_FRAGMENT_TAG
-import dev.mulev.flureadium.throttleLatest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -25,7 +21,6 @@ import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.data.ReadError
-import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "ImageNavigator"
 private const val currentVisualCurrentLocatorKey = "currentVisualCurrentLocator"
@@ -60,6 +55,9 @@ class ImageNavigator(
 
     /** Forwards content taps from the Readium navigator this class hosts. */
     private val tapForwarder = NavigatorTapForwarder { x, y -> visualListener.onTap(x, y) }
+
+    /** Reports throttled locator changes, subscribed once the fragment is attached. */
+    private val locatorSubscription = VisualLocatorSubscription()
 
     val currentLocator
         get() = imageNavigator?.currentLocator
@@ -104,21 +102,17 @@ class ImageNavigator(
         // locator arrives would otherwise never report a tap.
         tapForwarder.bindTo(imageNavigator)
 
-        val currentLocator = currentLocator
-        if (currentLocator == null) {
+        val job = locatorSubscription.subscribe(currentLocator, mainScope) { locator ->
+            onCurrentLocatorChanges(locator)
+            state[currentVisualCurrentLocatorKey] = locator
+        }
+
+        if (job == null) {
             Log.d(TAG, "::setupNavigatorListeners - currentLocator is null")
             return
         }
 
-        currentLocator
-            .throttleLatest(100.milliseconds)
-            .distinctUntilChanged()
-            .onEach { locator ->
-                onCurrentLocatorChanges(locator)
-                state[currentVisualCurrentLocatorKey] = locator
-            }
-            .launchIn(mainScope)
-            .let { jobs.add(it) }
+        jobs.add(job)
     }
 
     override fun storeState(): Bundle {

@@ -9,15 +9,11 @@ import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.ReadiumReaderWidget.Companion.NAVIGATOR_FRAGMENT_TAG
 import dev.mulev.flureadium.fragments.EpubReaderFragment
 import dev.mulev.flureadium.models.EpubReaderViewModel
-import dev.mulev.flureadium.throttleLatest
 import dev.mulev.flureadium.withScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,7 +25,6 @@ import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.AbsoluteUrl
-import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "EpubNavigator"
 
@@ -152,6 +147,13 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         go = { locator, animated -> go(locator, animated) },
     )
 
+    /**
+     * Reports throttled locator changes. [onPageLoaded] cancels it when the
+     * fragment swaps in a new Readium navigator, so [setupNavigatorListeners]
+     * can subscribe to the replacement.
+     */
+    private val locatorSubscription = VisualLocatorSubscription()
+
     override suspend fun initNavigator() {
         scrollRestore.arm(initialLocator)
 
@@ -233,22 +235,19 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
             return
         }
 
-        val currentLocator = navigator.currentLocator
-        if (currentLocator != null) {
-            currentLocator.throttleLatest(100.milliseconds)
-                .distinctUntilChanged()
-                .onEach { locator ->
-                    Log.d(TAG, "::locator - href=${locator.href} prog=${locator.locations.progression}")
-                    onCurrentLocatorChanges(locator)
-                    state[EpubNavigatorState.LOCATOR_KEY] = locator
-                }
-                .launchIn(mainScope)
-                .let { jobs.add(it) }
-
-            subscribedFragmentInstance = navigator
-        } else {
-            Log.d(TAG, "::setupNavigatorListeners - currentLocator is null - navigator not ready?")
+        val job = locatorSubscription.subscribe(navigator.currentLocator, mainScope) { locator ->
+            Log.d(TAG, "::locator - href=${locator.href} prog=${locator.locations.progression}")
+            onCurrentLocatorChanges(locator)
+            state[EpubNavigatorState.LOCATOR_KEY] = locator
         }
+
+        if (job == null) {
+            Log.d(TAG, "::setupNavigatorListeners - currentLocator is null - navigator not ready?")
+            return
+        }
+
+        jobs.add(job)
+        subscribedFragmentInstance = navigator
     }
 
     override fun storeState(): Bundle =
@@ -271,6 +270,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         if (currentFragment != null && currentFragment !== subscribedFragmentInstance) {
             Log.d(TAG, "::onPageLoaded - fragment recreated, resubscribing")
             hasNotifiedIsReady = false
+            locatorSubscription.cancel()
             jobs.forEach { it.cancel() }
             jobs.clear()
         }
