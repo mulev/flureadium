@@ -1,3 +1,8 @@
+// test_reflective_loader discovers cases by the `test_` method-name prefix, so
+// the snake_case names are the framework's contract, not a style choice. The
+// analyzer SDK's own rule tests are written the same way.
+// ignore_for_file: non_constant_identifier_names
+
 import 'package:analyzer_testing/analysis_rule/analysis_rule.dart';
 import 'package:flureadium_lints/main.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
@@ -33,14 +38,20 @@ Matcher throwsA(Object? matcher) => const Matcher();
 void expect(dynamic actual, dynamic matcher, {String? reason}) {}
 ''';
 
-/// A package that declares its own `TypeMatcher` and `isA`, so the only guard
-/// that can reject it is the `package:matcher/` library check.
+/// A package that declares its own matcher API, so the only guard that can
+/// reject it is the `package:matcher/` library check.
 const _otherMatcherStub = r'''
+class Matcher {
+  const Matcher();
+}
+
 class TypeMatcher<T> {
   const TypeMatcher();
 }
 
 TypeMatcher<T> isA<T>() => TypeMatcher<T>();
+
+const Matcher isNotNull = Matcher();
 
 void expect(dynamic actual, dynamic matcher) {}
 ''';
@@ -203,6 +214,7 @@ class VacuousNotNullAssertionTest extends AnalysisRuleTest {
   @override
   void setUp() {
     newPackage('matcher').addFile('lib/matcher.dart', _matcherStub);
+    newPackage('other').addFile('lib/other.dart', _otherMatcherStub);
     rule = VacuousNotNullAssertion();
     super.setUp();
   }
@@ -277,6 +289,44 @@ class Helper {
 
 void f(Helper helper, String value) {
   helper.expect(value, isNotNull);
+}
+''');
+  }
+
+  Future<void> test_isNotNullFromOtherLibrary_isNotFlagged() async {
+    await assertNoDiagnostics(r'''
+import 'package:other/other.dart';
+
+void f(String value) {
+  expect(value, isNotNull);
+}
+''');
+  }
+
+  Future<void> test_implicitThisExpect_isNotFlagged() async {
+    await assertNoDiagnostics(r'''
+import 'package:matcher/matcher.dart';
+
+class Harness {
+  void expect(Object? actual, Object? matcher) {}
+
+  void check(String value) {
+    expect(value, isNotNull);
+  }
+}
+''');
+  }
+
+  Future<void> test_extensionExpect_isNotFlagged() async {
+    await assertNoDiagnostics(r'''
+import 'package:matcher/matcher.dart';
+
+extension on String {
+  void expect(Object? actual, Object? matcher) {}
+
+  void check() {
+    expect(this, isNotNull);
+  }
 }
 ''');
   }

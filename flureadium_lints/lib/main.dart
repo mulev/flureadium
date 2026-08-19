@@ -5,6 +5,7 @@ import 'package:analyzer/analysis_rule/rule_context.dart';
 import 'package:analyzer/analysis_rule/rule_visitor_registry.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 
@@ -83,9 +84,11 @@ class VacuousNotNullAssertion extends AnalysisRule {
   MethodInvocation node,
 ) {
   if (node.methodName.name != 'expect') return null;
-  // `helper.expect(...)` is some object's own method, not the top-level
-  // `expect` from package:matcher. Its arguments mean nothing to these rules.
-  if (node.target != null) return null;
+  // Only the top-level `expect` from package:matcher takes an actual and a
+  // matcher. An instance member, an extension member or `helper.expect(...)`
+  // is some other object's method, whatever it is called, and its arguments
+  // mean nothing to these rules.
+  if (node.methodName.element is! TopLevelFunctionElement) return null;
   final arguments = node.argumentList.arguments;
   if (arguments.length < 2) return null;
   final actual = arguments[0];
@@ -137,6 +140,10 @@ class _NotNullVisitor extends SimpleAstVisitor<void> {
     if (actualType == null) return;
     final matcher = arguments.matcher;
     if (matcher is! SimpleIdentifier || matcher.name != 'isNotNull') return;
+    final matcherType = matcher.staticType;
+    if (matcherType is! InterfaceType) return;
+    final matcherLibraryUri = matcherType.element.library.uri.toString();
+    if (!matcherLibraryUri.startsWith('package:matcher/')) return;
     if (!context.typeSystem.isNullable(actualType)) {
       rule.reportAtNode(matcher);
     }
