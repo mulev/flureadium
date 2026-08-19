@@ -14,3 +14,19 @@
 on_os:
   mac-os:
     suite_load_timeout: 10m
+
+# Tags in use across the integration suites. Undeclared tags make the runner
+# print "Tags were used that weren't specified in dart_test.yaml" and list every
+# tagged test, which buried the useful output of a device run in 28 lines of
+# noise. Each tag names an environment requirement, and CI selects on it —
+# .github/scripts/android_integration_tests.sh passes
+# --exclude-tags "native || network" because a GitHub-hosted emulator has
+# neither an audio engine nor a route to the public internet.
+#
+#   native  — needs a real audio or TTS engine
+#   network — needs the public internet
+#   web     — web-only, reached through all_tests_web.dart
+tags:
+  native:
+  network:
+  web:
