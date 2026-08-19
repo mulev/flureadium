@@ -127,6 +127,14 @@ log() {
   echo -e "$1" | tee -a "$SUMMARY_LOG"
 }
 
+# True only when a human can answer a prompt. `/dev/tty` exists and is
+# world-readable even with no controlling terminal, so `[ -r /dev/tty ]` lies —
+# probe by opening it. Without this, every `read </dev/tty` below fails instantly
+# and its retry loop spins, flooding the log (measured: 2 GiB in 24 minutes).
+# Redirect stderr first: bash applies redirections left to right, so opening
+# `/dev/tty` before `2> /dev/null` leaks a "Device not configured" line.
+has_tty() { : 2> /dev/null < /dev/tty; }
+
 # ── Device selection ──────────────────────────────────────────────────────────
 # Filters ALL_DEVICES_STRIPPED by <pattern>, auto-selects if only one match,
 # prompts if multiple. Sets SELECTED_DEVICE; returns 1 if none found.
@@ -162,15 +170,19 @@ select_device() {
     log "    $((i+1))) ${lines[$i]}"
   done
 
-  local choice
-  while true; do
-    printf "\n  Select $label device [1-%d]: " "${#lines[@]}" >&2
-    read -r choice </dev/tty
-    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#lines[@]} )); then
-      break
-    fi
-    printf "  Enter a number between 1 and %d.\n" "${#lines[@]}" >&2
-  done
+  local choice=1
+  if has_tty; then
+    while true; do
+      printf "\n  Select $label device [1-%d]: " "${#lines[@]}" >&2
+      read -r choice </dev/tty || { choice=1; break; }
+      if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#lines[@]} )); then
+        break
+      fi
+      printf "  Enter a number between 1 and %d.\n" "${#lines[@]}" >&2
+    done
+  else
+    log "  No terminal to ask on — taking the first $label device."
+  fi
 
   local selected="${lines[$((choice-1))]}"
   SELECTED_DEVICE=$(echo "$selected" | awk -F' • ' '{print $2}' | xargs)
@@ -362,11 +374,15 @@ if [ "$SKIP_WEB" = false ]; then
         log "  (Chrome not found on this machine; install Chrome or Chromium first)"
       fi
       log "Alternatively, check $LOG_DIR/chromedriver.log for the error."
-      printf "\nSkip web tests and continue? [Y/n]: " >&2
-      read -r skip_web_answer </dev/tty
-      if [[ "$skip_web_answer" =~ ^[Nn]$ ]]; then
-        log "Aborted."
-        exit 1
+      if has_tty; then
+        printf "\nSkip web tests and continue? [Y/n]: " >&2
+        read -r skip_web_answer </dev/tty || skip_web_answer=""
+        if [[ "$skip_web_answer" =~ ^[Nn]$ ]]; then
+          log "Aborted."
+          exit 1
+        fi
+      else
+        log "No terminal to ask on — skipping the web suite and continuing."
       fi
       SKIP_WEB=true
     fi

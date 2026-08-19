@@ -112,7 +112,9 @@ log() {
 # world-readable even with no controlling terminal, so `[ -r /dev/tty ]` lies —
 # probe by opening it. Without this, every `read </dev/tty` below fails instantly
 # and its retry loop spins, flooding the log (measured: 2 GiB in 24 minutes).
-has_tty() { : < /dev/tty 2> /dev/null; }
+# Redirect stderr first: bash applies redirections left to right, so opening
+# `/dev/tty` before `2> /dev/null` leaks a "Device not configured" line.
+has_tty() { : 2> /dev/null < /dev/tty; }
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 cleanup() {
