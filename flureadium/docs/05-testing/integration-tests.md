@@ -396,6 +396,8 @@ CI runs the full test matrix on every push and pull request to `main`:
 
 Android CI drops the `native` and `network` tags because GitHub-hosted emulators have no audio or TTS engine and no route to the public internet. Those tests still run on the iOS leg and locally via `scripts/run_integration_tests.sh` — so a green Android CI run says nothing about them. The web bundle (`all_tests_web.dart`) runs the launch smoke test live and bundles `epub_tts_web_test.dart` with its tests skipped in-file until the web-reader TTS plumbing lands (tracked in [Web Platform](../platform-specific/web.md)).
 
+The three tags in use — `native`, `network` and `web` — are declared in `example/dart_test.yaml`. Declaring a tag selects nothing; it only tells the runner the tag is intentional. A tag used in a test but missing from that file makes every device run print `Tags were used that weren't specified in dart_test.yaml` followed by a line per tagged test, which is 28 lines of noise on top of the suite output. Add a new tag there in the same run that introduces it.
+
 ### When the iOS job stalls before any test runs
 
 On a simulator, `flutter_tools` learns the Dart VM service URL one way only: it scrapes a single line out of `xcrun simctl spawn <udid> log stream`. There is no mDNS fallback, and the wait has no timeout. When that one log record does not reach the tool, the app boots and idles normally while the tool waits forever.
