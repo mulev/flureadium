@@ -175,7 +175,8 @@ android/src/main/kotlin/dev/mulev/flureadium/
     ├── EpubScrollRestore.kt         # Deferred restore scroll and its decision
     ├── ImageNavigator.kt            # CBZ / DIVINA navigation controller
     ├── NavigatorTapForwarder.kt     # Readium InputListener → logical-pixel taps
-    └── PdfNavigator.kt              # PDF navigation controller
+    ├── PdfNavigator.kt              # PDF navigation controller
+    └── VisualLocatorSubscription.kt # Throttled locator reporting for all three
 ```
 
 ### Plugin Lifecycle
@@ -592,6 +593,14 @@ hosts: `EpubNavigator` and `PdfNavigator` bind in `onPageLoaded`, `ImageNavigato
 in `setupNavigatorListeners`, above the guard that returns early while a CBZ still
 has no locator. All three unbind in `dispose` and in `release`, the teardown a
 publication swap takes.
+
+The forwarder is not the only collaborator `setupNavigatorListeners` reaches for.
+`VisualLocatorSubscription` (`navigators/VisualLocatorSubscription.kt`) holds the
+throttled locator reporting all three navigators used to carry a copy of, and each
+navigator keeps the `Job` it returns in the list `dispose` cancels. The two are
+independent, which is what lets `ImageNavigator` bind its taps and then return
+early with no subscription at all: the forwarder follows the Readium navigator
+instance, the subscription follows that navigator's locator flow.
 
 **Binding is keyed on the navigator instance.** `EpubReaderFragment` and
 `PdfReaderFragment` remove their Readium navigator in `onPause` and build a new one
