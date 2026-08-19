@@ -222,6 +222,59 @@ void main() {
       );
     });
 
+    // Two taps, not one: `_savedLocator` is the first locator of the open, so
+    // by the time a test can tap, the reader may already be further down the
+    // same resource — making the first tap a legitimate scroll. The second tap
+    // asks the reader to restore the position it is provably already on, which
+    // is the input the 1% progression skip guards. Nothing may move there.
+    testWidgets('Go To Saved twice keeps the reported progression', (
+      tester,
+    ) async {
+      await showEpub(tester);
+
+      await _expectEventually(
+        tester,
+        () => savedLocatorHref(tester).isNotEmpty,
+        reason: 'nothing was ever saved',
+      );
+      final saved = savedLocatorHref(tester);
+
+      await tester.tap(find.text('Go To Saved'));
+      await _expectEventually(
+        tester,
+        () => locatorHref(tester) == saved,
+        reason: 'Go To Saved did not reach "$saved"',
+      );
+      final before = locatorProgression(tester);
+      final eventsBefore = locatorEvents(tester);
+
+      await tester.tap(find.text('Go To Saved'));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+
+      expect(locatorHref(tester), saved);
+      expect(
+        locatorEvents(tester),
+        greaterThan(eventsBefore),
+        reason:
+            'no locator was reported after the second tap, so this case '
+            'would pass on a dead stream',
+      );
+
+      // Conditional because a resource may report no progression at all; the
+      // locator-events assertion above is what keeps that from turning this
+      // case vacuous.
+      final after = locatorProgression(tester);
+      if (before != null && after != null) {
+        expect(
+          (after - before).abs(),
+          lessThan(0.01),
+          reason: 'restoring the current position moved it: $before -> $after',
+        );
+      }
+    });
+
     // The night theme itself cannot be verified from Dart: setEPUBPreferences
     // returns Future<void> and no channel reports the active theme back
     // (flureadium-8om). This case asserts the contract that is observable and
