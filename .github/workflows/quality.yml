@@ -60,6 +60,12 @@ jobs:
         working-directory: flureadium/example
         run: flutter pub get
 
+      # flureadium/analysis_options.yaml excludes example/**, so the main-package
+      # analyze no longer walks it. Keep the Flutter-specific diagnostics.
+      - name: Analyze - example
+        working-directory: flureadium/example
+        run: flutter analyze --fatal-infos --fatal-warnings
+
       # dart analyze is what enforces the two flureadium_lints rules; flutter
       # analyze reports nothing. See flureadium/docs/05-testing/lint-rules.md.
       - name: Plugin lints - platform interface
