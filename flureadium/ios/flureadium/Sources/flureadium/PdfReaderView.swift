@@ -256,14 +256,18 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
         }
       }
     case "setPreferences":
-      let args = call.arguments as! [String: Any]
+      // `PDFPreferences.init(fromMap:)` (utils/ReadiumExtensions.swift:230) takes a
+      // non-optional map and iterates its keys, so an empty map is the same as no
+      // preferences — which is what a non-dictionary argument should mean here
+      // rather than a trap.
+      let args = call.arguments as? [String: Any] ?? [:]
       print(TAG, "onMethodCall[setPreferences] args = \(args)")
       let preferences = PDFPreferences(fromMap: args)
       setUserPreferences(preferences: preferences)
       result(nil)
     case "setNavigationConfig":
-      let args = call.arguments as! [String: Any]
-      print(TAG, "onMethodCall[setNavigationConfig] args = \(args)")
+      let args = call.arguments as? [String: Any]
+      print(TAG, "onMethodCall[setNavigationConfig] args = \(String(describing: args))")
       let navConfig = FlutterNavigationConfig(fromMap: args)
       let newlyDisabled = gestureSuppression.apply(navConfig)
       // setupPDFView has already run — apply what this call switched on to the

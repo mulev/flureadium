@@ -220,8 +220,7 @@ class ImageReaderView: NSObject, FlutterPlatformView, CBZNavigatorDelegate, Visu
     case "setPreferences":
       result(nil)
     case "setNavigationConfig":
-      let args = call.arguments as! [String: Any]
-      let navConfig = FlutterNavigationConfig(fromMap: args)
+      let navConfig = FlutterNavigationConfig(fromMap: call.arguments as? [String: Any])
       edgeNavigation.apply(navConfig)
       configureEdgeTapHandlers()
       result(nil)
