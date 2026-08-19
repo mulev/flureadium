@@ -66,6 +66,22 @@ Drop what you can't run with `--skip-android` / `--skip-ios` / `--skip-web`, or 
 
 By default the Android native tests do a clean rebuild for a guaranteed real result; pass `--no-rerun` to reuse the Gradle build cache and finish faster.
 
+## Intentionally skipped tests
+
+A full run reports a handful of skips. These five are the only ones that belong there: each names an OS version or a platform its assertion cannot hold on. Any other skip is a defect, not a gate.
+
+| Site | Gate | Why it stays |
+|---|---|---|
+| `example/ios/RunnerTests/CarTemplateRendererTests.swift` — `testTypedSearchRowAppearsOnlyWithIOS27AndKeyboard` | `guard #available(iOS 27.0, *) else { throw XCTSkip(…) }` | Typed CarPlay search is an iOS 27+ API. The project simulator runs 18.3.1, so the case reports skipped there and runs on any iOS 27+ device |
+| `example/integration_test/audiobook_test.dart` — cancelled-read case | `skip: !Platform.isIOS` | The churn it pins is iOS AVFoundation behaviour; on Android there is no cancellation to be benign about |
+| `example/integration_test/audiobook_test.dart` — mid-stream failure case | `skip: Platform.isIOS` | Android-specific failure mode |
+| `example/integration_test/error_handling_test.dart` — no-publication case | `skip: Platform.isIOS` | Android-specific failure mode, written up in [integration-tests.md](integration-tests.md) |
+| `example/integration_test/epub_tts_web_test.dart` | WIP web publication loading / navigator init | Publication loading on web waits on the Readium JS navigator — see [web.md](../platform-specific/web.md). Not a TTS gap: TTS is supported on web; the navigator is the unfinished part |
+
+"Flaky" and "needs integration testing" are not reasons. Both of those were removed. The platform-interface stream test was fed a `Locator` object where the getter decodes a JSON string, so it timed out on every run; the wakelock tests never needed a device at all, because `wakelock_plus` exposes its platform instance for tests. A skip that names neither an OS version nor a platform is a test nobody finished — fix it or delete it.
+
+Skipping is also not an escape from [Assertions must be able to fail](#assertions-must-be-able-to-fail): the wakelock group hid three of the banned forms behind a `skip:` for as long as it existed.
+
 ## Lockfile safety
 
 The runner never lets `flutter test` silently rewrite a `pubspec.lock`. Left to itself, `flutter test` runs an implicit `pub get` that downgrades a committed lock whenever the resolving SDK differs — for example, an unmaterialized FVM pin falling back to the global SDK. For each Dart package the runner instead:
@@ -96,7 +112,7 @@ Reach for `run_all_tests.sh` when you want the whole picture in one command — 
 
 ## Assertions must be able to fail
 
-Every assertion has to be able to go red. A sweep across the Dart suites removed 53 that could not: each restated something the compiler, null safety, or the test itself had already settled. These forms are banned:
+Every assertion has to be able to go red. A sweep across the Dart suites removed 56 that could not: each restated something the compiler, null safety, or the test itself had already settled. These forms are banned:
 
 | Banned form | Always passes because |
 |---|---|
