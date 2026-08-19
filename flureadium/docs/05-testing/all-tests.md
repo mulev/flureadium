@@ -119,14 +119,53 @@ Every assertion has to be able to go red. A sweep across the Dart suites removed
 
 | Banned form | Always passes because |
 |---|---|
-| `expect(x, isA<T>())` where `x`'s static type is already `T` | the compiler proved it. `expect(voices, isA<List<ReaderTTSVoice>>())` on a method declared `Future<List<ReaderTTSVoice>>` is a no-op |
-| `expect(x, isNotNull)` on a non-nullable declared type | null safety already rules the failure out |
+| `expect(x, isA<T>())` where `x`'s static type is already `T` | the compiler proved it. `expect(voices, isA<List<ReaderTTSVoice>>())` on a method declared `Future<List<ReaderTTSVoice>>` is a no-op. **Machine-enforced** — `vacuous_type_assertion` |
+| `expect(x, isNotNull)` on a non-nullable declared type | null safety already rules the failure out. **Machine-enforced** — `vacuous_not_null_assertion` |
 | `expect(c, equals(c))` on the same canonicalized `const` | Equatable's `==` short-circuits on `identical`, and both operands are the same object |
 | a finder asserted before an action, then the identical finder asserted after it | the widget was mounted before the action and nothing in the action unmounts it, so only a crash fails it |
 | key presence or non-emptiness where the test name promises a value | `expect(json['metadata'], isNotNull)` in a test called "serializes publication to JSON" passes on `{}` |
 | a latch asserted to be transiently cleared, when the feature under test refills it | `LiveTestWidgetsFlutterBinding` gives the refill the same frame the clear happened in, so the intermediate state is never observable — and the latch value cannot distinguish "refilled" from "never cleared". `expect(locatorHref(tester), isEmpty)` one pump after a resubscribe passed on a stale href |
 
 Assert the value instead: the one the fixture or the mock actually produced. In an integration test, read the before-value from a latch, run the action, then assert that the after-value changed the way the test name claims.
+
+### Two of the six are machine-checked
+
+The first two rows are analyzer diagnostics now, not just a rule in this document.
+`flureadium_lints`, a first-party analyzer plugin at the repo root, reports
+`vacuous_type_assertion` and `vacuous_not_null_assertion` while you type and again in
+CI. Both decisions come from the analyzer's type system: `isA<T>()` is flagged only
+when the target's static type is already a subtype of `T`, and `isNotNull` only when
+the static type is non-nullable. See [lint-rules.md](lint-rules.md) for the rules,
+where they are enabled, and how to run their tests.
+
+**The enforcing command is `dart analyze --fatal-infos`, not `flutter analyze`.**
+`flutter analyze` drives the LSP server and returns the moment analysis reports itself
+finished, while the plugin publishes from a separate isolate a beat later: it prints
+`No issues found!` and exits 0 with a violation in front of it. Both commands are wired
+up — `validators.conf`'s `static-plugin` row and the `Plugin lints` steps in
+`quality.yml` run `dart analyze --fatal-infos` in all three packages, which is what
+keeps these two forms out of `main`.
+
+When a flagged assertion is genuinely the right one — a shape check on a `dynamic`
+value the analyzer has narrowed for a different reason — suppress that single line:
+
+    // ignore: flureadium_lints/vacuous_type_assertion
+
+The prefix is the plugin name; `// ignore: vacuous_type_assertion` without it does
+nothing. Reach for it rarely: the cases the rule is *supposed* to allow — `isA<T>()` on
+`dynamic` or on a decoded JSON field, `throwsA(isA<…>())`, `isNotNull` on a nullable
+type, a `.having(...)` chain — are not flagged at all, so a diagnostic on one of them
+is a bug worth filing.
+
+If your editor shows nothing after this landed, restart the analysis server (VS Code:
+*Dart: Restart Analysis Server*). A `plugins:` section is read once per session.
+
+The remaining four rows stay on us. `equals(c)` on the same `const`, a finder asserted
+on both sides of an action, key-presence where the test name promises a value, and a
+latch asserted to clear when the feature refills it are all semantic — they depend on
+what the test's name claims and on dataflow across statements, which no type-level rule
+can see. Those are held by review against this document and by the red state required
+in "Proving a new assertion can fail" below.
 
 ### Latches, not finders
 

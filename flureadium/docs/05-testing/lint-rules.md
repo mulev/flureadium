@@ -135,6 +135,79 @@ no diagnostics, and exits 0 — the rules simply never run. Measured on a fixtur
 two known violations: the correct shape reported both, the top-level shape reported
 `No issues found!`.
 
-Which of this repo's `analysis_options.yaml` files carry that section is decided with
-that change, not here. See the enforcement phase of the plan that introduced this
-package.
+## Where the rules are enabled
+
+Three files carry that section, one per analyzed package:
+
+| File | `path:` | Covers |
+|---|---|---|
+| `flureadium/analysis_options.yaml` | `../flureadium_lints` | `flureadium/` minus `example/` — 42 test files |
+| `flureadium_platform_interface/analysis_options.yaml` | `../flureadium_lints` | `flureadium_platform_interface/` — 27 test files |
+| `flureadium/example/analysis_options.yaml` | `../../flureadium_lints` | `flureadium/example/` — 26 test files |
+
+`plugins:` is top-level in each — a sibling of `include:`, `analyzer:` and `linter:`,
+never a key under `analyzer:`. `path:` is relative to the options file holding it and
+is the plugin's only reference; neither published package lists it in `pubspec.yaml`.
+
+### Why `example` needs its own section, and an exclude
+
+`flureadium/example` is a package nested inside `flureadium`. Only one `plugins:`
+section is honoured per analyze session and the deeper one wins silently, so the two
+roots compete: without an exclude, one of the two test trees goes unchecked. Measured
+with `dart analyze --fatal-infos` from `flureadium/`, with a known violation in each
+tree:
+
+| Arrangement | `flureadium/test/**` | `example/test/**` |
+|---|---|---|
+| section in `flureadium/` only, `example/` has no options file | not checked | checked |
+| section in `flureadium/` only, `example/` has options without one | checked | not checked |
+| section in both roots, no exclude | not checked | checked |
+| section in both roots, `flureadium/` excludes `example/**` | checked | checked, from example's own run |
+
+Only the last row covers everything, which is why `flureadium/analysis_options.yaml`
+carries
+
+```yaml
+analyzer:
+  exclude:
+    - example/**
+```
+
+and `example/` carries its own section. The `flureadium/` run then checks its own 42
+files; `example/`'s 26 are checked by the run from `example/` itself —
+`validators.conf`'s `static-plugin` row and `quality.yml`'s `Plugin lints - example`
+step both do that. An ancestor's `plugins:` section does not apply at another package's
+root, so without example's own section a run there reports nothing.
+
+### The command that enforces them: `dart analyze`
+
+`flutter analyze` does not report these diagnostics. It is not a wrapper around `dart
+analyze`: it starts `dart language-server`, collects LSP diagnostics, and returns as
+soon as the analysis progress token completes
+(`packages/flutter_tools/lib/src/dart/analysis.dart`,
+`commands/analyze_once.dart`). The plugin publishes from its own isolate after that
+window closes, so the diagnostics never arrive. Measured on Flutter 3.44.7 / Dart
+3.12.2 with a probe in place, same directory, same session:
+
+| Command | cwd | Result |
+|---|---|---|
+| `dart analyze --fatal-infos` | `flureadium_platform_interface` | both codes reported, exit 1 |
+| `flutter analyze --fatal-infos` | `flureadium_platform_interface` | `No issues found!`, exit 0 |
+| `dart analyze --fatal-infos` | `flureadium` | both codes reported, exit 1 |
+| `flutter analyze --fatal-infos` | `flureadium` | `No issues found!`, exit 0 |
+
+The `flutter analyze` runs were repeated cold (35s, 91s) and warm (2.1s), so this is
+not a cold-start race that a slower machine would win. Upstream:
+[flutter/flutter#28327](https://github.com/flutter/flutter/issues/28327).
+
+Both commands are wired up, doing different jobs:
+
+- `validators.conf` — the `static` row keeps `flutter analyze`; the `static-plugin`
+  row runs `dart analyze --fatal-infos` in all three packages and is what fails on a
+  vacuous assertion.
+- CI — `quality.yml`'s `analyze` job keeps its `Analyze - …` steps and gains three
+  `Plugin lints - …` steps running `dart analyze --fatal-infos`.
+
+Never replace a `flutter analyze` invocation with `dart analyze` on the strength of
+this: the two report overlapping but different sets, and the Flutter-specific
+diagnostics come from the former.
