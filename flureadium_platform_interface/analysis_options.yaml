@@ -52,6 +52,13 @@ linter:
     use_super_parameters: true
     use_to_and_as_if_applicable: true
 
+plugins:
+  flureadium_lints:
+    path: ../flureadium_lints
+    diagnostics:
+      vacuous_type_assertion: true
+      vacuous_not_null_assertion: true
+
 # Unused for now, since free version of dart_code_metrics was discontinued and held back our dependencies.
 dart_code_metrics:
   rules:
