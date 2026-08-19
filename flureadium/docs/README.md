@@ -58,6 +58,7 @@ Flureadium is a Flutter plugin that wraps the Readium toolkits for reading EPUB 
 - **[Native Unit Tests](05-testing/native-unit-tests.md)** - Android (Robolectric) and iOS (XCTest)
 - **[iOS Unit Tests](05-testing/ios-unit-tests.md)** - Raw xcodebuild commands for focused iOS work
 - **[Integration Tests](05-testing/integration-tests.md)** - Example-app flows on Android, iOS, and Web
+- **[Lint Rules](05-testing/lint-rules.md)** - The analyzer plugin that flags test assertions which cannot fail
 
 ## Supported Formats
 
