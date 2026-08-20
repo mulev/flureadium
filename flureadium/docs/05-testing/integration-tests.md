@@ -18,6 +18,7 @@ Integration tests run the example app on a real device or simulator and assert w
 | `divina_test.dart` | Android, iOS | DIVINA auto-opens, `ReadiumReaderWidget` present, left/right navigation works |
 | `webpub_test.dart` | Android, iOS (`network`) | Remote WebPub manifest opens, `ReadiumReaderWidget` present |
 | `error_handling_test.dart` | Android, iOS | A corrupted file and a missing file both raise `ReadiumException`, and (Android only) a failed native enable reports `error` instead of killing the app — see [Forcing a reader failure](#forcing-a-reader-failure) |
+| `tap_test.dart` | Android | A content tap is reported once through `onTap` with a position, a hyperlink tap navigates and reports nothing, a plain page in the same book does report, and a publication swap rebinds the listener. Android only, and reflowable only — see [What a synthesized tap can reach](#what-a-synthesized-tap-can-reach) |
 
 ### Tags
 
@@ -44,6 +45,51 @@ audio-only readiness regression, went unrun on Android for months
 > **Always use `all_tests.dart` (mobile) or `all_tests_web.dart` (web) when running the full suite.** Running `flutter test integration_test/` without specifying a file compiles and installs each test file as a separate APK batch. On mobile this reinstalls the app mid-run, killing in-progress tests and causing "did not complete" failures for any tests that were running when the new APK landed.
 
 > **Web test coverage is limited.** `epub_test.dart` and `webpub_test.dart` are excluded from `all_tests_web.dart` because publication loading on web is not yet reliable (see [Web Platform](../platform-specific/web.md)). The web suite currently covers app launch only. These tests will be added back as web support matures.
+
+## What a synthesized tap can reach
+
+`tap_test.dart` proves the tap chain the plugin exposes as `onTap`: a real touch
+on the platform view, filtered by Readium so links and other interactive
+elements never surface, back into Dart. It runs on Android and on reflowable
+EPUB only. Both limits were measured while writing the suite, and neither is a
+preference — read this before writing a tap case for another platform or
+publication type, because the two dead ends below look identical from Dart.
+
+**Android reflowable works, and here is why.** The example app builds the reader
+through `PlatformViewLink` + `AndroidViewSurface`, whose render object is a
+`PlatformViewRenderBox`. With an empty `gestureRecognizers` set the platform
+view is the only arena member, so it wins the tap
+(`rendering/platform_view.dart:68-69`), and `AndroidViewController` converts the
+pointer into a real `MotionEvent` posted over the `platform_views` channel
+(`services/platform_views.dart:916-918`). From there it is an ordinary Android
+touch: it lands in the Readium WebView, the JavaScript gesture layer runs, and
+`InputListener.onTap` fires.
+
+**iOS cannot be driven at all.** `UiKitView` builds a `RenderUiKitView`, whose
+`handleEvent` adds the pointer to the gesture arena and, on winning, calls
+`controller.acceptGesture()` (`rendering/platform_view.dart:453-460`,
+`:548-550`). That releases the *real* `UITouch` sequence to the embedded view —
+there is no synthesized-pointer path, and `WidgetTester` never produces a
+`UITouch`. This is a Flutter injection-layer fact, not a hardware one, so the
+simulator does not help. An iOS tap case needs a separate XCUITest target.
+
+**Android fixed layout is not driven by a synthesized touch either.** This one
+is easy to mistake for a broken fixture, because the touch demonstrably arrives:
+`EdgeTapInterceptView.dispatchTouchEvent` logs the `ACTION_DOWN` with
+`claimed=false` for a fixed-layout publication exactly as it does for a
+reflowable one, so the event reached the native view and passed the edge
+overlay. It is then dropped above that, inside the fixed-layout script path.
+Five taps three seconds apart on `fixed_layout.epub` reported nothing, while
+`adb shell input tap` at the same point reported immediately — the fixture and
+the chain are both fine.
+
+What is left is handed over as the `user | tap` row in `validators.conf`: every
+iOS case, plus fixed layout and PDF on both platforms. `./validate list user`
+prints it, and the checklist itself lives in the phase 5 plan slice.
+
+A useful side effect of the measurement: `onTap`'s `Offset` is in **logical
+pixels, origin at the top-left of the platform view**. A tap at raw
+(540, 1200) on a 1080x2400 emulator at density 2.625 reported `205.7, 457.1`.
 
 ## Forcing a reader failure
 

@@ -17,3 +17,21 @@ Some ones prefixed with a number are self-produced by Nota.
 | flatland_remote.audiobook | webpub/audiobook  | Readium Audiobook (remote)  |
 | sample_comic.cbz          | cbz               | Minimal image-based comic   |
 | sample_visual.divina      | divina            | Minimal visual narrative    |
+| tap_targets.epub          | epub              | Full-viewport link, then plain page |
+| fixed_layout.epub         | epub              | Single pre-paginated page   |
+
+Both are self-produced minimal fixtures for the tap chain, but they are consumed
+differently.
+
+`tap_targets.epub` drives `integration_test/tap_test.dart`. It has two spine items:
+`page1.xhtml` is one anchor filling the viewport, `page2.xhtml` is plain text — tapping
+page 1 must follow the link and must not report a tap, and tapping page 2 must report
+one. Without that second half a link assertion passes just as well when no tap ever
+reached native.
+
+`fixed_layout.epub` is `rendition:layout` `pre-paginated`, which Readium serves through
+a different script path than reflowable content. It is **not** used by an automated
+test: a synthesized tap reaches the native view and that script path never reports it,
+so it is exercised by hand through the app's **Open Fixed Layout** button as part of the
+`user | tap` row in `validators.conf`. See "What a synthesized tap can reach" in
+`docs/05-testing/integration-tests.md`.
