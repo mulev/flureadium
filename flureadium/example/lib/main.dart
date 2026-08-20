@@ -77,6 +77,15 @@ class _ReaderPageState extends State<ReaderPage> {
   int _locatorEvents = 0;
   bool _endedSeen = false;
   bool _controlsVisible = true;
+  // How many taps the native navigator has reported since this publication
+  // opened, cleared by _resetPublicationLatches, and the position the last one
+  // carried. A count rather than a flag, for the same reason as
+  // _locatorEvents: only a number that must rise can tell one report from two,
+  // and a double listener registration is the failure the tap wiring has to be
+  // proven free of. The position is rendered as text so a units mismatch
+  // between the platforms is visible instead of silent.
+  int _tapEvents = 0;
+  Offset? _lastTap;
   bool _ttsEnabled = false;
   Locator? _lastTtsLocator;
   Locator? _readerLocatorAtTtsDisable;
@@ -203,6 +212,22 @@ class _ReaderPageState extends State<ReaderPage> {
       await _openPublicationAsset('assets/pubs/sample_visual.divina');
     } catch (e) {
       debugPrint('openDivina error: $e');
+    }
+  }
+
+  Future<void> _openTapTargets() async {
+    try {
+      await _openPublicationAsset('assets/pubs/tap_targets.epub');
+    } catch (e) {
+      debugPrint('openTapTargets error: $e');
+    }
+  }
+
+  Future<void> _openFixedLayout() async {
+    try {
+      await _openPublicationAsset('assets/pubs/fixed_layout.epub');
+    } catch (e) {
+      debugPrint('openFixedLayout error: $e');
     }
   }
 
@@ -425,6 +450,8 @@ class _ReaderPageState extends State<ReaderPage> {
     _readerStatus = '';
     _locator = null;
     _locatorEvents = 0;
+    _tapEvents = 0;
+    _lastTap = null;
     _savedLocator = null;
     _loadedTitle = '';
     _lastAudioError = '';
@@ -705,8 +732,13 @@ class _ReaderPageState extends State<ReaderPage> {
             ReadiumReaderWidget(
               key: ValueKey('reader-$_readerMountGeneration'),
               publication: pub,
-              onTap: (_) =>
-                  setState(() => _controlsVisible = !_controlsVisible),
+              onTap: (position) {
+                setState(() {
+                  _tapEvents += 1;
+                  _lastTap = position;
+                  _controlsVisible = !_controlsVisible;
+                });
+              },
               onReady: _subscribeToChannels,
             )
           else
@@ -728,8 +760,66 @@ class _ReaderPageState extends State<ReaderPage> {
                 ),
               ),
             ),
+          // Always visible: a tap flips _controlsVisible, so a tap latch inside
+          // the control bar below would unmount at the moment it finally has
+          // something to report. The latches are wrapped in IgnorePointer — a
+          // latch that swallowed the taps it exists to observe would report zero
+          // forever — but the toggle beside them is deliberately hit-testable:
+          // it is the only way back to the controls that does not depend on the
+          // native tap working, which is exactly what the tests are proving.
+          Positioned(
+            top: 0,
+            left: 0,
+            child: ColoredBox(
+              color: Colors.white70,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IgnorePointer(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          key: const Key('tap-events'),
+                          'tap-events: $_tapEvents',
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                        Text(
+                          key: const Key('last-tap'),
+                          _lastTap == null
+                              ? ''
+                              : '${_lastTap!.dx.toStringAsFixed(1)},${_lastTap!.dy.toStringAsFixed(1)}',
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    key: const Key('toggle-controls'),
+                    onPressed: () =>
+                        setState(() => _controlsVisible = !_controlsVisible),
+                    style: TextButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      'controls',
+                      style: TextStyle(fontSize: 10),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           if (pub == null || _controlsVisible)
             Positioned(
+              // Keyed so an integration test can tell whether the chrome is up:
+              // this bar covers the reader's centre, so a tap aimed there would
+              // hit these buttons instead of the publication.
+              key: const Key('control-bar'),
               bottom: 0,
               left: 0,
               right: 0,
@@ -889,6 +979,14 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _openDivina,
                           child: const Text('Open DIVINA'),
+                        ),
+                        TextButton(
+                          onPressed: _openTapTargets,
+                          child: const Text('Open Tap Targets'),
+                        ),
+                        TextButton(
+                          onPressed: _openFixedLayout,
+                          child: const Text('Open Fixed Layout'),
                         ),
                         TextButton(
                           onPressed: _openWebPub,

@@ -26,6 +26,7 @@ import 'error_handling_test.dart' as error_handling;
 import 'webpub_test.dart' as webpub;
 import 'car_transport_test.dart' as car_transport;
 import 'text_locator_test.dart' as text_locator;
+import 'tap_test.dart' as tap;
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -42,4 +43,5 @@ void main() {
   webpub.main();
   car_transport.main();
   text_locator.main();
+  tap.main();
 }

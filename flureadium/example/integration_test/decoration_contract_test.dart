@@ -118,7 +118,7 @@ void main() {
     ) async {
       await showEpub(tester);
 
-      // _addHighlight returns early while _locator is null (main.dart:630-631),
+      // _addHighlight returns early while _locator is null (main.dart:657-658),
       // so tapping before the first locator event is a no-op. Wait for the
       // latch the example renders from that same field.
       final ready = await pumpUntil(
