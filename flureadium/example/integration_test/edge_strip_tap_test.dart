@@ -72,16 +72,25 @@ void _edgeStripTapTests() {
 
     tearDown(() async {
       await Flureadium().closePublication();
+      // The config is process-global and now actually reaches readers, so a
+      // leftover would configure every reader built after this file.
+      await Flureadium().setNavigationConfig(ReaderNavigationConfig());
     });
 
-    /// Opens the fixture, waits for the reader to be listening, then turns edge
-    /// taps off and leaves swipe on — the configuration that used to swallow
-    /// the touch.
+    /// Turns edge taps off and leaves swipe on — the configuration that used
+    /// to swallow the touch — then opens the fixture and waits for the reader
+    /// to be listening.
     ///
-    /// The config goes last on purpose. One sent before the reader registers
-    /// is dropped in silence: the platform channel stores it in
-    /// `defaultNavigationConfig`, which nothing reads.
+    /// The config goes first, the way a real host sends it: it is stored on
+    /// the platform and replayed when the reader registers.
     Future<void> showFixture(WidgetTester tester) async {
+      await Flureadium().setNavigationConfig(
+        ReaderNavigationConfig(
+          enableEdgeTapNavigation: false,
+          enableSwipeNavigation: true,
+        ),
+      );
+
       final path = await extractAsset(_epub);
       final publication = await Flureadium().openPublication(path);
       await tester.pumpWidget(_EdgeStripHarness(publication: publication));
@@ -101,15 +110,6 @@ void _edgeStripTapTests() {
         reason: 'no locator arrived, so the JS layer is not alive',
         timeout: const Duration(seconds: 30),
       );
-
-      await Flureadium().setNavigationConfig(
-        ReaderNavigationConfig(
-          enableEdgeTapNavigation: false,
-          enableSwipeNavigation: true,
-        ),
-      );
-      // Give the config time to cross the channel and reach the overlay.
-      await tester.pump(const Duration(seconds: 1));
     }
 
     Future<void> expectTapAt(WidgetTester tester, Offset position) async {
