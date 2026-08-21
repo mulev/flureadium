@@ -4,6 +4,11 @@
 
 - **`ReadiumReaderWidget.loadingWidget` is gone.** It never rendered anything. The widget that drew it was removed in an earlier refactor and the parameter outlived it, so passing a loading widget and passing nothing produced the same blank platform view. There is no replacement parameter: a host that wants to cover the load stacks its own widget over the reader and drops it when `onReaderStatusChanged` reports `ready`. The reader widget's API reference has the recipe. Remove the argument from your call.
 - **`rxdart` is no longer a dependency.** The plugin only pulled it in for a debug listener that logged locators and did nothing else, and that listener is gone. Host code that imported `package:rxdart/rxdart.dart` and got it transitively through flureadium now has to declare it: add `rxdart` to your own `pubspec.yaml`. Every `debounceTime` sample in the docs needs it.
+- **`ReadiumReaderWidget.onTap` reports a position now, and three gesture parameters are gone.** `onTap` changes from `VoidCallback?` to `void Function(Offset position)?`, so your callback receives the tap point in logical pixels from the top-left of the platform view. `onGoLeft`, `onGoRight` and `onSwipe` are deleted; all three were declared and documented, and nothing ever called them. Edge and swipe paging are configured through `setNavigationConfig()` instead. Update your callback signature and drop the three arguments from your call.
+
+### New Features
+
+- **Content taps come from Readium now, on both platforms.** `onTap` used to be a parameter with nothing behind it. Android registers an `InputListener` on the Readium navigator (`NavigatorTapForwarder`), iOS registers a tap observer on the navigator's `InputObservable` (`ReaderTapObserver`). Both report the point in logical pixels from the top-left of the platform view, and neither consumes the event, so the listeners Readium registered behind them still run. In an EPUB, Readium tests the pointer against interactive elements before any observer sees it: a hyperlink or a footnote is followed and reported as nothing. What reaches `onTap` is a tap nothing else claimed, which is what makes toggling your own chrome on a single tap safe. That filter belongs to the WebView, so PDF and CBZ report every tap, link annotations included. The two platforms differ in one place, and it ships that way on purpose: on iOS a tap on a PDF internal link annotation reports a tap and follows the link, while on Android the same tap is reported and navigates nowhere. `docs/api-reference/reader-widget.md` covers the edge strips the native overlay claims, where `onTap` stays quiet.
 
 ### Bug Fixes
 
@@ -26,6 +31,9 @@
 - `docs/platform-specific/android.md` describes how Android decodes a decoration payload, including that an unreadable one now fails the whole call, and that an unrecognised style name still falls back to a highlight.
 - `docs/platform-specific/ios.md` and `docs/architecture/overview.md` record the main-actor hop the audio navigator's failure callbacks take.
 - `docs/05-testing/native-unit-tests.md` warns that the Kotlin compile tasks cache like the test task, so an up-to-date build prints no warnings at all, and explains how to see them. `docs/05-testing/all-tests.md` says which tests may stay skipped.
+- The `onTap` edge-strip rule is written down per platform in `docs/api-reference/reader-widget.md` and in the parameter's own dartdoc. Both used to say the strips are absorbed whether or not edge-tap navigation is enabled, which the iOS fix above made false. `docs/guides/preferences.md` records that `edgeTapAreaPoints` is the only edge width left on iOS, and that both platforms read the same three navigation keys.
+- `docs/guides/epub-reading.md` drops two recipes that put a gesture layer over the reader: "Tap Zones", which stacked two `GestureDetector`s to page it, and the `onHorizontalDragEnd` swipe handler. It shows the single `onTap` callback and the `setNavigationConfig()` flags instead. It and `docs/getting-started/quick-start.md` now say that a tap on a link never reaches `onTap`.
+- `docs/platform-specific/android.md`'s `setNavigationConfig` sample called the config `NavigationConfig`. The class is `ReaderNavigationConfig`, so the snippet did not compile.
 
 ### Testing
 
@@ -33,8 +41,6 @@
 - `example/integration_test/decoration_contract_test.dart` asserts the contract from Dart on a device: an accepted decoration, a malformed one that must surface a `PlatformException` naming it, and that the example's Highlight button leaves the reader where it was. The case it replaces tapped Highlight and then checked the reader widget still existed, which could not fail.
 - Two tests stopped being skipped. The platform-interface locator-stream test was disabled as flaky and was deterministically dead: its mock pushed a Dart object where the getter decodes a JSON string. The three wakelock tests asserted only that methods exist; they are now four cases that drive the mixin's 30-minute timer through a recording platform double, and each one was checked by mutating the mixin.
 - Seven Kotlin main-source warnings, fourteen coroutine opt-in warnings and five first-party Swift warnings are gone. The two that remain are tracked with the files they need decomposed first.
-
-No public API changed.
 
 ## 0.16.6
 
