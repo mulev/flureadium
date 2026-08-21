@@ -1,5 +1,7 @@
 package dev.mulev.flureadium.navigators
 
+import com.github.barteksc.pdfviewer.PDFView
+import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.FlutterPdfPreferences
 import dev.mulev.flureadium.fragments.PdfReaderFragment
 import dev.mulev.flureadium.models.PdfReaderViewModel
@@ -16,6 +18,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.runner.RunWith
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.mockConstruction
+import org.mockito.Mockito.verify
 import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
 import org.readium.r2.navigator.pdf.PdfNavigatorFactory
 import org.readium.r2.shared.ExperimentalReadiumApi
@@ -77,11 +80,64 @@ internal class PdfNavigatorInitTest {
             }
         }
 
-        val fragment = navigator.getField("pdfNavigator") as PdfReaderFragment
+        val fragment = navigator.getField("pdfNavigator") as? PdfReaderFragment
         assertNotNull(fragment, "pdfNavigator fragment should be initialized")
 
         val vm = fragment.vm as PdfReaderViewModel
         assertNotNull(vm.navigatorFactory, "navigatorFactory must be set")
         assertNotNull(vm.engineProvider, "VM engineProvider must be set from outer PdfNavigator scope")
+    }
+
+    /**
+     * Builds a navigator, delivers [config] if given — after initNavigator(),
+     * the way Flutter does — then runs the listener the pdfium provider was
+     * constructed with against a fresh Configurator and returns it.
+     */
+    private suspend fun configureNewPdfView(
+        config: FlutterNavigationConfig? = null,
+    ): PDFView.Configurator {
+        val navigator = createNavigator()
+        val captured = mutableListOf<PdfiumEngineProvider.Listener>()
+        mockConstruction(PdfiumEngineProvider::class.java) { _, context ->
+            captured += context.arguments().filterIsInstance<PdfiumEngineProvider.Listener>()
+        }.use {
+            mockConstruction(PdfNavigatorFactory::class.java).use {
+                navigator.initNavigator()
+            }
+        }
+        if (config != null) navigator.setNavigationConfig(config)
+
+        val configurator = mock(PDFView.Configurator::class.java)
+        captured.single().onConfigurePdfView(configurator)
+        return configurator
+    }
+
+    /**
+     * The listener re-reads the stored config every time the pdfium adapter builds
+     * a PDFView, so a config that arrives after initNavigator() still applies.
+     */
+    @Test
+    fun pdfViewConfigurator_disablesSwipe_whenFlagFalse() = runTest {
+        val configurator = configureNewPdfView(
+            FlutterNavigationConfig(enableSwipeNavigation = false)
+        )
+
+        verify(configurator).enableSwipe(false)
+    }
+
+    @Test
+    fun pdfViewConfigurator_keepsSwipe_whenFlagTrue() = runTest {
+        val configurator = configureNewPdfView(
+            FlutterNavigationConfig(enableSwipeNavigation = true)
+        )
+
+        verify(configurator).enableSwipe(true)
+    }
+
+    @Test
+    fun pdfViewConfigurator_keepsSwipe_whenNoConfigArrived() = runTest {
+        val configurator = configureNewPdfView()
+
+        verify(configurator).enableSwipe(true)
     }
 }

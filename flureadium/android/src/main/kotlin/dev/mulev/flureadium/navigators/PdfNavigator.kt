@@ -5,6 +5,8 @@ import android.util.Log
 import android.view.ViewGroup
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.commitNow
+import com.github.barteksc.pdfviewer.PDFView
+import dev.mulev.flureadium.EdgeTapInterceptView
 import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.FlutterPdfPreferences
 import dev.mulev.flureadium.ReadiumReaderWidget.Companion.NAVIGATOR_FRAGMENT_TAG
@@ -115,6 +117,38 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
     private var engineProvider: PdfiumEngineProvider? = null
 
     /**
+     * Navigation config last received from Flutter.
+     *
+     * Read when the pdfium adapter builds its PDFView, not when it is stored:
+     * the plugin holds no reference to that view, so a flag that arrives while
+     * a PDF is on screen applies from the next rebuild (a pause/resume cycle
+     * or a reopen), never mid-document.
+     */
+    private var navigationConfig: FlutterNavigationConfig? = null
+
+    /**
+     * Applied to every PDFView the pdfium adapter builds.
+     *
+     * Readium runs this before it registers its own listeners — see the
+     * comment in PdfiumDocumentFragment.reset() — so switching drag paging off
+     * cannot disturb the `.onTap` callback this epic depends on. In
+     * AndroidPdfViewer the flag gates only drag and fling: DragPinchManager
+     * checks isSwipeEnabled() in onFling and onScroll, while
+     * onSingleTapConfirmed reports the tap unconditionally.
+     *
+     * This is the only format whose swipe navigation is reachable at all.
+     * EPUB pages through the internal R2WebView and CBZ through an androidx
+     * ViewPager; neither exposes a toggle in Readium 3.1.2.
+     */
+    private val pdfViewConfigurator = object : PdfiumEngineProvider.Listener {
+        override fun onConfigurePdfView(configurator: PDFView.Configurator) {
+            configurator.enableSwipe(
+                EdgeTapInterceptView.effectiveSwipeEnabled(navigationConfig, isScrollMode = false)
+            )
+        }
+    }
+
+    /**
      * Current locator in the PDF navigator.
      */
     val currentLocator
@@ -127,7 +161,7 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
         get() = pdfNavigator!!.started
 
     override suspend fun initNavigator() {
-        engineProvider = PdfiumEngineProvider()
+        engineProvider = PdfiumEngineProvider(listener = pdfViewConfigurator)
 
         pdfNavigator = PdfReaderFragment().apply {
             vm = PdfReaderViewModel().apply {
@@ -309,6 +343,7 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
     }
 
     fun setNavigationConfig(config: FlutterNavigationConfig) {
+        navigationConfig = config
         pdfNavigator?.setNavigationConfig(config)
     }
 
