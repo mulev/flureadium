@@ -93,11 +93,28 @@ wide, belong to the native edge-tap overlay. A touch the overlay claims never
 reaches Readium, so `onTap` does not fire there.
 
 The overlay claims an edge strip only when it has a page turn to run on it —
-the reader is paginated and `enableEdgeTapNavigation` is on. That is the rule on
-both platforms. Turn edge-tap navigation off, or put an EPUB into scroll mode,
-and the overlay claims nothing: `onTap` fires across the full width.
-`enableSwipeNavigation` does not enter into it; a fling only pages inside a
-strip the edge-tap gate already claimed. See
+the reader is paginated and `enableEdgeTapNavigation` is on. Turn edge-tap
+navigation off, or put an EPUB into scroll mode, and the overlay claims nothing:
+`onTap` fires across the full width.
+
+Two exceptions to read before you rely on it:
+
+- **Android CBZ has no overlay at all.** It is created by the EPUB and PDF
+  readers only, and `ImageNavigator.setNavigationConfig` is an empty body. So on
+  an Android CBZ nothing claims the edge strips and `enableEdgeTapNavigation` has
+  nothing to act on — taps there reach the navigator like any other, which is
+  what the tap forwarder reports. That follows from the wiring rather than from a
+  device run; the CBZ edge case is on the manual verification list. iOS CBZ does
+  have the overlay and follows the rule above.
+- **Swipes are gated differently per platform.** On Android a fling only pages
+  through the overlay if the edge-tap gate already claimed that strip, so
+  `enableSwipeNavigation` never holds a strip open — but Readium's own
+  `R2WebView` still pages a paginated EPUB on a horizontal drag, whatever either
+  flag says. On iOS the swipe recognizers sit on the full-size container and test
+  direction only, so with `enableSwipeNavigation` on, a swipe anywhere in the
+  reader pages regardless of `enableEdgeTapNavigation`.
+
+See
 [Edge Tap and Swipe Navigation](../platform-specific/ios.md#edge-tap-and-swipe-navigation)
 for iOS and
 [Edge Tap and Swipe Navigation](../platform-specific/android.md#edge-tap-and-swipe-navigation)

@@ -646,11 +646,20 @@ Android supports the same configurable gesture overlay as iOS via `setNavigation
 ### Overview
 
 A transparent `EdgeTapInterceptView` overlay is placed on top of the Readium navigator
-(both EPUB and PDF). It claims touches in the left and right edge zones only while
-`enableEdgeTapNavigation` is on and the reader is paginated — that is, only when it has a
-page turn to run there. With edge taps off it claims nothing, and an edge touch reaches
-the reader content exactly as a centre touch does, so `ReadiumReaderWidget.onTap` fires
-across the full width. Centre touches always pass through.
+by the EPUB and PDF readers. It claims touches in the left and right edge zones only
+while `enableEdgeTapNavigation` is on and the reader is paginated — that is, only when
+it has a page turn to run there. With edge taps off it claims nothing, and an edge
+touch reaches the reader content exactly as a centre touch does, so
+`ReadiumReaderWidget.onTap` fires across the full width. Centre touches always pass
+through.
+
+**CBZ/DIVINA has no overlay on Android.** `ImageNavigator.setNavigationConfig` is an
+empty body, and the overlay is created only by `EpubReaderFragment` and
+`PdfReaderFragment`. So on an Android CBZ neither navigation flag reaches anything:
+nothing claims the edge strips, edge taps have nothing to page with, and the androidx
+`ViewPager` behind the images swipes regardless of `enableSwipeNavigation`. That
+follows from the wiring; the CBZ edge case is on the manual verification list rather
+than covered by a test. iOS CBZ does have the overlay.
 
 ### setNavigationConfig
 
@@ -665,7 +674,7 @@ await flureadium.setNavigationConfig(ReaderNavigationConfig(
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enableEdgeTapNavigation` | `bool?` | enabled | Tap in the edge zone → navigate |
-| `enableSwipeNavigation` | `bool?` | enabled | Horizontal fling → navigate, inside a claimed edge strip. A fling reaches the overlay only where it claimed the touch, so with edge taps off no fling pages an EPUB or CBZ. For PDF the flag also switches the pdfium view's own drag paging off, read when that view is built; EPUB and CBZ page through Readium internals that expose no swipe toggle in 3.1.2 |
+| `enableSwipeNavigation` | `bool?` | enabled | Horizontal fling → navigate. For **PDF** it switches the pdfium view's own drag paging off through `onConfigurePdfView`, read when that view is built. For **EPUB** it only decides whether a fling that starts inside a strip the edge-tap gate already claimed pages through the overlay — Readium's internal `R2WebView` still pages a paginated EPUB on a horizontal drag whatever this flag says. For **CBZ** it reaches nothing |
 | `edgeTapAreaPoints` | `double?` | 44 dp | Edge zone width, clamped to 44–120 dp |
 
 `null` fields are treated as **enabled** (matching iOS semantics).

@@ -85,8 +85,9 @@ await flureadium.goRight();
 
 ### Swipe Gestures
 
-Swiping to turn pages is a flag, not a widget. A gesture layer stacked over the
-platform view is not the supported path for it:
+Swiping to turn pages is not a widget you build — a gesture layer stacked over the
+platform view is not the supported path for it. What the flag does depends on the
+platform, and for EPUB on Android it does less than its name suggests:
 
 ```dart
 await flureadium.setNavigationConfig(
@@ -94,7 +95,17 @@ await flureadium.setNavigationConfig(
 );
 ```
 
-It is on unless you turn it off, and it applies while the reader is paginated.
+- **iOS**: the flag is the whole story. On, a horizontal swipe anywhere in a
+  paginated reader turns the page; off, none does.
+- **Android, EPUB**: a paginated EPUB is paged by Readium's own internal
+  `R2WebView`, which has no toggle in Readium Kotlin 3.1.2. A horizontal drag turns
+  the page whether this flag is on or off. What the flag controls is narrow: whether
+  a fling starting inside an edge strip the edge-tap gate already claimed pages
+  through the plugin's overlay. Do not reach for it to switch EPUB swiping off — that
+  is not available on Android today.
+- **Android, PDF**: the flag works as written. It reaches the pdfium view's own
+  `enableSwipe`, so drag paging stops while taps and zoom keep working.
+
 An EPUB in scroll mode leaves swiping to the WebView, which scrolls.
 
 ### Tap Zones
