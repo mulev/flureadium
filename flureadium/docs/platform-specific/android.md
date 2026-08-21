@@ -688,7 +688,7 @@ PDF is always paginated; scroll mode does not apply.
 | `EpubReaderFragment.kt` | Creates and tears down the overlay per lifecycle; propagates scroll mode |
 | `PdfReaderFragment.kt` | Creates and tears down the overlay per lifecycle |
 | `EpubNavigator.kt` / `PdfNavigator.kt` | Delegates `setNavigationConfig` / `setScrollMode` to the fragment; `PdfNavigator` also gives the pdfium engine provider a listener that applies `enableSwipeNavigation` to every `PDFView` it builds |
-| `ReadiumReader.kt` | Exposes `epubSetNavigationConfig`, `epubSetScrollMode`, `pdfSetNavigationConfig` |
+| `ReadiumReader.kt` | Exposes `epubSetNavigationConfig`, `epubSetScrollMode`, `pdfSetNavigationConfig`; keeps the last config and hands it to a navigator it builds afterwards |
 | `ReadiumReaderWidget.kt` | Handles `setNavigationConfig` method call; detects scroll mode from `setPreferences` |
 
 #### Touch dispatch design
