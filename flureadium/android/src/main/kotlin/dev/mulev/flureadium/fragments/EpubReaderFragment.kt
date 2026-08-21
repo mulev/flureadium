@@ -60,7 +60,7 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
 
     private var edgeTapInterceptView: EdgeTapInterceptView? = null
     private var storedNavigationConfig: FlutterNavigationConfig? = null
-    private var storedIsScrollMode: Boolean = false
+    private var storedIsScrollMode: Boolean? = null
 
     private val instance = ++instanceNo
 
@@ -318,11 +318,12 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
         val preferences = model.preferences ?: EpubPreferences()
         model.preferences = preferences
 
-        // Seed the overlay's scroll state from the preferences this navigator is
-        // built with, not from the default. A reader opened straight into scroll
-        // mode never gets a setPreferences round trip, so without this the fresh
-        // overlay would claim both edge strips over a scrolling WebView.
-        storedIsScrollMode = preferences.scroll ?: storedIsScrollMode
+
+        // The overlay a resume rebuilds starts paginated, so its scroll state has
+        // to be handed to it again. What Flutter last said wins; the navigator's
+        // own preference covers a reader opened straight into scroll mode, which
+        // never gets a setPreferences round trip at all.
+        val isScrollMode = seedScrollMode(storedIsScrollMode, preferences.scroll)
         val navigatorFactory = model.navigatorFactory!!
         val fragmentFactory = navigatorFactory.createFragmentFactory(
             configuration = EpubNavigatorFragment.Configuration(
@@ -374,8 +375,7 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
                 onSwipeLeft = { goRight(animated = true) },
                 onSwipeRight = { goLeft(animated = true) },
             )
-            storedNavigationConfig?.let { overlay.applyConfig(it) }
-            overlay.setScrollMode(storedIsScrollMode)
+            configureOverlay(overlay, storedNavigationConfig, isScrollMode)
             rootView.addView(overlay)
             edgeTapInterceptView = overlay
         }

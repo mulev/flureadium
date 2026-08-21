@@ -295,7 +295,9 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
                 onSwipeLeft = { goRight(animated = true) },
                 onSwipeRight = { goLeft(animated = true) },
             )
-            storedNavigationConfig?.let { overlay.applyConfig(it) }
+            // PDF is always paginated, so scroll mode is never on here — passing it
+            // explicitly keeps both readers on one configuration path.
+            configureOverlay(overlay, storedNavigationConfig, isScrollMode = false)
             rootView.addView(overlay)
             edgeTapInterceptView = overlay
         }
