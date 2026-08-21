@@ -36,6 +36,7 @@ internal fun resetReaderState() {
     setReaderField("epubNavigator", null)
     setReaderField("imageNavigator", null)
     setReaderField("pdfNavigator", null)
+    setReaderField("navigationConfig", null)
     setReaderField("isReadyEventChannel", null)
     setReaderField("readerStatusEventChannel", null)
     setReaderField("errorEventChannel", null)

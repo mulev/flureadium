@@ -90,8 +90,6 @@ class ReadiumReaderWidget(
             else -> ReadiumReader.epubCurrentLocator
         }
 
-    private var storedNavigationConfig: FlutterNavigationConfig? = null
-
     override fun getView(): View {
         //Log.d(TAG, "::getView")
         return layout
@@ -887,7 +885,6 @@ class ReadiumReaderWidget(
     }
 
     private fun applyNavigationConfig(config: FlutterNavigationConfig) {
-        storedNavigationConfig = config
         if (isPdf) {
             ReadiumReader.pdfSetNavigationConfig(config)
         } else if (isImage) {
