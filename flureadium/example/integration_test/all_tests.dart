@@ -27,6 +27,7 @@ import 'webpub_test.dart' as webpub;
 import 'car_transport_test.dart' as car_transport;
 import 'text_locator_test.dart' as text_locator;
 import 'tap_test.dart' as tap;
+import 'edge_strip_tap_test.dart' as edge_strip_tap;
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -44,4 +45,5 @@ void main() {
   car_transport.main();
   text_locator.main();
   tap.main();
+  edge_strip_tap.main();
 }
