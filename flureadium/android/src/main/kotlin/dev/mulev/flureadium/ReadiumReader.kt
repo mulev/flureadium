@@ -482,6 +482,13 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         _assetRetriever = null
         _publicationOpener = null
 
+        // The retained navigation config dies with the engine that set it. It is
+        // kept across a publication swap on purpose, but this object outlives a
+        // FlutterEngine, and Dart's copy does not — so leaving it here would
+        // replay one host's edge-tap and swipe settings into the next engine's
+        // reader, which has nothing to override it with.
+        navigationConfig = null
+
         readerViewRef?.clear()
         readerViewRef = null
 

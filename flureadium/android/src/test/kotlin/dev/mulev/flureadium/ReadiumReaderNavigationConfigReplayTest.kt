@@ -99,6 +99,20 @@ internal class ReadiumReaderNavigationConfigReplayTest {
     }
 
     @Test
+    fun detachDropsTheConfigSoTheNextEngineDoesNotInheritIt() = runTest {
+        // ReadiumReader is an object and outlives a FlutterEngine; Dart's copy of
+        // the config does not. Retaining it past detach() would replay one host's
+        // edge-tap and swipe settings into the next engine's reader, which has
+        // nothing to override them with.
+        ReadiumReader.epubSetNavigationConfig(configA)
+
+        ReadiumReader.detach()
+        val navigator = enableEpub()
+
+        verify(navigator, never()).setNavigationConfig(anyConfig())
+    }
+
+    @Test
     fun pdfEnableReplaysTheStoredConfig() = runTest {
         ReadiumReader.pdfSetNavigationConfig(configA)
         setReaderField("_currentPublication", publicationConformingTo(Publication.Profile.PDF))
