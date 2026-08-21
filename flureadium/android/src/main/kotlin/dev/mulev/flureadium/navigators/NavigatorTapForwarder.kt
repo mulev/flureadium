@@ -27,9 +27,20 @@ internal class NavigatorTapForwarder(
 ) : InputListener {
     private var navigator: VisualNavigator? = null
 
-    /** Registers on [navigator], moving the registration off the previous one. */
+    /**
+     * Registers on [navigator], moving the registration off the previous one.
+     *
+     * A null [navigator] unbinds. The reader fragments drop their Readium
+     * navigator in onPause() and pass that null down, and treating it as "no
+     * change" left this forwarder holding a removed navigator fragment and its
+     * WebViews until the next onResume — a retention window with no owner.
+     */
     fun bindTo(navigator: VisualNavigator?) {
-        if (navigator == null || navigator === this.navigator) return
+        if (navigator === this.navigator) return
+        if (navigator == null) {
+            unbind()
+            return
+        }
 
         this.navigator?.removeInputListener(this)
         navigator.addInputListener(this)

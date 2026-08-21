@@ -89,15 +89,29 @@ internal class NavigatorTapForwarderTest {
     }
 
     @Test
-    fun `keeps the current registration when there is no navigator to bind`() {
+    fun `binding a null navigator releases the one it held`() {
+        val navigator = navigator()
+        forwarder.bindTo(navigator)
+
+        // What the fragments pass down on pause. Treating it as "no change" left
+        // this forwarder holding a removed navigator fragment and its WebViews
+        // until the next resume, with removeInputListener never running for it.
+        forwarder.bindTo(null)
+
+        verify(navigator).removeInputListener(forwarder)
+        assertFalse(forwarder.onTap(TapEvent(PointF(60f, 90f))))
+        assertTrue(taps.isEmpty())
+    }
+
+    @Test
+    fun `binding null twice does not release twice`() {
         val navigator = navigator()
         forwarder.bindTo(navigator)
 
         forwarder.bindTo(null)
+        forwarder.bindTo(null)
 
-        verify(navigator, never()).removeInputListener(forwarder)
-        forwarder.onTap(TapEvent(PointF(60f, 90f)))
-        assertEquals(listOf(20.0 to 30.0), taps)
+        verify(navigator, times(1)).removeInputListener(forwarder)
     }
 
     @Test
