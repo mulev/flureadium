@@ -60,6 +60,7 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
 
     private var edgeTapInterceptView: EdgeTapInterceptView? = null
     private var storedNavigationConfig: FlutterNavigationConfig? = null
+    private var storedIsScrollMode: Boolean = false
 
     private val instance = ++instanceNo
 
@@ -154,8 +155,15 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
     /**
      * Enable or disable all overlay gestures when the EPUB reader enters/exits
      * vertical scroll mode. In scroll mode Readium's WebView handles scrolling.
+     *
+     * Stored for the same reason the navigation config is: onPause drops the
+     * overlay and onResume builds a new one, which starts paginated. Without
+     * this, a background/foreground cycle in scroll mode left the fresh overlay
+     * claiming both edge strips again — swallowing scroll touches there and
+     * stopping `onTap` from firing, until the next setPreferences round trip.
      */
     fun setScrollMode(isScrollMode: Boolean) {
+        storedIsScrollMode = isScrollMode
         edgeTapInterceptView?.setScrollMode(isScrollMode)
     }
 
@@ -309,6 +317,12 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
 
         val preferences = model.preferences ?: EpubPreferences()
         model.preferences = preferences
+
+        // Seed the overlay's scroll state from the preferences this navigator is
+        // built with, not from the default. A reader opened straight into scroll
+        // mode never gets a setPreferences round trip, so without this the fresh
+        // overlay would claim both edge strips over a scrolling WebView.
+        storedIsScrollMode = preferences.scroll ?: storedIsScrollMode
         val navigatorFactory = model.navigatorFactory!!
         val fragmentFactory = navigatorFactory.createFragmentFactory(
             configuration = EpubNavigatorFragment.Configuration(
@@ -361,6 +375,7 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
                 onSwipeRight = { goLeft(animated = true) },
             )
             storedNavigationConfig?.let { overlay.applyConfig(it) }
+            overlay.setScrollMode(storedIsScrollMode)
             rootView.addView(overlay)
             edgeTapInterceptView = overlay
         }
