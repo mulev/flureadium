@@ -77,6 +77,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
       body: ReadiumReaderWidget(
         publication: _publication!,
         onTap: (position) {
+          // Content taps only: Readium follows links and footnotes itself.
           // Handle tap (e.g., show/hide controls)
         },
         onLocatorChanged: (locator) {

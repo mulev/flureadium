@@ -88,13 +88,26 @@ on a PDF link annotation follows the link and reports the tap as well. On Androi
 the pdfium adapter forwards the point and follows nothing, so the same tap is
 reported and navigates nowhere.
 
-One region is not yours: the left and right edge strips, `edgeTapAreaPoints`
-wide, are claimed by the native edge-tap overlay before Readium sees the touch,
-so `onTap` never fires there. In paginated EPUB the overlay absorbs them
-whether or not edge-tap navigation is enabled. Everywhere else on the page,
-what a region means is a host decision — the plugin reports where the tap
-landed and nothing more. See
+One region may not be yours: the left and right edge strips, `edgeTapAreaPoints`
+wide, belong to the native edge-tap overlay. A touch the overlay claims never
+reaches Readium, so `onTap` does not fire there. When it claims them differs by
+platform.
+
+On iOS the overlay claims an edge strip only when it has a page turn to run on
+it — the reader is paginated and `enableEdgeTapNavigation` is on. Turn edge-tap
+navigation off, or put an EPUB into scroll mode, and the overlay claims nothing:
+`onTap` fires across the full width. See
 [Edge Tap and Swipe Navigation](../platform-specific/ios.md#edge-tap-and-swipe-navigation).
+
+On Android the overlay claims an edge strip when it has *either* a page turn or
+a swipe wired there, and swipe navigation is on unless you turn it off. So
+`enableEdgeTapNavigation: false` on its own still costs you `onTap` in the
+strips — switch `enableSwipeNavigation` off as well to get it back, or read an
+EPUB in scroll mode, where the overlay wires nothing. See
+[Edge Tap and Swipe Navigation](../platform-specific/android.md#edge-tap-and-swipe-navigation).
+
+Everywhere else on the page, what a region means is a host decision — the plugin
+reports where the tap landed and nothing more.
 
 ```dart
 ReadiumReaderWidget(

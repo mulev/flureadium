@@ -51,8 +51,11 @@ class ReadiumReaderWidget extends StatefulWidget {
   /// That filter is WebView-only. PDF and CBZ have no equivalent, so a tap on
   /// a PDF link annotation both follows the link and fires this callback.
   ///
-  /// Never fires in the left and right edge strips: the native edge-tap
-  /// overlay claims those before Readium sees the touch.
+  /// Does not fire where the native edge-tap overlay claims the touch: the
+  /// left and right edge strips, `edgeTapAreaPoints` wide. iOS claims them
+  /// only while `enableEdgeTapNavigation` is on and the reader is paginated;
+  /// Android claims them while either edge tap or swipe navigation is on.
+  /// `docs/api-reference/reader-widget.md` has the whole rule.
   ///
   /// The position is in logical pixels, relative to the top-left of the
   /// platform view.

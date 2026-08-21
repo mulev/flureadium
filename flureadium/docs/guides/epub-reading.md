@@ -85,56 +85,59 @@ await flureadium.goRight();
 
 ### Swipe Gestures
 
+Swiping to turn pages is a flag, not a widget. A gesture layer stacked over the
+platform view is not the supported path for it:
+
 ```dart
-GestureDetector(
-  onHorizontalDragEnd: (details) {
-    if (details.primaryVelocity! < 0) {
-      // Swipe left -> go to next page
-      flureadium.goRight();
-    } else if (details.primaryVelocity! > 0) {
-      // Swipe right -> go to previous page
-      flureadium.goLeft();
-    }
-  },
-  child: ReadiumReaderWidget(publication: pub),
-)
+await flureadium.setNavigationConfig(
+  ReaderNavigationConfig(enableSwipeNavigation: true),
+);
 ```
+
+It is on unless you turn it off, and it applies while the reader is paginated.
+An EPUB in scroll mode leaves swiping to the WebView, which scrolls.
 
 ### Tap Zones
 
+You do not build them any more. One `onTap` reports where the reader was
+tapped, and edge paging belongs to the native overlay, so nothing has to sit
+between the user and the reader to catch a tap.
+
 ```dart
-Widget build(BuildContext context) {
-  return Stack(
-    children: [
-      ReadiumReaderWidget(publication: pub),
-
-      // Left tap zone
-      Positioned(
-        left: 0,
-        top: 0,
-        bottom: 0,
-        width: MediaQuery.of(context).size.width * 0.3,
-        child: GestureDetector(
-          onTap: () => flureadium.goLeft(),
-          child: Container(color: Colors.transparent),
-        ),
-      ),
-
-      // Right tap zone
-      Positioned(
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: MediaQuery.of(context).size.width * 0.3,
-        child: GestureDetector(
-          onTap: () => flureadium.goRight(),
-          child: Container(color: Colors.transparent),
-        ),
-      ),
-    ],
-  );
-}
+ReadiumReaderWidget(
+  publication: pub,
+  onTap: (position) {
+    // One callback, one decision: show the chrome or hide it.
+    setState(() => _showControls = !_showControls);
+  },
+)
 ```
+
+Tapping the left and right edges to turn pages is configuration, not a widget:
+
+```dart
+await flureadium.setNavigationConfig(
+  ReaderNavigationConfig(
+    enableEdgeTapNavigation: true,
+    edgeTapAreaPoints: 60, // per side, clamped to 44-120
+  ),
+);
+```
+
+`position` is in logical pixels from the top-left of the reader. What a region
+of the page means is yours to decide; the plugin only says where the tap
+landed.
+
+**A tap on a link never reaches `onTap`.** Readium checks whether the pointer
+landed on an interactive element — a hyperlink, a footnote — follows it, and
+reports no tap, so what arrives at `onTap` is a tap nothing else claimed. That
+is what makes a single tap safe to toggle chrome with: you cannot swallow a
+link by accident. The filter is WebView-only. PDF and CBZ have no equivalent,
+so a tap on a PDF link annotation is reported as a content tap.
+
+`onTap` also stays quiet in the edge strips while the overlay is claiming them.
+[The `onTap` reference](../api-reference/reader-widget.md#ontap) has the
+per-platform rule.
 
 ## Chapter Navigation
 

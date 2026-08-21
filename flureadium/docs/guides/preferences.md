@@ -583,9 +583,9 @@ await flureadium.setNavigationConfig(
 
 These are useful for creating a simplified reading experience or when your app handles gestures differently.
 
-### Navigation Configuration (iOS)
+### Navigation Configuration
 
-Navigation behavior (edge taps, swipe, edge tap area) is configured separately from Readium reading preferences using `setNavigationConfig()`. Both edge tap and swipe navigation default to enabled.
+Navigation behavior (edge taps, swipe, edge tap area) is configured separately from Readium reading preferences using `setNavigationConfig()`. Both edge tap and swipe navigation default to enabled. iOS and Android read the same three keys — see [Edge Tap and Swipe Navigation](../platform-specific/android.md#edge-tap-and-swipe-navigation) for the Android overlay.
 
 ```dart
 // Disable edge taps but keep swipe navigation
@@ -613,7 +613,11 @@ await flureadium.setNavigationConfig(
 );
 ```
 
-`edgeTapAreaPoints` uses absolute iOS points (44–120, clamped automatically), ensuring consistent tap zones across all devices including iPad split-screen. In EPUB scroll mode, both gestures are automatically disabled regardless of configuration.
+`edgeTapAreaPoints` uses absolute points (44–120, clamped automatically), ensuring consistent tap zones across all devices including iPad split-screen. Android reads the same number as dp. It is the only edge width there is: as of 0.17.0 the iOS build gives Readium's `DirectionalNavigationAdapter` an empty pointer policy, so the overlay is the single owner of edge pointers and `enableEdgeTapNavigation` governs every iOS edge tap. Before that, a second component claimed a wider zone of its own and ignored the preference.
+
+In EPUB scroll mode, both gestures are automatically disabled regardless of configuration.
+
+One platform difference worth knowing if your app reads taps: the iOS overlay leaves the edges alone as soon as `enableEdgeTapNavigation` is off, so `ReadiumReaderWidget.onTap` fires across the full width again. The Android overlay keeps claiming the edges while *either* edge tap or swipe navigation is on, so turning edge taps off alone does not bring `onTap` back to the strips.
 
 ## See Also
 

@@ -652,7 +652,7 @@ navigation callbacks; center touches always pass through to the reader content.
 ### setNavigationConfig
 
 ```dart
-await flureadium.setNavigationConfig(NavigationConfig(
+await flureadium.setNavigationConfig(ReaderNavigationConfig(
   enableEdgeTapNavigation: true,   // tap left/right edges to turn pages
   enableSwipeNavigation: true,     // horizontal fling to turn pages
   edgeTapAreaPoints: 60,           // edge zone width in dp (44–120, clamped)
