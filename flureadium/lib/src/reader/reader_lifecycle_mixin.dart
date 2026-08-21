@@ -25,7 +25,16 @@ mixin ReaderLifecycleMixin {
     // registers a fresh one over a new native view that needs it again.
     final config = readium.defaultNavigationConfig;
     if (config != null) {
-      widget.setNavigationConfig(config);
+      // Fire and forget, but never silently: this is the one caller that does
+      // not hand the future back to the host, so a PlatformException here would
+      // otherwise surface as an unhandled async error in whatever zone the
+      // platform view was created in — and fail an unrelated test.
+      widget
+          .setNavigationConfig(config)
+          .catchError(
+            (Object error, StackTrace stack) =>
+                R2Log.e('Replayed setNavigationConfig failed: $error'),
+          );
     }
   }
 

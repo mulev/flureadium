@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flureadium_platform_interface/flureadium_platform_interface.dart';
 import 'package:flureadium_platform_interface/method_channel_flureadium.dart';
@@ -55,6 +56,17 @@ class TestLifecycleManager
 
   @override
   Future<void> skipToPrevious({bool animated = true}) async {}
+}
+
+/// A reader whose channel call fails, the way a torn-down platform view would.
+class _FailingLifecycleManager extends TestLifecycleManager {
+  bool attempted = false;
+
+  @override
+  Future<void> setNavigationConfig(ReaderNavigationConfig config) async {
+    attempted = true;
+    throw PlatformException(code: 'no-view');
+  }
 }
 
 void main() {
@@ -177,5 +189,24 @@ void main() {
 
       expect(manager.configs, isEmpty);
     });
+
+    test(
+      'a replay that fails is logged, not thrown into the ambient zone',
+      () async {
+        // The replay is the one setNavigationConfig call whose future no host
+        // holds. Without a catch, a PlatformException from the channel surfaces as
+        // an unhandled async error in whatever zone created the platform view,
+        // which in a test run fails an unrelated case.
+        final failing = _FailingLifecycleManager();
+        await platform.setNavigationConfig(
+          ReaderNavigationConfig(enableEdgeTapNavigation: true),
+        );
+
+        failing.setCurrentWidgetInterface(failing);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(failing.attempted, isTrue);
+      },
+    );
   });
 }
