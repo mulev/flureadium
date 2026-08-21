@@ -646,8 +646,11 @@ Android supports the same configurable gesture overlay as iOS via `setNavigation
 ### Overview
 
 A transparent `EdgeTapInterceptView` overlay is placed on top of the Readium navigator
-(both EPUB and PDF). It intercepts touches in the left and right edge zones and fires
-navigation callbacks; center touches always pass through to the reader content.
+(both EPUB and PDF). It claims touches in the left and right edge zones only while
+`enableEdgeTapNavigation` is on and the reader is paginated — that is, only when it has a
+page turn to run there. With edge taps off it claims nothing, and an edge touch reaches
+the reader content exactly as a centre touch does, so `ReadiumReaderWidget.onTap` fires
+across the full width. Centre touches always pass through.
 
 ### setNavigationConfig
 
@@ -662,7 +665,7 @@ await flureadium.setNavigationConfig(ReaderNavigationConfig(
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enableEdgeTapNavigation` | `bool?` | enabled | Tap in the edge zone → navigate |
-| `enableSwipeNavigation` | `bool?` | enabled | Horizontal fling → navigate |
+| `enableSwipeNavigation` | `bool?` | enabled | Horizontal fling → navigate, inside a claimed edge strip. A fling reaches the overlay only where it claimed the touch, so with edge taps off no fling pages an EPUB or CBZ. For PDF the flag also switches the pdfium view's own drag paging off, read when that view is built; EPUB and CBZ page through Readium internals that expose no swipe toggle in 3.1.2 |
 | `edgeTapAreaPoints` | `double?` | 44 dp | Edge zone width, clamped to 44–120 dp |
 
 `null` fields are treated as **enabled** (matching iOS semantics).
@@ -684,7 +687,7 @@ PDF is always paginated; scroll mode does not apply.
 | `EdgeTapInterceptView.kt` | Transparent FrameLayout overlay; intercepts edge touches |
 | `EpubReaderFragment.kt` | Creates and tears down the overlay per lifecycle; propagates scroll mode |
 | `PdfReaderFragment.kt` | Creates and tears down the overlay per lifecycle |
-| `EpubNavigator.kt` / `PdfNavigator.kt` | Delegates `setNavigationConfig` / `setScrollMode` to the fragment |
+| `EpubNavigator.kt` / `PdfNavigator.kt` | Delegates `setNavigationConfig` / `setScrollMode` to the fragment; `PdfNavigator` also gives the pdfium engine provider a listener that applies `enableSwipeNavigation` to every `PDFView` it builds |
 | `ReadiumReader.kt` | Exposes `epubSetNavigationConfig`, `epubSetScrollMode`, `pdfSetNavigationConfig` |
 | `ReadiumReaderWidget.kt` | Handles `setNavigationConfig` method call; detects scroll mode from `setPreferences` |
 

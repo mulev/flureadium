@@ -90,21 +90,18 @@ reported and navigates nowhere.
 
 One region may not be yours: the left and right edge strips, `edgeTapAreaPoints`
 wide, belong to the native edge-tap overlay. A touch the overlay claims never
-reaches Readium, so `onTap` does not fire there. When it claims them differs by
-platform.
+reaches Readium, so `onTap` does not fire there.
 
-On iOS the overlay claims an edge strip only when it has a page turn to run on
-it — the reader is paginated and `enableEdgeTapNavigation` is on. Turn edge-tap
-navigation off, or put an EPUB into scroll mode, and the overlay claims nothing:
-`onTap` fires across the full width. See
-[Edge Tap and Swipe Navigation](../platform-specific/ios.md#edge-tap-and-swipe-navigation).
-
-On Android the overlay claims an edge strip when it has *either* a page turn or
-a swipe wired there, and swipe navigation is on unless you turn it off. So
-`enableEdgeTapNavigation: false` on its own still costs you `onTap` in the
-strips — switch `enableSwipeNavigation` off as well to get it back, or read an
-EPUB in scroll mode, where the overlay wires nothing. See
-[Edge Tap and Swipe Navigation](../platform-specific/android.md#edge-tap-and-swipe-navigation).
+The overlay claims an edge strip only when it has a page turn to run on it —
+the reader is paginated and `enableEdgeTapNavigation` is on. That is the rule on
+both platforms. Turn edge-tap navigation off, or put an EPUB into scroll mode,
+and the overlay claims nothing: `onTap` fires across the full width.
+`enableSwipeNavigation` does not enter into it; a fling only pages inside a
+strip the edge-tap gate already claimed. See
+[Edge Tap and Swipe Navigation](../platform-specific/ios.md#edge-tap-and-swipe-navigation)
+for iOS and
+[Edge Tap and Swipe Navigation](../platform-specific/android.md#edge-tap-and-swipe-navigation)
+for Android.
 
 Everywhere else on the page, what a region means is a host decision — the plugin
 reports where the tap landed and nothing more.

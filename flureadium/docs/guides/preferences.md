@@ -617,7 +617,12 @@ await flureadium.setNavigationConfig(
 
 In EPUB scroll mode, both gestures are automatically disabled regardless of configuration.
 
-One platform difference worth knowing if your app reads taps: the iOS overlay leaves the edges alone as soon as `enableEdgeTapNavigation` is off, so `ReadiumReaderWidget.onTap` fires across the full width again. The Android overlay keeps claiming the edges while *either* edge tap or swipe navigation is on, so turning edge taps off alone does not bring `onTap` back to the strips.
+One rule covers both platforms if your app reads taps: the overlay leaves the edge strips alone as soon as `enableEdgeTapNavigation` is off, so `ReadiumReaderWidget.onTap` fires across the full width again. `enableSwipeNavigation` does not hold a strip open; a fling only pages inside a strip the edge-tap gate already claimed.
+
+`enableSwipeNavigation` reaches different distances per format, and the reason is Readium's own API surface rather than a choice here:
+
+- **PDF** honours it. The flag switches drag paging off through the pdfium adapter's `onConfigurePdfView` seam, so taps, pinch-zoom and pan-while-zoomed keep working. It is read when the PDF view is built, so a flag that arrives while a PDF is on screen applies from the next rebuild — a background/foreground cycle or a reopen — not mid-document.
+- **EPUB and CBZ** page through Readium's internal `R2WebView` and an androidx `ViewPager`. Neither exposes a swipe toggle in Readium Kotlin 3.1.2, so there the flag governs the edge strips only: it decides whether a fling that starts inside a claimed strip turns a page. A fling needs a claimed strip to reach the overlay at all, so with `enableEdgeTapNavigation: false` nothing is claimed and no fling pages an EPUB or CBZ on Android, whatever `enableSwipeNavigation` says. Swipe-only paging is not available on those two formats.
 
 ## See Also
 

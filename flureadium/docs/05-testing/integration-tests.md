@@ -19,6 +19,7 @@ Integration tests run the example app on a real device or simulator and assert w
 | `webpub_test.dart` | Android, iOS (`network`) | Remote WebPub manifest opens, `ReadiumReaderWidget` present |
 | `error_handling_test.dart` | Android, iOS | A corrupted file and a missing file both raise `ReadiumException`, and (Android only) a failed native enable reports `error` instead of killing the app — see [Forcing a reader failure](#forcing-a-reader-failure) |
 | `tap_test.dart` | Android | A content tap is reported once through `onTap` with a position, a hyperlink tap navigates and reports nothing, a plain page in the same book does report, and a publication swap rebinds the listener. Android only, and reflowable only — see [What a synthesized tap can reach](#what-a-synthesized-tap-can-reach) |
+| `edge_strip_tap_test.dart` | Android | With `enableEdgeTapNavigation: false` and `enableSwipeNavigation: true`, a tap 22 dp inside either edge strip reaches `onTap`, with a centre tap first as the control. It pumps its own widget tree rather than the example app, because the app never calls `setNavigationConfig`. Android only, and reflowable only, for the same two reasons as `tap_test.dart` |
 
 ### Tags
 
