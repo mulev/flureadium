@@ -53,6 +53,10 @@
 - `example/integration_test/edge_strip_tap_test.dart` stops reading a locator count as a page turn. One Android open reports the same page twice, for the reason above, so the count rose while the reader stood still. The no-turn assertion compares `href` and `progression` now, through a single predicate shared with the turn detector so the two cannot disagree about what counts as movement.
 - `scripts/run_native_unit_tests.sh` needs JDK 21 rather than 17, matching what the Android build can actually be compiled with.
 
+### Dependencies
+
+- Requires `flureadium_platform_interface` ^0.10.2, raised from ^0.10.0. No new interface API is used; the old constraint was simply wrong about what this plugin needs. It let pub resolve against `0.10.0`, which predates that package's fix for reading-order hrefs gaining a leading slash — and `docs/api-reference/publication.md` promises a publication href is comparable with a locator href, which is only true from `0.10.1` on. The floor now names a version where the documentation holds.
+
 ### Continuous integration
 
 - Flutter is pinned to 3.44.7 on all 14 `subosito/flutter-action` steps, across the six workflow files. They tracked `channel: stable` with no version, which meant a Flutter release could turn every required check red on a branch nobody had touched — and one did. Dart 3.13 reserves `final` on normal parameters for primary constructors, so the format check rejected 107 declarations, and `flutter drive -d chrome` hangs on 3.47.1. Moving the toolchain is a reviewed commit that edits those 14 lines now, not a surprise on the next run.
