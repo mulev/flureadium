@@ -41,6 +41,7 @@
 - `docs/api-reference/reader-widget.md` says that one open can report the same page twice. On Android the first locator comes from Readium's initial position for the resource and carries no `position` or `totalProgression`; a second follows within roughly 200 ms with both fields filled in. `href` and `progression` are the same in both, so neither is a page turn. Read `onLocatorChanged` as "here is the current position" rather than "the reader moved", and compare `href` and `progression` if you need to know it went somewhere.
 - `docs/getting-started/installation.md` records that CI runs the same Flutter version contributors do: 3.44.7, pinned on every `subosito/flutter-action` step rather than tracked from the stable channel.
 - `docs/05-testing/native-unit-tests.md` raises the Java floor it documents from 17 to 21, and says why: the Android build compiles to `JvmTarget.JVM_18` and javac emits no target above its own release, so 17 cannot build it, while JDK 18 is the one release carrying JDK-8287073 with no fix available.
+- `docs/guides/audiobook-playback.md`'s auto-save snippet calls `debounceTime` and now says where that comes from. `rxdart` stopped being a flureadium dependency in this release, and the two other pages with debounce samples already carried the note; a host copying this one got an undefined method.
 
 ### Testing
 
