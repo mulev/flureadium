@@ -8,6 +8,8 @@ This guide covers setting up Flureadium in your Flutter project for all supporte
 - Dart SDK 3.8.0 or higher
 
 > **Contributor note:** this release is developed and tested with Flutter 3.44.7 (Dart 3.12.2). The package `pubspec.yaml` constraints above remain the source of truth for supported versions. Contributors may pin the toolchain locally with [fvm](https://fvm.app) (`fvm use 3.44.7`); the fvm files (`.fvmrc`, `.fvm/`) are gitignored and not required to build.
+>
+> CI is pinned to the same version — `flutter-version: '3.44.7'` on every `subosito/flutter-action` step in `.github/workflows/`. It used to track `channel: stable` with no version, which meant a Flutter release could turn every required check red on a branch that had not changed, and did: Dart 3.13 reserves `final` on normal parameters for primary constructors, and `flutter drive -d chrome` hangs on 3.47.1 (`flureadium-itgt`). Moving the toolchain is now a reviewed commit that edits those 14 lines, not a surprise.
 
 ## Add Dependency
 
