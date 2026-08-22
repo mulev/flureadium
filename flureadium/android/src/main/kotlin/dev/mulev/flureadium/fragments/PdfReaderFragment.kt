@@ -291,7 +291,7 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
 
         started.value = true
 
-        // Add edge tap overlay on top of the navigator (PDF is always paginated)
+        // Add the edge tap overlay on top of the navigator.
         val rootView = view as? FrameLayout
         if (rootView != null) {
             val overlay = EdgeTapInterceptView(requireContext())
@@ -305,12 +305,14 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
                 onSwipeLeft = { goRight(animated = true) },
                 onSwipeRight = { goLeft(animated = true) },
             )
-            // A PDF can be vertically scrolled — PDFPreferences.scrollMode reaches
-            // the navigator factory — and the rebuilt overlay starts paginated, so
-            // the preference has to be handed to it again. Readium takes PDF
-            // preferences only at navigator creation, so the view model holds the
-            // value this navigator was built with.
-            configureOverlay(overlay, storedNavigationConfig, pdfVm?.scroll == true)
+            // false, and it is not an assumption about PDFs: `PDFScrollMode.vertical`
+            // never reaches this navigator on Android. attachNavigator omits
+            // initialPreferences, and PdfiumPreferences has no scroll component at
+            // all (fit, pageSpacing, readingProgression, scrollAxis), so the pdfium
+            // view paginates whatever the host asked for. Gating the overlay on
+            // pdfVm.scroll would disable edge taps for a document that still pages.
+            // Android's missing PDF scroll mode is flureadium-7shk.
+            configureOverlay(overlay, storedNavigationConfig, isScrollMode = false)
             rootView.addView(overlay)
             edgeTapInterceptView = overlay
         }
