@@ -106,6 +106,13 @@ jobs:
         working-directory: .
         run: .github/scripts/android_integration_tests_test.sh
 
+      # Covers the JDK pins. JDK 18.0.2 — everything `java-version: '18'` can
+      # resolve — dies inside AGP on any runner whose kernel drops the memory
+      # row from /proc/cgroups, and JDK 17 cannot compile JvmTarget.JVM_18.
+      - name: Check the workflow JDK pins
+        working-directory: .
+        run: .github/scripts/workflow_jdk_pin_test.sh
+
   # The rule tests run under `dart test`, never `flutter test`:
   # test_reflective_loader imports dart:mirrors, which the Flutter test runtime
   # rejects — and then hangs retrying the load instead of exiting.
@@ -149,7 +156,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '18'
+          java-version: '21'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
