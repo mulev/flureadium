@@ -290,7 +290,15 @@ void main() {
           .getLocatorFragments(
             Locator(href: 'chapter1.xhtml', type: 'application/xhtml+xml'),
           )
-          .then((value) => outcome = value, onError: (Object e) => outcome = e)
+          .then(
+            (value) => outcome = value,
+            // A block, not an arrow: the arrow returned the assignment's value,
+            // and `onError` has to return the future's own type.
+            onError: (Object e) {
+              outcome = e;
+              return null;
+            },
+          )
           .ignore();
 
       await tester.pumpWidget(host(createTestPublication()));
@@ -315,7 +323,13 @@ void main() {
           .getLocatorFragments(
             Locator(href: 'chapter1.xhtml', type: 'application/xhtml+xml'),
           )
-          .then((value) => outcome = value, onError: (Object e) => outcome = e)
+          .then(
+            (value) => outcome = value,
+            onError: (Object e) {
+              outcome = e;
+              return null;
+            },
+          )
           .ignore();
       await tester.pump();
 

@@ -404,7 +404,10 @@ void main() {
 
         expect(json.containsKey('und'), isTrue);
         expect(json['und'], equals('Default Text'));
-        expect(json.containsKey(null), isFalse);
+        // `toJson` returns Map<String, String>, so asking for a null key could
+        // never have found one. What the test means is that the null language
+        // became 'und' and nothing else was invented alongside it.
+        expect(json.keys, unorderedEquals(['und', 'en']));
       });
 
       test('roundtrip serialization preserves data', () {
