@@ -537,7 +537,12 @@ indistinguishable this way.
 
 ### Auto-Save Position
 
+`debounceTime` comes from `rxdart`, which is not a flureadium dependency — add
+it to your own `pubspec.yaml`.
+
 ```dart
+import 'package:rxdart/rxdart.dart';
+
 flureadium.onTimebasedPlayerStateChanged
     .debounceTime(Duration(seconds: 5))
     .listen((state) async {
