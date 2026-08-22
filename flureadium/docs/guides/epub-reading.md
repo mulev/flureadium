@@ -95,8 +95,11 @@ await flureadium.setNavigationConfig(
 );
 ```
 
-- **iOS**: the flag is the whole story. On, a horizontal swipe anywhere in a
-  paginated reader turns the page; off, none does.
+- **iOS, EPUB**: the flag adds a swipe, it does not remove one. On, the plugin's
+  own recognizers page from a swipe anywhere in the reader. Off, Readium's
+  `PaginationView` — a paging `UIScrollView` the plugin never disables — still
+  pages on a horizontal drag. So `enableSwipeNavigation: false` does not stop
+  iOS EPUB swiping either.
 - **Android, EPUB**: a paginated EPUB is paged by Readium's own internal
   `R2WebView`, which has no toggle in Readium Kotlin 3.1.2. A horizontal drag turns
   the page whether this flag is on or off. What the flag controls is narrow: whether
