@@ -18,6 +18,7 @@ import 'launch_test.dart' as launch;
 import 'audiobook_test.dart' as audiobook;
 import 'audiobook_host_test.dart' as audiobook_host;
 import 'cbz_test.dart' as cbz;
+import 'decoration_contract_test.dart' as decoration_contract;
 import 'divina_test.dart' as divina;
 import 'epub_test.dart' as epub;
 import 'epub_tts_test.dart' as epub_tts;
@@ -25,6 +26,8 @@ import 'error_handling_test.dart' as error_handling;
 import 'webpub_test.dart' as webpub;
 import 'car_transport_test.dart' as car_transport;
 import 'text_locator_test.dart' as text_locator;
+import 'tap_test.dart' as tap;
+import 'edge_strip_tap_test.dart' as edge_strip_tap;
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -35,9 +38,12 @@ void main() {
   audiobook_host.main();
   audiobook.main();
   epub.main();
+  decoration_contract.main();
   epub_tts.main();
   error_handling.main();
   webpub.main();
   car_transport.main();
   text_locator.main();
+  tap.main();
+  edge_strip_tap.main();
 }

@@ -583,9 +583,9 @@ await flureadium.setNavigationConfig(
 
 These are useful for creating a simplified reading experience or when your app handles gestures differently.
 
-### Navigation Configuration (iOS)
+### Navigation Configuration
 
-Navigation behavior (edge taps, swipe, edge tap area) is configured separately from Readium reading preferences using `setNavigationConfig()`. Both edge tap and swipe navigation default to enabled.
+Navigation behavior (edge taps, swipe, edge tap area) is configured separately from Readium reading preferences using `setNavigationConfig()`. Both edge tap and swipe navigation default to enabled. iOS and Android read the same three keys — see [Edge Tap and Swipe Navigation](../platform-specific/android.md#edge-tap-and-swipe-navigation) for the Android overlay.
 
 ```dart
 // Disable edge taps but keep swipe navigation
@@ -613,7 +613,17 @@ await flureadium.setNavigationConfig(
 );
 ```
 
-`edgeTapAreaPoints` uses absolute iOS points (44–120, clamped automatically), ensuring consistent tap zones across all devices including iPad split-screen. In EPUB scroll mode, both gestures are automatically disabled regardless of configuration.
+`edgeTapAreaPoints` uses absolute points (44–120, clamped automatically), ensuring consistent tap zones across all devices including iPad split-screen. Android reads the same number as dp. It is the only edge width there is: as of 0.17.0 the iOS build gives Readium's `DirectionalNavigationAdapter` an empty pointer policy, so the overlay is the single owner of edge pointers and `enableEdgeTapNavigation` governs every iOS edge tap. Before that, a second component claimed a wider zone of its own and ignored the preference.
+
+In EPUB scroll mode, both gestures are automatically disabled regardless of configuration.
+
+One rule covers both platforms if your app reads taps: the overlay leaves the edge strips alone as soon as `enableEdgeTapNavigation` is off, so `ReadiumReaderWidget.onTap` fires across the full width again. `enableSwipeNavigation` does not hold a strip open. Android CBZ is the exception on the tap side — it has no overlay at all, because the overlay is built by the EPUB and PDF readers only and `ImageNavigator.setNavigationConfig` is an empty body, so nothing there claims a strip for `enableEdgeTapNavigation` to govern. That is what the wiring says; the CBZ edge case sits on the manual verification list rather than in a test.
+
+`enableSwipeNavigation` reaches different distances per platform and format, and the reason is Readium's own API surface rather than a choice here:
+
+- **PDF on Android** honours it. The flag switches drag paging off through the pdfium adapter's `onConfigurePdfView` seam, so taps, pinch-zoom and pan-while-zoomed keep working. It is read when the PDF view is built, so a flag that arrives while a PDF is on screen applies from the next rebuild — a background/foreground cycle or a reopen — not mid-document.
+- **EPUB and CBZ on Android** page inside Readium: a paginated reflowable EPUB is paged by `R2WebView.onTouchEvent`, and CBZ by an androidx `ViewPager`. Neither exposes a swipe toggle in Readium Kotlin 3.1.2 and both are internal, so **a horizontal drag still turns the page with `enableSwipeNavigation: false`.** What the flag governs on Android EPUB is narrower than the name suggests: whether a fling that starts inside a strip the edge-tap gate already claimed turns a page through the overlay. On CBZ it reaches nothing.
+- **iOS** gates its own recognizers on the flag alone, not on the strips: they live on the full-size overlay container and test direction only, so with `enableSwipeNavigation: true` a swipe anywhere in the reader pages. Turning it off clears those callbacks — the recognizers stay attached and fire into nothing — but it does not stop paging: Readium's `PaginationView` is a paging `UIScrollView` and the plugin never sets `isScrollEnabled` on it, so a horizontal drag still turns the page. As on Android, this flag cannot switch EPUB swiping off; in EPUB scroll mode both plugin gestures are off anyway.
 
 ## See Also
 

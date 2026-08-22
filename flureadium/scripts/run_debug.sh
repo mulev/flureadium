@@ -95,14 +95,22 @@ if [[ -z "$DEVICE" ]]; then
     printf "  %d) %s\n" "$((i+1))" "${lines[$i]}"
   done
 
-  while true; do
-    printf "\nSelect device [1-%d]: " "${#lines[@]}"
-    read -r choice </dev/tty
-    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#lines[@]} )); then
-      break
-    fi
-    printf "Enter a number between 1 and %d.\n" "${#lines[@]}"
-  done
+  choice=1
+  # `/dev/tty` is world-readable even with no controlling terminal, so a
+  # `[ -r /dev/tty ]` test lies and the read below would spin. Probe by opening,
+  # with stderr redirected first so a failed open stays quiet.
+  if : 2> /dev/null < /dev/tty; then
+    while true; do
+      printf "\nSelect device [1-%d]: " "${#lines[@]}"
+      read -r choice </dev/tty || { choice=1; break; }
+      if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#lines[@]} )); then
+        break
+      fi
+      printf "Enter a number between 1 and %d.\n" "${#lines[@]}"
+    done
+  else
+    echo "No terminal to ask on — taking the first device."
+  fi
 
   selected="${lines[$((choice-1))]}"
   DEVICE=$(echo "$selected" | awk -F' • ' '{print $2}' | xargs)

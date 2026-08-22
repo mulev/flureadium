@@ -1,0 +1,6 @@
+include: package:lints/recommended.yaml
+
+# No `plugins:` block here on purpose. Pointing the plugin at its own package
+# would make every rule change re-enter the analysis server mid-edit, and the
+# assertions in this package's tests live inside raw strings the rules never
+# see. flureadium/docs/05-testing/lint-rules.md explains the arrangement.

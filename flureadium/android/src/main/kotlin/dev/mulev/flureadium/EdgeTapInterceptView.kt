@@ -7,7 +7,6 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.widget.FrameLayout
-import androidx.core.view.GestureDetectorCompat
 import kotlin.math.abs
 
 private const val TAG = "EdgeTapInterceptView"
@@ -51,7 +50,7 @@ class EdgeTapInterceptView @JvmOverloads constructor(
 
     // ── Gesture detector ──────────────────────────────────────────────────────
 
-    private val gestureDetector = GestureDetectorCompat(context, object : GestureDetector.SimpleOnGestureListener() {
+    private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
 
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
             val thresholdPx = dpToPx(edgeTapThresholdDp, resources.displayMetrics.density)
@@ -121,8 +120,13 @@ class EdgeTapInterceptView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 val thresholdPx = dpToPx(edgeTapThresholdDp, resources.displayMetrics.density)
                 val x = ev.x
-                val hasLeft = onLeftEdgeTap != null || onSwipeRight != null
-                val hasRight = onRightEdgeTap != null || onSwipeLeft != null
+                // A strip is claimed only when this overlay has a page turn to
+                // run on it. Swipe is deliberately not part of the predicate:
+                // a fling needs a claim it cannot make on its own, and reading
+                // it here made `enableEdgeTapNavigation: false` swallow the
+                // touch instead of releasing it to the WebView.
+                val hasLeft = onLeftEdgeTap != null
+                val hasRight = onRightEdgeTap != null
                 isClaimed = (hasLeft && isInLeftEdge(x, thresholdPx)) ||
                     (hasRight && isInRightEdge(x, width, thresholdPx))
                 Log.d(TAG, "dispatchTouchEvent ACTION_DOWN x=$x width=$width threshold=$thresholdPx claimed=$isClaimed")

@@ -56,15 +56,36 @@ class _ReaderPageState extends State<ReaderPage> {
   final _flureadium = Flureadium();
   Publication? _publication;
   Locator? _locator;
+  // The first position this publication reported, latched once per open and
+  // cleared by _resetPublicationLatches. Deliberately not kept in step with
+  // _locator: "Go To Saved" is only worth tapping if it can navigate somewhere
+  // the reader is not, so the listener latches with `??=`, never `=`.
   Locator? _savedLocator;
+  // The title the last loadPublication returned, or '' before any load.
+  String _loadedTitle = '';
   ReadiumTimebasedState? _timebasedState;
   // Bumped each time a publication finishes opening (after openPublication
   // returns). Integration tests read this before tapping an "Open ..." button
   // and poll until it increments, so they wait exactly until the new
   // publication is loaded instead of a fixed duration.
   int _openGeneration = 0;
+  // How many locators the text-locator stream has delivered since this
+  // publication opened, cleared by _resetPublicationLatches. A count rather
+  // than a value because the values repeat: only a number that must rise
+  // proves a delivery arrived when the href it carries is the one already
+  // latched.
+  int _locatorEvents = 0;
   bool _endedSeen = false;
   bool _controlsVisible = true;
+  // How many taps the native navigator has reported since this publication
+  // opened, cleared by _resetPublicationLatches, and the position the last one
+  // carried. A count rather than a flag, for the same reason as
+  // _locatorEvents: only a number that must rise can tell one report from two,
+  // and a double listener registration is the failure the tap wiring has to be
+  // proven free of. The position is rendered as text so a units mismatch
+  // between the platforms is visible instead of silent.
+  int _tapEvents = 0;
+  Offset? _lastTap;
   bool _ttsEnabled = false;
   Locator? _lastTtsLocator;
   Locator? _readerLocatorAtTtsDisable;
@@ -130,7 +151,9 @@ class _ReaderPageState extends State<ReaderPage> {
   // after the native platform view (and all EventChannel handlers) are ready.
   // Safe to call on all platforms: Android registers channels eagerly; iOS
   // registers them lazily in ReadiumReaderView.init() which runs just before
-  // onReady fires. No polling, no timers — pumpAndSettle works correctly.
+  // onReady fires. No polling, no timers. Tests against this app still pump in
+  // bounded steps rather than pumpAndSettle: the load cover's spinner keeps
+  // scheduling frames until the reader reports `ready`.
   void _subscribeToChannels() {
     _statusSub?.cancel();
     _locatorSub?.cancel();
@@ -143,7 +166,11 @@ class _ReaderPageState extends State<ReaderPage> {
     _locatorSub = _flureadium.onTextLocatorChanged.listen(
       (l) => setState(() {
         _locator = l;
-        _savedLocator = l;
+        _savedLocator ??= l;
+        // Monotonic within one publication: a delivery that repeats the href
+        // already latched still moves this, which is what lets an integration
+        // test prove a subscribe-time answer arrived.
+        _locatorEvents++;
       }),
     );
     _errorSub = _flureadium.onErrorEvent.listen((e) {
@@ -185,6 +212,22 @@ class _ReaderPageState extends State<ReaderPage> {
       await _openPublicationAsset('assets/pubs/sample_visual.divina');
     } catch (e) {
       debugPrint('openDivina error: $e');
+    }
+  }
+
+  Future<void> _openTapTargets() async {
+    try {
+      await _openPublicationAsset('assets/pubs/tap_targets.epub');
+    } catch (e) {
+      debugPrint('openTapTargets error: $e');
+    }
+  }
+
+  Future<void> _openFixedLayout() async {
+    try {
+      await _openPublicationAsset('assets/pubs/fixed_layout.epub');
+    } catch (e) {
+      debugPrint('openFixedLayout error: $e');
     }
   }
 
@@ -406,7 +449,11 @@ class _ReaderPageState extends State<ReaderPage> {
     _openGeneration++;
     _readerStatus = '';
     _locator = null;
+    _locatorEvents = 0;
+    _tapEvents = 0;
+    _lastTap = null;
     _savedLocator = null;
+    _loadedTitle = '';
     _lastAudioError = '';
     _cancelledStreamDisconnectSeen = false;
     _endedSeen = false;
@@ -476,6 +523,15 @@ class _ReaderPageState extends State<ReaderPage> {
   /// `ReadiumReaderWidget.didUpdateWidget` returns early and only the key
   /// change reaches native.
   void _remountReader() => setState(() => _readerMountGeneration++);
+
+  /// Drops the latched locator and re-runs the subscription path, so the app
+  /// becomes a fresh subscriber to a reader that is already open and already
+  /// has a position. That is the same cancel-then-listen `onReady` performs
+  /// after a publication swap, made reachable without one.
+  void _resubscribeLocator() {
+    setState(() => _locator = null);
+    _subscribeToChannels();
+  }
 
   Future<void> _setNightPreferences() async {
     await _flureadium.setEPUBPreferences(
@@ -652,9 +708,8 @@ class _ReaderPageState extends State<ReaderPage> {
     try {
       final path = await _extractAsset('assets/pubs/moby_dick.epub');
       final pub = await _flureadium.loadPublication(path);
-      debugPrint(
-        'Loaded: ${pub.metadata.title} (${pub.tableOfContents.length} chapters)',
-      );
+      if (!mounted) return;
+      setState(() => _loadedTitle = pub.metadata.title);
     } catch (e) {
       debugPrint('loadOnly error: $e');
     }
@@ -677,13 +732,94 @@ class _ReaderPageState extends State<ReaderPage> {
             ReadiumReaderWidget(
               key: ValueKey('reader-$_readerMountGeneration'),
               publication: pub,
-              onTap: () => setState(() => _controlsVisible = !_controlsVisible),
+              onTap: (position) {
+                setState(() {
+                  _tapEvents += 1;
+                  _lastTap = position;
+                  _controlsVisible = !_controlsVisible;
+                });
+              },
               onReady: _subscribeToChannels,
             )
           else
             const Center(child: CircularProgressIndicator()),
+          // Readium shows no content until it reports `ready`; a host that wants
+          // that window covered stacks its own cover. IgnorePointer so it only
+          // paints — the reader below and the controls above stay hit-testable.
+          // `error` and `closed` are terminal: no `ready` follows either, so a
+          // cover left up there would sit over a dead reader forever. The
+          // controls carry the status text that says which one happened.
+          if (pub != null &&
+              (_readerStatus.isEmpty || _readerStatus == 'loading'))
+            const Positioned.fill(
+              key: Key('reader-loading-cover'),
+              child: IgnorePointer(
+                child: ColoredBox(
+                  color: Colors.white,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              ),
+            ),
+          // Always visible: a tap flips _controlsVisible, so a tap latch inside
+          // the control bar below would unmount at the moment it finally has
+          // something to report. The latches are wrapped in IgnorePointer — a
+          // latch that swallowed the taps it exists to observe would report zero
+          // forever — but the toggle beside them is deliberately hit-testable:
+          // it is the only way back to the controls that does not depend on the
+          // native tap working, which is exactly what the tests are proving.
+          Positioned(
+            top: 0,
+            left: 0,
+            child: ColoredBox(
+              color: Colors.white70,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IgnorePointer(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          key: const Key('tap-events'),
+                          'tap-events: $_tapEvents',
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                        Text(
+                          key: const Key('last-tap'),
+                          _lastTap == null
+                              ? ''
+                              : '${_lastTap!.dx.toStringAsFixed(1)},${_lastTap!.dy.toStringAsFixed(1)}',
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    key: const Key('toggle-controls'),
+                    onPressed: () =>
+                        setState(() => _controlsVisible = !_controlsVisible),
+                    style: TextButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      'controls',
+                      style: TextStyle(fontSize: 10),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           if (pub == null || _controlsVisible)
             Positioned(
+              // Keyed so an integration test can tell whether the chrome is up:
+              // this bar covers the reader's centre, so a tap aimed there would
+              // hit these buttons instead of the publication.
+              key: const Key('control-bar'),
               bottom: 0,
               left: 0,
               right: 0,
@@ -703,6 +839,14 @@ class _ReaderPageState extends State<ReaderPage> {
                     Text(
                       key: const Key('open-generation'),
                       'open-generation: $_openGeneration',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('locator-events'),
+                      'locator-events: $_locatorEvents',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 10,
@@ -774,6 +918,30 @@ class _ReaderPageState extends State<ReaderPage> {
                         fontSize: 10,
                       ),
                     ),
+                    Text(
+                      key: const Key('saved_locator_href'),
+                      _savedLocator?.href ?? '',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('locator_progression'),
+                      _locator?.locations?.progression?.toString() ?? '',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      key: const Key('loaded-title'),
+                      'loaded-title: $_loadedTitle',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
                     Wrap(
                       children: [
                         TextButton(
@@ -811,6 +979,14 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _openDivina,
                           child: const Text('Open DIVINA'),
+                        ),
+                        TextButton(
+                          onPressed: _openTapTargets,
+                          child: const Text('Open Tap Targets'),
+                        ),
+                        TextButton(
+                          onPressed: _openFixedLayout,
+                          child: const Text('Open Fixed Layout'),
                         ),
                         TextButton(
                           onPressed: _openWebPub,
@@ -967,6 +1143,10 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _remountReader,
                           child: const Text('Remount Reader'),
+                        ),
+                        TextButton(
+                          onPressed: _resubscribeLocator,
+                          child: const Text('Resubscribe Locator'),
                         ),
                       ],
                     ),

@@ -116,6 +116,14 @@ The plugin also declares `PluginMediaService` with an intent filter that adverti
 
 ## Implementation Details
 
+### Decoration Payload Decoding
+
+`applyDecorations` receives each decoration as a map of three keys: `id`, `locator`, and `style`. `locator` is the map `Locator.toJson()` produces, not a JSON string, and `style` is a nested `{style, tint}` map whose `tint` is a CSS hex colour (`#RRGGBB` or `#AARRGGBB`). `decorationFromMap` in `ReadiumExtensions.kt` reads those keys and builds the Readium `Decoration`. The locator goes through `JSONObject(Map)`, which wraps nested maps recursively, so `locations` and `text` survive the conversion and the decoration lands on the selected range instead of the top of the resource.
+
+A decoration the decoder cannot read fails the whole `applyDecorations` call. It raises `IllegalArgumentException` naming the decoration, the method-channel handler catches it and answers `result.error`, and Dart receives a `PlatformException` whose message identifies the payload. Earlier versions logged the failure and dropped that decoration from the list, so a mismatched payload looked like a silent no-op.
+
+An unrecognised `style` string is not a failure. `decorationStyleFromMap` maps `underline` to an underline and anything else to a highlight, so a style name Android does not know draws a highlight instead of rejecting the call.
+
 ### Android Auto Browse Tree
 
 `PluginMediaService` runs as a media3 `MediaLibraryService` (not just `MediaSessionService`) and advertises the legacy `android.media.browse.MediaBrowserService` action in its intent filter. Android Auto connects as a platform `MediaBrowser` client, so it needs both: the `MediaLibraryService` to browse content and the legacy browse action to discover the app in the first place.
@@ -161,8 +169,14 @@ android/src/main/kotlin/dev/mulev/flureadium/
 ├── models/
 │   └── PdfReaderViewModel.kt    # PDF reader state
 └── navigators/
-    ├── ImageNavigator.kt        # CBZ / DIVINA navigation controller
-    └── PdfNavigator.kt          # PDF navigation controller
+    ├── EpubNavigator.kt             # EPUB navigation controller
+    ├── EpubNavigatorState.kt        # Saved-state bundle codec
+    ├── EpubPageScript.kt            # window.epubPage JavaScript contract
+    ├── EpubScrollRestore.kt         # Deferred restore scroll and its decision
+    ├── ImageNavigator.kt            # CBZ / DIVINA navigation controller
+    ├── NavigatorTapForwarder.kt     # Readium InputListener → logical-pixel taps
+    ├── PdfNavigator.kt              # PDF navigation controller
+    └── VisualLocatorSubscription.kt # Throttled locator reporting for all three
 ```
 
 ### Plugin Lifecycle
@@ -566,6 +580,65 @@ The Android implementation:
 - `PageThumbnailExtractor.kt` - Decode/downscale/compress helper
 - `PublicationChannel.kt` - `extractPageThumbnail` method-channel handler
 
+### Content Taps
+
+`ReadiumReaderWidget.onTap` fires for a tap on content, meaning a tap nothing else
+claimed. The plugin does not detect those taps itself. It registers an
+`InputListener` on the Readium navigator and lets the toolkit decide what counts
+as a content tap before the plugin hears about it.
+
+`NavigatorTapForwarder` (`navigators/NavigatorTapForwarder.kt`) is that listener.
+Each visual navigator owns one and binds it to the Readium navigator it currently
+hosts: `EpubNavigator` and `PdfNavigator` bind in `onPageLoaded`, `ImageNavigator`
+in `setupNavigatorListeners`, above the guard that returns early while a CBZ still
+has no locator. All three unbind in `dispose` and in `release`, the teardown a
+publication swap takes.
+
+The forwarder is not the only collaborator `setupNavigatorListeners` reaches for.
+`VisualLocatorSubscription` (`navigators/VisualLocatorSubscription.kt`) holds the
+throttled locator reporting all three navigators used to carry a copy of, and each
+navigator keeps the `Job` it returns in the list `dispose` cancels. The two are
+independent, which is what lets `ImageNavigator` bind its taps and then return
+early with no subscription at all: the forwarder follows the Readium navigator
+instance, the subscription follows that navigator's locator flow.
+
+**Binding is keyed on the navigator instance.** `EpubReaderFragment` and
+`PdfReaderFragment` remove their Readium navigator in `onPause` and build a new one
+in `onResume`, while `hasNotifiedIsReady` stops `setupNavigatorListeners` from
+running a second time. Registering again on the same navigator would report every
+tap twice, and skipping a recreated one would report no taps at all. Neither is
+visible in a host that toggles chrome on the callback, so the forwarder compares
+identity and moves its registration to whichever navigator is live.
+
+**Coordinates cross the channel in logical pixels.** `TapEvent.point` is a `PointF`
+in navigator-view pixels, so the forwarder divides by
+`publicationView.resources.displayMetrics.density` before sending
+`{"x": …, "y": …}`. iOS already reports points, so Dart gets one unit system from
+both platforms.
+
+**EPUB filters link taps for you.** `InputListener.onTap` is documented as "the user
+tapped the content, but nothing handled the event internally (eg. by following an
+internal link)". A tap on a hyperlink or a footnote navigates and reports no tap, so
+a host can toggle its chrome on every `onTap`.
+
+**PDF and CBZ have nothing to filter.** The pdfium adapter forwards the tap point and
+follows no link, so a tap on a PDF link annotation is reported as a content tap and
+navigates nowhere. iOS behaves differently here: PDFKit follows the annotation and
+reports the tap as well. See [iOS](ios.md#content-taps).
+
+**A tap arriving after the view is gone is dropped.** `publicationView` is
+`requireView()` on every Readium navigator fragment, and an EPUB tap reaches the
+forwarder from the WebView's JavaScript bridge after a hop to the main thread. If
+`onPause` destroyed the view in between, the forwarder returns without reporting
+rather than letting the read throw into the bridge.
+
+`NavigatorTapForwarder.onTap` returns `false`, so it never consumes the event.
+`CompositeInputListener.onTap` is `listeners.any { it.onTap(event) }`, which
+short-circuits: returning `true` would starve every listener Readium registered
+behind the forwarder. Edge taps have a separate owner, the overlay below, which
+claims them before Readium sees them. See
+[Edge Tap and Swipe Navigation](#edge-tap-and-swipe-navigation).
+
 ## Edge Tap and Swipe Navigation
 
 Android supports the same configurable gesture overlay as iOS via `setNavigationConfig()`.
@@ -573,13 +646,25 @@ Android supports the same configurable gesture overlay as iOS via `setNavigation
 ### Overview
 
 A transparent `EdgeTapInterceptView` overlay is placed on top of the Readium navigator
-(both EPUB and PDF). It intercepts touches in the left and right edge zones and fires
-navigation callbacks; center touches always pass through to the reader content.
+by the EPUB and PDF readers. It claims touches in the left and right edge zones only
+while `enableEdgeTapNavigation` is on and the reader is paginated — that is, only when
+it has a page turn to run there. With edge taps off it claims nothing, and an edge
+touch reaches the reader content exactly as a centre touch does, so
+`ReadiumReaderWidget.onTap` fires across the full width. Centre touches always pass
+through.
+
+**CBZ/DIVINA has no overlay on Android.** `ImageNavigator.setNavigationConfig` is an
+empty body, and the overlay is created only by `EpubReaderFragment` and
+`PdfReaderFragment`. So on an Android CBZ neither navigation flag reaches anything:
+nothing claims the edge strips, edge taps have nothing to page with, and the androidx
+`ViewPager` behind the images swipes regardless of `enableSwipeNavigation`. That
+follows from the wiring; the CBZ edge case is on the manual verification list rather
+than covered by a test. iOS CBZ does have the overlay.
 
 ### setNavigationConfig
 
 ```dart
-await flureadium.setNavigationConfig(NavigationConfig(
+await flureadium.setNavigationConfig(ReaderNavigationConfig(
   enableEdgeTapNavigation: true,   // tap left/right edges to turn pages
   enableSwipeNavigation: true,     // horizontal fling to turn pages
   edgeTapAreaPoints: 60,           // edge zone width in dp (44–120, clamped)
@@ -589,7 +674,7 @@ await flureadium.setNavigationConfig(NavigationConfig(
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enableEdgeTapNavigation` | `bool?` | enabled | Tap in the edge zone → navigate |
-| `enableSwipeNavigation` | `bool?` | enabled | Horizontal fling → navigate |
+| `enableSwipeNavigation` | `bool?` | enabled | Horizontal fling → navigate. For **PDF** it switches the pdfium view's own drag paging off through `onConfigurePdfView`, read when that view is built. For **EPUB** it only decides whether a fling that starts inside a strip the edge-tap gate already claimed pages through the overlay — Readium's internal `R2WebView` still pages a paginated EPUB on a horizontal drag whatever this flag says. For **CBZ** it reaches nothing |
 | `edgeTapAreaPoints` | `double?` | 44 dp | Edge zone width, clamped to 44–120 dp |
 
 `null` fields are treated as **enabled** (matching iOS semantics).
@@ -611,8 +696,8 @@ PDF is always paginated; scroll mode does not apply.
 | `EdgeTapInterceptView.kt` | Transparent FrameLayout overlay; intercepts edge touches |
 | `EpubReaderFragment.kt` | Creates and tears down the overlay per lifecycle; propagates scroll mode |
 | `PdfReaderFragment.kt` | Creates and tears down the overlay per lifecycle |
-| `EpubNavigator.kt` / `PdfNavigator.kt` | Delegates `setNavigationConfig` / `setScrollMode` to the fragment |
-| `ReadiumReader.kt` | Exposes `epubSetNavigationConfig`, `epubSetScrollMode`, `pdfSetNavigationConfig` |
+| `EpubNavigator.kt` / `PdfNavigator.kt` | Delegates `setNavigationConfig` / `setScrollMode` to the fragment; `PdfNavigator` also gives the pdfium engine provider a listener that applies `enableSwipeNavigation` to every `PDFView` it builds |
+| `ReadiumReader.kt` | Exposes `epubSetNavigationConfig`, `epubSetScrollMode`, `pdfSetNavigationConfig`; keeps the last config and hands it to a navigator it builds afterwards |
 | `ReadiumReaderWidget.kt` | Handles `setNavigationConfig` method call; detects scroll mode from `setPreferences` |
 
 #### Touch dispatch design

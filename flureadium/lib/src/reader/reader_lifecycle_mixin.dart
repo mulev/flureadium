@@ -13,6 +13,29 @@ mixin ReaderLifecycleMixin {
   void setCurrentWidgetInterface(ReadiumReaderWidgetInterface widget) {
     R2Log.d('Set current reader in plugin');
     readium.currentReaderWidget = widget;
+
+    // A navigation config set before any reader existed was stored on the
+    // platform and forwarded to a null currentReaderWidget, which dropped it
+    // in silence. Registration is the first moment it can land: reader_widget
+    // calls this from _onPlatformViewCreated only after assigning _channel, so
+    // the widget has a channel to send on.
+    //
+    // The stored config is deliberately left in place. It is the platform's
+    // last known config, and a publication swap unregisters this widget and
+    // registers a fresh one over a new native view that needs it again.
+    final config = readium.defaultNavigationConfig;
+    if (config != null) {
+      // Fire and forget, but never silently: this is the one caller that does
+      // not hand the future back to the host, so a PlatformException here would
+      // otherwise surface as an unhandled async error in whatever zone the
+      // platform view was created in — and fail an unrelated test.
+      widget
+          .setNavigationConfig(config)
+          .catchError(
+            (Object error, StackTrace stack) =>
+                R2Log.e('Replayed setNavigationConfig failed: $error'),
+          );
+    }
   }
 
   /// Cleans up reader widget registration.

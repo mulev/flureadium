@@ -19,8 +19,6 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
-import org.readium.adapter.pdfium.navigator.PdfiumPreferences
-import org.readium.adapter.pdfium.navigator.PdfiumSettings
 import org.readium.r2.navigator.pdf.PdfNavigatorFragment
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
@@ -40,6 +38,12 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
          * Called when a page has finished loading.
          */
         fun onPageLoaded()
+
+        /**
+         * Called when this fragment has let go of its Readium navigator, so
+         * anything registered on that navigator has to be released too.
+         */
+        fun onNavigatorReleased()
 
         /**
          * Called when the current page has changed.
@@ -62,7 +66,7 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
     private val instance = ++instanceNo
 
     private var pdfNavigator
-        get() = navigator as? PdfNavigatorFragment<PdfiumSettings, PdfiumPreferences>
+        get() = navigator as? PdfNavigatorFragment<*, *>
         set(value) {
             navigator = value
         }
@@ -220,6 +224,10 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
             edgeTapInterceptView?.let { (view as? FrameLayout)?.removeView(it) }
             edgeTapInterceptView = null
 
+            // After the navigator is gone: the listener releases what it
+            // registered on it rather than holding it across the pause.
+            listener?.onNavigatorReleased()
+
             super.onPause()
         } finally {
             Log.d(TAG, "::onPause - $instance - ended")
@@ -263,7 +271,11 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
         val pdfNavigatorFragment = fragmentFactory.instantiate(
             requireActivity().classLoader,
             PdfNavigatorFragment::class.java.name
-        ) as PdfNavigatorFragment<PdfiumSettings, PdfiumPreferences>
+        ) as? PdfNavigatorFragment<*, *>
+        if (pdfNavigatorFragment == null) {
+            Log.e(TAG, "::attachNavigator() - $instance - factory returned a non-PDF fragment")
+            return
+        }
 
         Log.d(TAG, "::attachNavigator - $instance - add fragment")
         childFragmentManager.commitNow {
@@ -279,7 +291,7 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
 
         started.value = true
 
-        // Add edge tap overlay on top of the navigator (PDF is always paginated)
+        // Add the edge tap overlay on top of the navigator.
         val rootView = view as? FrameLayout
         if (rootView != null) {
             val overlay = EdgeTapInterceptView(requireContext())
@@ -293,7 +305,14 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
                 onSwipeLeft = { goRight(animated = true) },
                 onSwipeRight = { goLeft(animated = true) },
             )
-            storedNavigationConfig?.let { overlay.applyConfig(it) }
+            // false, and it is not an assumption about PDFs: `PDFScrollMode.vertical`
+            // never reaches this navigator on Android. attachNavigator omits
+            // initialPreferences, and PdfiumPreferences has no scroll component at
+            // all (fit, pageSpacing, readingProgression, scrollAxis), so the pdfium
+            // view paginates whatever the host asked for. Gating the overlay on
+            // pdfVm.scroll would disable edge taps for a document that still pages.
+            // Android's missing PDF scroll mode is flureadium-7shk.
+            configureOverlay(overlay, storedNavigationConfig, isScrollMode = false)
             rootView.addView(overlay)
             edgeTapInterceptView = overlay
         }

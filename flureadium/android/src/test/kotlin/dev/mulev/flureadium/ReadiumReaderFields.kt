@@ -1,6 +1,7 @@
 package dev.mulev.flureadium
 
 import java.lang.reflect.Field
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 /**
  * Reflective access to ReadiumReader's private state, shared by the JVM suite.
@@ -14,11 +15,14 @@ import java.lang.reflect.Field
  * Anything seeded here must be cleared again in the test's teardown — the
  * fields belong to a singleton that outlives each test class.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 internal fun setReaderField(name: String, value: Any?) {
     readerField(name).set(ReadiumReader, value)
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 internal fun getReaderField(name: String): Any? = readerField(name).get(ReadiumReader)
 
+@OptIn(ExperimentalCoroutinesApi::class)
 private fun readerField(name: String): Field =
     ReadiumReader::class.java.getDeclaredField(name).apply { isAccessible = true }

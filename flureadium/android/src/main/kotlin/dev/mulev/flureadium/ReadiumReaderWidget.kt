@@ -47,7 +47,7 @@ class ReadiumReaderWidget(
     messenger: BinaryMessenger,
     attrs: AttributeSet? = null
 ) : PlatformView, MethodChannel.MethodCallHandler,
-    EpubReaderFragment.Listener, EpubNavigator.VisualListener, PdfNavigator.VisualListener {
+    EpubNavigator.VisualListener, PdfNavigator.VisualListener {
 
     private val channel: ReadiumReaderChannel
     private val layout: ViewGroup
@@ -78,7 +78,17 @@ class ReadiumReaderWidget(
     private val isAudio: Boolean = readerKind == PublicationReaderKind.AUDIO
     private val isEpub: Boolean = readerKind == PublicationReaderKind.EPUB
 
-    private var storedNavigationConfig: FlutterNavigationConfig? = null
+    /**
+     * The navigator's current position, without the EPUB fragment enrichment
+     * `getCurrentLocator` does. Deliberately not the same value: enrichment is
+     * `suspend`, and a subscribe-time answer cannot wait on the WebView.
+     */
+    val currentKindLocator: Locator?
+        get() = when (readerKind) {
+            PublicationReaderKind.PDF -> ReadiumReader.pdfCurrentLocator
+            PublicationReaderKind.IMAGE -> ReadiumReader.imageCurrentLocator
+            else -> ReadiumReader.epubCurrentLocator
+        }
 
     override fun getView(): View {
         //Log.d(TAG, "::getView")
@@ -314,6 +324,10 @@ class ReadiumReaderWidget(
     override fun onExternalLinkActivated(url: AbsoluteUrl) {
         Log.d(TAG, "::onExternalLinkActivated $url")
         mainScope.launch { emitOnExternalLinkActivated(url) }
+    }
+
+    override fun onTap(x: Double, y: Double) {
+        mainScope.launch { channel.onTap(x, y) }
     }
 
     override fun onVisualCurrentLocationChanged(locator: Locator) {
@@ -666,8 +680,16 @@ class ReadiumReaderWidget(
                                 return@launch
                             } else {
                                 setPreferencesFromMap(prefsMap)
-                                val isScrollMode = prefsMap["verticalScroll"]?.toBoolean() == true
-                                ReadiumReader.epubSetScrollMode(isScrollMode)
+
+                                // Only when the host actually said something about
+                                // scrolling. setPreferencesFromMap treats an absent
+                                // key as "keep the current value", and reading it as
+                                // false here used to latch paginated onto the reader
+                                // fragment, which then rebuilt its overlay claiming
+                                // both edge strips over a scrolling WebView.
+                                prefsMap["verticalScroll"]?.toBoolean()?.let {
+                                    ReadiumReader.epubSetScrollMode(it)
+                                }
                             }
                             result.success(null)
                         } catch (ex: Exception) {
@@ -871,7 +893,6 @@ class ReadiumReaderWidget(
     }
 
     private fun applyNavigationConfig(config: FlutterNavigationConfig) {
-        storedNavigationConfig = config
         if (isPdf) {
             ReadiumReader.pdfSetNavigationConfig(config)
         } else if (isImage) {

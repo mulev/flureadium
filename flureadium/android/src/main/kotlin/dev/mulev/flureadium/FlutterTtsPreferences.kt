@@ -61,7 +61,9 @@ data class FlutterTtsPreferences(
                 }
             }
             return FlutterTtsPreferences(
-                language = jsonObject.optString("language", null),
+                language = if (!jsonObject.isNull("language"))
+                    jsonObject.getString("language")
+                else null,
                 pitch = jsonObject.optDouble("pitch").let { if (it.isNaN()) null else it },
                 speed = jsonObject.optDouble("speed").let { if (it.isNaN()) null else it },
                 voices = voicesMap.ifEmpty { null },

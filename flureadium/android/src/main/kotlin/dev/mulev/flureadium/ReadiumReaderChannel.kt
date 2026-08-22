@@ -13,4 +13,7 @@ internal class ReadiumReaderChannel(messenger: BinaryMessenger, name: String) :
 
     fun onExternalLinkActivated(url: AbsoluteUrl) =
         invokeMethod("onExternalLinkActivated", url.toString())
+
+    fun onTap(x: Double, y: Double) =
+        invokeMethod("onTap", mapOf("x" to x, "y" to y))
 }

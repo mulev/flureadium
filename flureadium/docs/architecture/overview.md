@@ -173,6 +173,14 @@ ios/Sources/flureadium/
 ├── PdfReaderView.swift        # PDF reader view
 ├── ImageReaderView.swift      # CBZ / DIVINA reader view
 ├── AudioReaderView.swift      # Audio-only reader host (no navigator)
+├── EpubUserScripts.swift      # WKUserScripts injected into the EPUB WebView
+├── EpubNavigatorConfiguration.swift # EPUB navigator configuration builder
+├── SpineItemPositionMemory.swift # Scroll-mode position remembered per spine item
+├── EpubPageBridge.swift       # The window.epubPage JavaScript API
+├── EpubLocatorReporter.swift  # Fragment-resolved locators published to the reader channel
+├── EpubReaderCommand.swift    # Reader method-channel calls decoded into typed commands
+├── PdfGestureSuppression.swift # Built-in PDF gestures the host disabled, removed from the view tree
+├── ReaderEdgeNavigationState.swift # Edge tap/swipe config shared by the three visual readers
 ├── PageThumbnailExtractor.swift # Image-resource thumbnail extraction
 └── ...
 ```
@@ -317,6 +325,27 @@ iOS method channel handlers run on a background thread. Publication cleanup (nul
 - **`await MainActor.run { ... }`** — awaitable. Suspends the calling task until the block completes on the main actor. Required whenever the caller proceeds to use or replace the publication state (e.g., `closePublication`, `stop`, `dispose`, and the internal close-before-open in `openPublication`).
 
 This mirrors the Android pattern where `closePublication()` uses `mainScope.async { ... }.await()` instead of `launch { ... }`.
+
+### iOS: a stored closure that reads a navigator is `@MainActor`
+
+Every reader view conforms to `VisualNavigatorDelegate`, which readium declares `@MainActor`, so
+SE-0316 isolates the whole conforming class. A read like `getCurrentLocation()` is therefore
+main-actor-isolated even where nothing in our own code is annotated, and the compiler only says so
+at the point where a nonisolated context calls it.
+
+So a closure that is stored for a nonisolated Flutter callback — a stream handler's `onListen`, a
+method-channel handler — must be typed `@MainActor () -> …` on both the stored property and the
+init parameter, and its body must run from `Task { @MainActor in … }`. Typing the parameter is
+enough for the caller: a closure *literal* passed to a `@MainActor` parameter is inferred isolated,
+so the call site needs no annotation of its own. `MainActor.assumeIsolated` would skip the hop but
+is iOS 17+, and the plugin targets 13.4 (`ios/flureadium/Package.swift`).
+
+`TextLocatorEventStream` (the provider handed to it by `FlureadiumPlugin.register(with:)`),
+`EpubLocatorReporter` (`resolveFragments`, `sendTextLocator`, `isDisposed`) and
+`FlutterAudioNavigator`'s two playback-failure observers (`registerPlaybackFailureObservers`, whose
+`NotificationCenter` closures call the main-actor-isolated `handlePlaybackFailure`) are the examples.
+The cost is timing: the answer lands on the next main-actor turn, so a test for it polls instead of
+asserting inline.
 
 ### Car bridge (CarPlay / Android Auto)
 

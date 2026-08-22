@@ -20,16 +20,7 @@ class ReadiumBugLogger: ReadiumShared.WarningLogger {
   }
 }
 
-private let readiumBugLogger = ReadiumBugLogger()
-private var userScripts: [WKUserScript] = []
-
-func parseLocatorFragmentsResult(_ result: Any?) -> Locator? {
-  guard let json = result as? Dictionary<String, Any?> else {
-    return nil
-  }
-
-  return try? Locator(json: json, warnings: readiumBugLogger)
-}
+let readiumBugLogger = ReadiumBugLogger()
 
 class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, VisualNavigatorDelegate {
 
@@ -41,24 +32,38 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   private var isVerticalScroll = false
   private var hasSentReady = false
   private var isDisposed = false
-  private var enableEdgeTapNavigation: Bool
-  private var enableSwipeNavigation: Bool
-  private var edgeTapAreaPoints: CGFloat?
+  private var edgeNavigation = ReaderEdgeNavigationState()
+  private var tapObserverToken: InputObservableToken?
+  private let userScripts: [WKUserScript]
+  private let page: EpubPageBridge
+
+  /// Publishes page changes to Dart. Lazy so its `[weak self]` closures can be
+  /// formed after `super.init()`.
+  private lazy var locatorReporter = EpubLocatorReporter(
+    channel: channel,
+    resolveFragments: { [weak self] json, isScrollMode in
+      await self?.resolveLocatorFragments(json, isScrollMode) ?? nil
+    },
+    sendTextLocator: { FlureadiumPlugin.shared?.sendTextLocator($0) },
+    isDisposed: { [weak self] in self?.isDisposed ?? true })
 
   // Retain the navigation adapter to prevent ARC deallocation
   private var directionalNavigationAdapter: DirectionalNavigationAdapter?
 
   // Scroll-mode position memory: remembers the last scroll position per spine item
   // so swipe-back can restore where the user was in the previous chapter.
-  private var spineItemHistory: [String: Locator] = [:]
-  private var lastSpineItemLocator: Locator?
-  private var currentSpineItemHref: String?
+  private var spinePositions = SpineItemPositionMemory()
 
   var publicationIdentifier: String?
 
-  /// The editing actions shown in the EPUB long-press selection menu.
-  /// Keeping this as a static constant makes the native action set testable.
-  static let epubEditingActions: [EditingAction] = [.copy, .lookup, .translate]
+  /// The pointer policy handed to Readium's `DirectionalNavigationAdapter`.
+  ///
+  /// Empty on purpose: `EdgeTapInterceptView` is the sole pointer edge owner on
+  /// iOS, carrying the host's width (`edgeTapAreaPoints`) and its gate
+  /// (`enableEdgeTapNavigation`). Two owners meant the adapter's own
+  /// `max(80, 0.3 × width)` band turned pages with edge tap switched off.
+  /// Keeping this as a static constant makes the constructed policy testable.
+  static let edgeTapPointerPolicy = DirectionalNavigationAdapter.PointerPolicy(types: [])
 
   func view() -> UIView {
     print(TAG, "::getView")
@@ -84,11 +89,6 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     let preferencesMap = creationParams["preferences"] as? [String: String]
     let defaultPreferences = preferencesMap.map { EPUBPreferences.init(fromMap: $0) }
 
-    // Navigation config uses defaults; updated via setNavigationConfig channel call
-    enableEdgeTapNavigation = true
-    enableSwipeNavigation = true
-    edgeTapAreaPoints = nil
-
     let locatorStr = creationParams["initialLocator"] as? String
     let locator = locatorStr == nil ? nil : try! Locator.init(jsonString: locatorStr!)
     print(TAG, "publication = \(publication)")
@@ -100,35 +100,18 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     print(TAG, "Publication: (identifier=\(String(describing: publication.metadata.identifier)),title=\(String(describing: publication.metadata.title)))")
     print(TAG, "Added publication at \(String(describing: publication.baseURL))")
 
-    // Remove undocumented Readium default 20dp or 44dp top/bottom padding.
-    // See EPUBNavigatorViewController.swift in r2-navigator-swift.
-    var config = EPUBNavigatorViewController.Configuration()
-    config.contentInset = [
-      .compact: (top: 0, bottom: 0),
-      .regular: (top: 0, bottom: 0),
-    ]
-    // TODO: Make this config configurable from Flutter
-    // Might want it to be higher for a local publication than remote.
-    config.preloadPreviousPositionCount = 2
-    config.preloadNextPositionCount = 4
-    config.debugState = true
-    config.decorationTemplates = HTMLDecorationTemplate.defaultTemplates(alpha: 1.0, experimentalPositioning: true)
-    config.editingActions = ReadiumReaderView.epubEditingActions
+    let config = makeEpubNavigatorConfiguration(preferences: defaultPreferences)
 
-    if (defaultPreferences != nil) {
-      config.preferences = defaultPreferences!
-    }
-
-    readiumViewController = try! EPUBNavigatorViewController(
+    let navigator = try! EPUBNavigatorViewController(
       publication: publication,
       initialLocation: locator,
       config: config,
       httpServer: sharedReadium.httpServer!
     )
+    readiumViewController = navigator
+    page = EpubPageBridge { await navigator.evaluateJavaScript($0) }
 
-    if userScripts.isEmpty {
-      initUserScripts(registrar: registrar)
-    }
+    userScripts = EpubUserScripts.make(registrar: registrar)
 
     _view = EdgeTapInterceptView()
     super.init()
@@ -140,34 +123,25 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     isVerticalScroll = defaultPreferences?.scroll ?? false
     configureEdgeTapHandlers(isScrollMode: isVerticalScroll)
 
-    let child: UIView = readiumViewController.view
-    let view = _view
-    view.addSubview(readiumViewController.view)
-
-    child.translatesAutoresizingMaskIntoConstraints = false
-
-    NSLayoutConstraint.activate(
-      [
-        child.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-        child.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-        child.topAnchor.constraint(equalTo: view.topAnchor),
-        child.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-      ]
-    )
+    _view.addPinnedSubview(readiumViewController.view)
 
     currentReaderView = self
     publicationIdentifier = publication.metadata.identifier
 
-    /// This adapter will automatically turn pages when the user taps the
-    /// screen edges or press arrow keys.
+    /// Readium's adapter is kept for keyboard paging only — arrow keys and the
+    /// space bar. `bind(to:)` skips every pointer type absent from
+    /// `pointerPolicy.types` and registers the key observer unconditionally, so
+    /// an empty policy hands every touch to `EdgeTapInterceptView`.
     ///
     /// Bind it to the navigator before adding your own observers to prevent
     /// triggering your actions when turning pages.
     /// NOTE: Store in property to prevent ARC deallocation
-    directionalNavigationAdapter = DirectionalNavigationAdapter(
-        pointerPolicy: .init(types: [.mouse, .touch])
-    )
+    directionalNavigationAdapter = DirectionalNavigationAdapter(pointerPolicy: Self.edgeTapPointerPolicy)
     directionalNavigationAdapter?.bind(to: readiumViewController)
+
+    tapObserverToken = observeTaps(
+      on: readiumViewController, reportingTo: channel,
+      isDisposed: { [weak self] in self?.isDisposed ?? true })
 
     print(TAG, "::init success")
   }
@@ -224,34 +198,24 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
     print(TAG, "onPageChanged: \(locator)")
 
-    let newHref = strippedHref(locator.href.string)
+    let restoration = spinePositions.record(
+      locator,
+      in: readiumViewController.publication.readingOrder,
+      isScrollMode: isVerticalScroll)
 
-    if isVerticalScroll, let oldHref = currentSpineItemHref, newHref != oldHref {
-      // Store last known position for the spine item we are leaving
-      if let outgoing = lastSpineItemLocator {
-        spineItemHistory[oldHref] = outgoing
-      }
-
-      // Restore position if swiping backward and we have a stored position
-      let readingOrder = readiumViewController.publication.readingOrder
-      if isBackwardNavigation(from: oldHref, to: newHref, in: readingOrder),
-         let stored = spineItemHistory[newHref] {
-        Task { @MainActor in
-          // emitOnPageChanged fires inside goToLocator — persistent save
-          // correctly updates to the restored position as a side effect.
-          await self.goToLocator(locator: stored, animated: false)
-        }
+    if let restoration {
+      Task { @MainActor in
+        // emitOnPageChanged fires inside goToLocator — persistent save
+        // correctly updates to the restored position as a side effect.
+        await self.goToLocator(locator: restoration, animated: false)
       }
     }
-
-    currentSpineItemHref = newHref
-    lastSpineItemLocator = locator
 
     if !hasSentReady {
       FlureadiumPlugin.shared?.sendReaderStatus(ReadiumReaderStatusReady)
       hasSentReady = true
     }
-    emitOnPageChanged(locator: locator)
+    locatorReporter.report(locator, isScrollMode: isVerticalScroll)
   }
 
   func navigator(_ navigator: Navigator, presentExternalURL url: URL) {
@@ -259,7 +223,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       print(TAG, "skipped non-http external URL: \(url)")
       return
     }
-    emitOnExternalLinkActivated(url: url)
+    locatorReporter.reportExternalLink(url)
   }
 
   func applyDecorations(_ decorations: [Decoration], forGroup groupIdentifier: String) {
@@ -275,27 +239,26 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     return self.readiumViewController.currentLocation
   }
 
-  func getCurrentSelection() -> Locator? {
-    return self.readiumViewController.currentSelection?.locator
+  /// Resolves DOM fragments unless the reader is already gone. The disposal
+  /// guard lives here so both the locator reporter and the `getCurrentLocator`
+  /// channel case are covered by it.
+  private func resolveLocatorFragments(_ locatorJson: String, _ isScrollMode: Bool) async -> Locator? {
+    guard !isDisposed else { return nil }
+    return await page.locatorFragments(locatorJson: locatorJson, isScrollMode: isScrollMode)
   }
 
-  private func evaluateJavascript(_ code: String) async -> Result<Any, Error> {
-    return await self.readiumViewController.evaluateJavaScript(code)
-  }
-
-  private func evaluateJSReturnResult(_ code: String, result: @escaping FlutterResult) {
-    Task.detached(priority: .high) {
-      do {
-        let data = try await self.evaluateJavascript(code).get()
-        print(TAG, "evaluateJSReturnResult result: \(data)")
-        await MainActor.run() {
-          return result(data)
-        }
-      } catch (let err) {
-        print(TAG, "evaluateJSReturnResult error: \(err)")
-        await MainActor.run() {
-          return result(nil)
-        }
+  /// Hands a JavaScript reply back to Dart: the raw value on success,
+  /// `onFailure` when the evaluation fails.
+  private func returnJSResult(
+    result: @escaping FlutterResult, onFailure: Any? = nil,
+    _ evaluate: @MainActor @escaping () async -> Result<Any, Error>
+  ) {
+    Task { @MainActor in
+      switch await evaluate() {
+      case let .success(data): result(data)
+      case let .failure(error):
+        print(TAG, "returnJSResult error: \(error)")
+        result(onFailure)
       }
     }
   }
@@ -306,131 +269,22 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     configureEdgeTapHandlers(isScrollMode: isVerticalScroll)
   }
 
-  /// Configure edge tap handlers based on scroll mode.
-  /// In scroll mode, all callbacks are nil — WKWebView handles native swipes.
-  /// In paginated mode, edge taps trigger goLeft/goRight for page navigation.
+  /// Re-applies edge tap and swipe wiring for the current scroll mode.
   private func configureEdgeTapHandlers(isScrollMode: Bool) {
     guard let edgeTapView = _view as? EdgeTapInterceptView else { return }
-
-    // In scroll mode, let WKWebView handle swipes natively — don't intercept.
-    // In paginated mode, always intercept edge zones so DirectionalNavigationAdapter
-    // cannot handle them, regardless of whether edge tap callbacks are set.
-    edgeTapView.interceptEdgeTaps = !isScrollMode
-
-    if isScrollMode {
-      // Scroll mode: all callbacks nil.
-      // Swipes are handled natively by WKWebView — no interception needed.
-      edgeTapView.onLeftEdgeTap = nil
-      edgeTapView.onRightEdgeTap = nil
-      edgeTapView.onSwipeLeft = nil
-      edgeTapView.onSwipeRight = nil
-    } else {
-      // Enable edge tap navigation in paginated mode (if preference allows)
-      if enableEdgeTapNavigation {
-        if let points = edgeTapAreaPoints {
-          edgeTapView.edgeThresholdPoints = points
-        }
-        edgeTapView.onLeftEdgeTap = { [weak self] in
-          guard let self = self else { return }
-          print(TAG, "[FALLBACK] Triggering goLeft via fallback tap handler")
-          Task { @MainActor in
-            let _ = await self.readiumViewController.goLeft(options: NavigatorGoOptions(animated: true))
-          }
-        }
-        edgeTapView.onRightEdgeTap = { [weak self] in
-          guard let self = self else { return }
-          print(TAG, "[FALLBACK] Triggering goRight via fallback tap handler")
-          Task { @MainActor in
-            let _ = await self.readiumViewController.goRight(options: NavigatorGoOptions(animated: true))
-          }
-        }
-      } else {
-        edgeTapView.onLeftEdgeTap = nil
-        edgeTapView.onRightEdgeTap = nil
-      }
-
-      if enableSwipeNavigation {
-        edgeTapView.onSwipeLeft = { [weak self] in
-          guard let self = self else { return }
-          print(TAG, "[FALLBACK] Triggering goRight via swipe left handler")
-          Task { @MainActor in
-            let _ = await self.readiumViewController.goRight(options: NavigatorGoOptions(animated: true))
-          }
-        }
-        edgeTapView.onSwipeRight = { [weak self] in
-          guard let self = self else { return }
-          print(TAG, "[FALLBACK] Triggering goLeft via swipe right handler")
-          Task { @MainActor in
-            let _ = await self.readiumViewController.goLeft(options: NavigatorGoOptions(animated: true))
-          }
-        }
-      } else {
-        edgeTapView.onSwipeLeft = nil
-        edgeTapView.onSwipeRight = nil
-      }
-    }
-  }
-
-  private func emitOnPageChanged(locator: Locator) -> Void {
-    let json = locator.jsonString ?? "null"
-
-    print(TAG, "emitOnPageChanged:locator=\(String(describing: locator))")
-
-    Task.detached(priority: .high) { [isVerticalScroll, weak self] in
-      guard let self else { return }
-      let isDisposed = await MainActor.run { self.isDisposed }
-      guard !isDisposed else { return }
-      guard let locatorWithFragments = await self.getLocatorFragments(json, isVerticalScroll) else {
-        print(TAG, "emitOnPageChanged failed!")
-        return
-      }
-      await MainActor.run {
-        guard !self.isDisposed else { return }
-        self.channel.onPageChanged(locator: locatorWithFragments)
-        FlureadiumPlugin.shared?.sendTextLocator(locatorWithFragments.jsonString)
-      }
-    }
-  }
-
-  private func emitOnExternalLinkActivated(url: URL) {
-    print(TAG, "emitOnExternalLinkActivated: \(url)")
-    Task.detached(priority: .high) {
-      await MainActor.run() {
-        self.channel.onExternalLinkActivated(url: url)
-      }
-    }
-  }
-
-  internal func getLocatorFragments(_ locatorJson: String, _ isVerticalScroll: Bool) async -> Locator? {
-    guard !isDisposed else {
-      return nil
-    }
-
-    switch await self.evaluateJavascript("window.epubPage.getLocatorFragments(\(locatorJson), \(isVerticalScroll));") {
-      case .success(let jresult):
-        guard let locatorWithFragments = parseLocatorFragmentsResult(jresult) else {
-          print(TAG, "getLocatorFragments: failed to parse locator from JS result")
-          return nil
-        }
-        return locatorWithFragments
-      case .failure(let err):
-        print(TAG, "getLocatorFragments failed! \(err)")
-        return nil
-      }
-  }
-
-  private func scrollTo(locations: Locator.Locations, toStart: Bool) async -> Void {
-    let json = locations.jsonString ?? "null"
-    print(TAG, "scrollTo: Go to locations \(json), toStart: \(toStart)")
-
-    let _ = await evaluateJavascript("window.epubPage.scrollToLocations(\(json),\(isVerticalScroll),\(toStart));")
+    edgeNavigation.configure(
+      edgeTapView: edgeTapView,
+      navigator: readiumViewController,
+      isScrollMode: isScrollMode,
+      animated: true
+    )
   }
 
   func goToLocator(locator: Locator, animated: Bool) async -> Void {
     // Explicit navigation (TOC, skipToPrevious, etc.) must not trigger restoration.
     // Clearing history for this target prevents a subsequent swipe-back from
     // landing at a stale stored position rather than the TOC-specified location.
-    spineItemHistory.removeValue(forKey: strippedHref(locator.href.string))
+    spinePositions.forget(href: locator.href.string)
 
     let locations = locator.locations
     let shouldScroll = canScroll(locations: locations)
@@ -441,26 +295,16 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       print(TAG, "goToLocator: Go to \(locator.href)")
       let goToSuccees = await readiumViewController.go(to: locator, options: NavigatorGoOptions(animated: animated))
       if (goToSuccees && shouldScroll) {
-        await self.scrollTo(locations: locations, toStart: false)
+        await page.scroll(toLocations: locations.jsonString ?? "null", isScrollMode: isVerticalScroll, toStart: false)
         self.emitOnPageChanged()
       }
     } else {
       print(TAG, "goToLocator: Already there, Scroll to \(locator.href)")
       if (shouldScroll) {
-        await self.scrollTo(locations: locations, toStart: false)
+        await page.scroll(toLocations: locations.jsonString ?? "null", isScrollMode: isVerticalScroll, toStart: false)
         self.emitOnPageChanged()
       }
     }
-  }
-
-  func justGoToLocator(_ locator: Locator, animated: Bool) async -> Bool {
-    return await readiumViewController.go(to: locator, options: NavigatorGoOptions(animated: animated))
-  }
-
-  private func setLocation(locator: Locator, isAudioBookWithText: Bool) async -> Result<Any, Error> {
-    let json = locator.jsonString ?? "null"
-
-    return await evaluateJavascript("window.epubPage.setLocation(\(json), \(isAudioBookWithText));")
   }
 
   private func emitOnPageChanged() {
@@ -473,262 +317,96 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   }
 
   func onMethodCall(call: FlutterMethodCall, result: @escaping FlutterResult) {
-    switch call.method {
-    case "go":
-      let args = call.arguments as! [Any?]
-      print(TAG, "onMethodCall[go] locator = \(args[0] as! String)")
-      let locator = try! Locator(jsonString: args[0] as! String, warnings: readiumBugLogger)!
-      let animated = args[1] as! Bool
-      let isAudioBookWithText = args[2] as? Bool ?? false
+    print(TAG, "onMethodCall[\(call.method)] args = \(String(describing: call.arguments))")
 
+    guard let command = EpubReaderCommand(call) else {
+      print(TAG, "Unhandled call \(call.method)")
+      return result(FlutterMethodNotImplemented)
+    }
+
+    switch command {
+    case let .go(locator, animated, isAudioBookWithText):
       Task { @MainActor in
         await self.goToLocator(locator: locator, animated: animated)
-        let _ = await self.setLocation(locator: locator, isAudioBookWithText: isAudioBookWithText)
+        let _ = await self.page.setLocation(
+          locatorJson: locator.jsonString ?? "null", isAudioBookWithText: isAudioBookWithText)
         result(true)
       }
-      break
-    case "goLeft":
-      let animated = call.arguments as! Bool
-      let readiumViewController = self.readiumViewController
 
-      Task { @MainActor in
-        let success = await readiumViewController.goLeft(options: NavigatorGoOptions(animated: animated))
-        result(success)
-      }
-      break
-    case "goRight":
-      let animated = call.arguments as! Bool
+    case let .goLeft(animated):
       let readiumViewController = self.readiumViewController
-
       Task { @MainActor in
-        let success = await readiumViewController.goRight(options: NavigatorGoOptions(animated: animated))
-        result(success)
+        result(await readiumViewController.goLeft(options: NavigatorGoOptions(animated: animated)))
       }
-      break
-    case "setLocation":
-      let args = call.arguments as! [Any]
-      print(TAG, "onMethodCall[setLocation] locator = \(args[0] as! String)")
-      let locator = try! Locator(jsonString: args[0] as! String, warnings: readiumBugLogger)!
-      let isAudioBookWithText = args[1] as? Bool ?? false
+
+    case let .goRight(animated):
+      let readiumViewController = self.readiumViewController
+      Task { @MainActor in
+        result(await readiumViewController.goRight(options: NavigatorGoOptions(animated: animated)))
+      }
+
+    case let .setLocation(locator, isAudioBookWithText):
       Task.detached(priority: .high) {
-        let _ = await self.setLocation(locator: locator, isAudioBookWithText: isAudioBookWithText)
-        return await MainActor.run() {
-          result(true)
-        }
+        let _ = await self.page.setLocation(
+          locatorJson: locator.jsonString ?? "null", isAudioBookWithText: isAudioBookWithText)
+        return await MainActor.run { result(true) }
       }
-      break
-    case "getLocatorFragments":
-      let args = call.arguments as? String ?? "null"
-      Task.detached(priority: .high) {
-        do {
-          let data = try await self.evaluateJavascript("window.epubPage.getLocatorFragments(\(args), true);").get()
-          await MainActor.run() {
-            return result(data)
-          }
-        } catch (let err) {
-          print(TAG, "getLocatorFragments error \(err)")
-          await MainActor.run() {
-            return result(false)
-          }
-        }
+
+    case let .locatorFragments(json):
+      returnJSResult(result: result, onFailure: false) {
+        await self.page.locatorFragmentsResult(locatorJson: json, isScrollMode: true)
       }
-      break
-    case "getCurrentLocator":
-      let args = call.arguments as? String ?? "null"
-      print(TAG, "onMethodCall[currentLocator] args = \(args)")
+
+    case .currentLocator:
       Task.detached(priority: .high) { [isVerticalScroll] in
         guard let json = await self.readiumViewController.currentLocation?.jsonString else {
           await MainActor.run { result(nil) }
           return
         }
-        let data = await self.getLocatorFragments(json, isVerticalScroll)
-        await MainActor.run {
-          result(data?.jsonString)
-        }
+        let data = await self.resolveLocatorFragments(json, isVerticalScroll)
+        await MainActor.run { result(data?.jsonString) }
       }
-      break
-    case "isLocatorVisible":
-      let args = call.arguments as! String
-      print(TAG, "onMethodCall[isLocatorVisible] locator = \(args)")
-      let locator = try! Locator(jsonString: args, warnings: readiumBugLogger)!
-      if locator.href != self.readiumViewController.currentLocation?.href {
-        result(false)
-        return
+
+    case let .isLocatorVisible(locator, json):
+      guard locator.href == self.readiumViewController.currentLocation?.href else {
+        return result(false)
       }
-      evaluateJSReturnResult("window.epubPage.isLocatorVisible(\(args));", result: result)
-      break
-    case "isReaderReady":
-      self.evaluateJSReturnResult("""
-                (function() {
-                    if (typeof window.epubPage !== 'undefined' && typeof window.epubPage.isReaderReady === 'function') {
-                        return window.epubPage.isReaderReady();
-                    } else {
-                        return false;
-                    }
-                })();
-            """, result: result)
-      break
-    case "setPreferences":
-      let args = call.arguments as! [String: String]
-      print(TAG, "onMethodCall[setPreferences] args = \(args)")
-      let preferences = EPUBPreferences.init(fromMap: args)
+      returnJSResult(result: result) { await self.page.isLocatorVisible(locatorJson: json) }
+
+    case .isReaderReady: returnJSResult(result: result) { await self.page.isReaderReady() }
+
+    case let .setPreferences(preferences):
       setUserPreferences(preferences: preferences)
-      break
-    case "setNavigationConfig":
-      let args = call.arguments as! [String: Any]
-      print(TAG, "onMethodCall[setNavigationConfig] args = \(args)")
-      let navConfig = FlutterNavigationConfig(fromMap: args)
-      if let v = navConfig.enableEdgeTapNavigation { enableEdgeTapNavigation = v }
-      if let v = navConfig.enableSwipeNavigation { enableSwipeNavigation = v }
-      if let pts = navConfig.edgeTapAreaPoints {
-        edgeTapAreaPoints = CGFloat(min(max(pts, 44.0), 120.0))
-      }
+      result(nil)
+
+    case let .setNavigationConfig(config):
+      edgeNavigation.apply(config)
       configureEdgeTapHandlers(isScrollMode: isVerticalScroll)
       result(nil)
-      break
-    case "applyDecorations":
-      let args = call.arguments as! [Any?]
-      let identifier = args[0] as! String
-      let decorationsStr = args[1] as! [String]
 
-      guard let decorations = try? decorationsStr.map({ try Decoration(fromJson: $0) }) else {
-        return result(FlutterError.init(
-          code: "JSON mapping error",
-          message: "Could not map decorations from JSON: \(decorationsStr)",
+    case let .applyDecorations(group, decorations, json):
+      guard let decorations else {
+        return result(FlutterError(
+          code: "JSON mapping error", message: "Could not map decorations from JSON: \(json)",
           details: nil))
       }
+      applyDecorations(decorations, forGroup: group)
+      result(nil)
 
-      print(TAG, "onMethodCall[setPreferences] args = \(args)")
-      applyDecorations(decorations, forGroup: identifier)
-      break
-    case "dispose":
+    case .dispose:
       print(TAG, "Disposing readiumViewController")
       isDisposed = true
+      if let token = tapObserverToken { readiumViewController.removeObserver(token) }
+      tapObserverToken = nil
       readiumViewController.view.removeFromSuperview()
       readiumViewController.delegate = nil
       FlureadiumPlugin.shared?.sendReaderStatus(ReadiumReaderStatusClosed)
       channel.setMethodCallHandler(nil)
       if currentReaderView === self { currentReaderView = nil }
       result(nil)
-      break
-    default:
-      print(TAG, "Unhandled call \(call.method)")
-      result(FlutterMethodNotImplemented)
-      break
     }
   }
 
-}
-
-func initUserScripts(registrar: FlutterPluginRegistrar) {
-  let comicJsKey = registrar.lookupKey(forAsset: "assets/helpers/comics.js", fromPackage: "flureadium")
-  let comicCssKey = registrar.lookupKey(forAsset: "assets/helpers/comics.css", fromPackage: "flureadium")
-  let epubJsKey = registrar.lookupKey(forAsset: "assets/helpers/epub.js", fromPackage: "flureadium")
-  let epubCssKey = registrar.lookupKey(forAsset: "assets/helpers/epub.css", fromPackage: "flureadium")
-  let jsScripts = [comicJsKey, epubJsKey].map { sourceFile -> String in
-    let path = Bundle.main.path(forResource: sourceFile, ofType: nil)!
-    let data = FileManager().contents(atPath: path)!
-    return String(data: data, encoding: .utf8)!
-  }
-  let addCssScripts = [comicCssKey, epubCssKey].map { sourceFile -> String in
-    let path = Bundle.main.path(forResource: sourceFile, ofType: nil)!
-    let data = FileManager().contents(atPath: path)!.base64EncodedString()
-    return """
-      (function() {
-      var parent = document.getElementsByTagName('head').item(0);
-      var style = document.createElement('style');
-      style.type = 'text/css';
-      style.innerHTML = window.atob('\(data)');
-      parent.appendChild(style)})();
-    """
-  }
-  /// Add JS scripts right away, before loading the rest of the document.
-  for jsScript in jsScripts {
-    userScripts.append(WKUserScript(source: jsScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
-  }
-  /// Add css injection scripts after primary document finished loading.
-  for addCssScript in addCssScripts {
-    userScripts.append(WKUserScript(source: addCssScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
-  }
-  /// Add simple script used by our JS to detect OS
-  userScripts.append(WKUserScript(source: "const isAndroid=false,isIos=true;", injectionTime: .atDocumentStart, forMainFrameOnly: false))
-
-  /// Click synthesis: Flutter's synthetic touch delivery prevents WKWebView from
-  /// dispatching native click events after goLeft/goRight (when WKContentView is oversized).
-  /// This script monitors pointerup events and synthesizes a click if the native one
-  /// doesn't fire within 50ms.
-  let clickSynthesisScript = """
-  (function() {
-      var pendingClickTimer = null;
-      var lastPointerDownPos = null;
-
-      document.addEventListener('pointerdown', function(e) {
-          lastPointerDownPos = { x: e.clientX, y: e.clientY };
-      }, true);
-
-      document.addEventListener('pointerup', function(e) {
-          if (!lastPointerDownPos) return;
-          var dx = e.clientX - lastPointerDownPos.x;
-          var dy = e.clientY - lastPointerDownPos.y;
-          if (Math.sqrt(dx * dx + dy * dy) > 10) return;
-
-          var x = e.clientX;
-          var y = e.clientY;
-          var target = e.target;
-
-          if (pendingClickTimer) clearTimeout(pendingClickTimer);
-          pendingClickTimer = setTimeout(function() {
-              pendingClickTimer = null;
-              var clickEvent = new MouseEvent('click', {
-                  bubbles: true,
-                  cancelable: true,
-                  view: window,
-                  clientX: x,
-                  clientY: y,
-                  button: 0
-              });
-              target.dispatchEvent(clickEvent);
-          }, 50);
-      }, true);
-
-      document.addEventListener('click', function(e) {
-          if (pendingClickTimer) {
-              clearTimeout(pendingClickTimer);
-              pendingClickTimer = null;
-          }
-      }, true);
-  })();
-  """
-  userScripts.append(WKUserScript(source: clickSynthesisScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
-}
-
-func strippedHref(_ href: String) -> String {
-  href.components(separatedBy: "#").first?
-      .components(separatedBy: "?").first ?? href
-}
-
-func chapterLink(before currentHref: String, in readingOrder: [Link]) -> Link? {
-  let clean = strippedHref(currentHref)
-  guard let idx = readingOrder.firstIndex(where: { strippedHref($0.href) == clean }),
-        idx > 0 else { return nil }
-  return readingOrder[idx - 1]
-}
-
-func chapterLink(after currentHref: String, in readingOrder: [Link]) -> Link? {
-  let clean = strippedHref(currentHref)
-  guard let idx = readingOrder.firstIndex(where: { strippedHref($0.href) == clean }),
-        idx < readingOrder.count - 1 else { return nil }
-  return readingOrder[idx + 1]
-}
-
-func isBackwardNavigation(from oldHref: String, to newHref: String, in readingOrder: [Link]) -> Bool {
-  let cleanOld = strippedHref(oldHref)
-  let cleanNew = strippedHref(newHref)
-  guard let oldIdx = readingOrder.firstIndex(where: { strippedHref($0.href) == cleanOld }),
-        let newIdx = readingOrder.firstIndex(where: { strippedHref($0.href) == cleanNew }) else {
-    return false
-  }
-  return newIdx < oldIdx
 }
 
 private func canScroll(locations: Locator.Locations?) -> Bool {

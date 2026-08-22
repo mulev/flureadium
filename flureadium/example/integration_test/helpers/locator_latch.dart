@@ -10,3 +10,34 @@ import 'package:flutter_test/flutter_test.dart';
 /// breaks.
 String locatorHref(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const Key('locator_href'))).data ?? '';
+
+/// Reads the example app's `saved_locator_href` latch — the first href this
+/// publication reported, or `''` before any has arrived.
+///
+/// Distinct from [locatorHref] on purpose: the app latches this one once per
+/// open, so a test can navigate away and prove that "Go To Saved" came back.
+String savedLocatorHref(WidgetTester tester) =>
+    tester.widget<Text>(find.byKey(const Key('saved_locator_href'))).data ?? '';
+
+/// Reads the example app's `locator_progression` latch — the progression of the
+/// last locator delivered, or null before any has arrived or when the locator
+/// carries none.
+///
+/// Nullable rather than defaulting to 0.0: some resources report a locator with
+/// no progression, and a 0.0 stand-in would read as "start of the resource",
+/// which is a position the reader may never have been at.
+double? locatorProgression(WidgetTester tester) => double.tryParse(
+  tester.widget<Text>(find.byKey(const Key('locator_progression'))).data ?? '',
+);
+
+/// Reads the example app's `locator-events` counter — how many locators the
+/// text-locator stream has delivered since this publication opened.
+///
+/// A count rather than a value, because the values repeat: a locator delivered
+/// to a fresh subscriber can name the page already latched, so only a number
+/// that must rise proves the delivery happened. `int.parse` throws rather than
+/// defaulting, so a missing or renamed latch fails loudly instead of reading 0.
+int locatorEvents(WidgetTester tester) => int.parse(
+  (tester.widget<Text>(find.byKey(const Key('locator-events'))).data ?? '')
+      .replaceFirst('locator-events: ', ''),
+);

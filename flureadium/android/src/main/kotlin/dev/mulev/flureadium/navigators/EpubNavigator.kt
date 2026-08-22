@@ -7,24 +7,16 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.commitNow
 import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.ReadiumReaderWidget.Companion.NAVIGATOR_FRAGMENT_TAG
-import dev.mulev.flureadium.canScroll
 import dev.mulev.flureadium.fragments.EpubReaderFragment
-import dev.mulev.flureadium.jsonDecode
 import dev.mulev.flureadium.models.EpubReaderViewModel
-import dev.mulev.flureadium.throttleLatest
 import dev.mulev.flureadium.withScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import org.json.JSONObject
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubPreferences
@@ -33,11 +25,8 @@ import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.AbsoluteUrl
-import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "EpubNavigator"
-private const val currentVisualCurrentLocatorKey = "currentVisualCurrentLocator"
-private const val epubPreferencesKey = "epubPreferences"
 
 /**
  * EpubNavigator is a wrapper around the EpubReaderFragment and provides methods to interact with it.
@@ -57,8 +46,8 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         this.initialPreferences = initialPreferences
         this.visualListener = visualListener
 
-        this.state[currentVisualCurrentLocatorKey] = initialLocator
-        this.state[epubPreferencesKey] = initialPreferences
+        this.state[EpubNavigatorState.LOCATOR_KEY] = initialLocator
+        this.state[EpubNavigatorState.PREFERENCES_KEY] = initialPreferences
     }
 
     /**
@@ -81,6 +70,14 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
          * Called when an external link has been tapped.
          */
         fun onExternalLinkActivated(url: AbsoluteUrl)
+
+        /**
+         * Called when the user tapped the content and Readium handled nothing
+         * internally — no internal link, no interactive element.
+         *
+         * Coordinates are logical pixels relative to the navigator view.
+         */
+        fun onTap(x: Double, y: Double)
 
         /**
          * Called when the current locator has changed.
@@ -106,14 +103,14 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
     private var subscribedFragmentInstance: EpubReaderFragment? = null
 
     /**
+     * Forwards content taps from whichever Readium navigator the fragment holds.
+     */
+    private val tapForwarder = NavigatorTapForwarder { x, y -> visualListener.onTap(x, y) }
+
+    /**
      * Editor to modify EPUB preferences.
      */
     private var editor: EpubPreferencesEditor? = null
-
-    /**
-     * Pending scroll target to be applied when the page is loaded.
-     */
-    var pendingScrollToLocations: Locator.Locations? = null
 
     /**
      * Current EPUB preferences.
@@ -134,18 +131,31 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         get() = epubNavigator!!.started
 
     /**
-     * Whether the EPUB navigator is in vertical scroll mode.
+     * The Kotlin side of the `window.epubPage` JavaScript contract.
      */
-    private val isVerticalScroll: Boolean
-        get() {
-            return editor?.preferences?.scroll ?: false
-        }
+    private val pageScript = EpubPageScript(
+        evaluate = { script -> evaluateJavascript(script) },
+        verticalScroll = { editor?.preferences?.scroll ?: false },
+    )
+
+    /**
+     * Holds a restore scroll until a page load can perform it.
+     */
+    private val scrollRestore = EpubScrollRestore(
+        page = pageScript,
+        currentLocator = { epubNavigator?.currentLocator?.value },
+        go = { locator, animated -> go(locator, animated) },
+    )
+
+    /**
+     * Reports throttled locator changes. [onPageLoaded] cancels it when the
+     * fragment swaps in a new Readium navigator, so [setupNavigatorListeners]
+     * can subscribe to the replacement.
+     */
+    private val locatorSubscription = VisualLocatorSubscription()
 
     override suspend fun initNavigator() {
-        pendingScrollToLocations =
-            initialLocator?.locations?.let { locations ->
-                if (canScroll(locations)) locations else null
-            }
+        scrollRestore.arm(initialLocator)
 
         epubNavigator = EpubReaderFragment().apply {
             vm = EpubReaderViewModel().apply {
@@ -189,8 +199,6 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
                 return@withScope false
             }
 
-            Log.d(TAG, "::go - returned true")
-
             return@withScope true
         }
     }
@@ -199,10 +207,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
      * Update EPUB navigator preferences.
      */
     fun updatePreferences(preferences: EpubPreferences) {
-        val currentLocatorValue = epubNavigator?.currentLocator?.value
-        Log.d(TAG, "::updatePreferences - currentLocator BEFORE=${currentLocatorValue?.let {
-            "href=${it.href}, prog=${it.locations.progression}"
-        } ?: "null"}, preferences=$preferences")
+        Log.d(TAG, "::updatePreferences - $preferences")
 
         try {
             editor?.apply {
@@ -215,13 +220,8 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
 
                 mainScope.launch {
                     epubNavigator?.updatePreferences(preferences)
-
-                    val afterLocatorValue = epubNavigator?.currentLocator?.value
-                    Log.d(TAG, "::updatePreferences - currentLocator AFTER=${afterLocatorValue?.let {
-                        "href=${it.href}, prog=${it.locations.progression}"
-                    } ?: "null"}")
                 }
-                state[epubPreferencesKey] = preferences
+                state[EpubNavigatorState.PREFERENCES_KEY] = preferences
             }
         } catch (ex: Exception) {
             Log.e(TAG, "Error applying EpubPreferences: $ex")
@@ -235,87 +235,50 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
             return
         }
 
-        val currentLocator = navigator.currentLocator
-        if (currentLocator != null) {
-            // Log the current value before subscribing
-            val currentValue = currentLocator.value
-            val subscribeTime = System.currentTimeMillis()
-            Log.d(TAG, "::setupNavigatorListeners - BEFORE subscribe at t=${subscribeTime}, currentLocator.value = " +
-                "href=${currentValue.href}, progression=${currentValue.locations.progression}")
+        val job = locatorSubscription.subscribe(navigator.currentLocator, mainScope) { locator ->
+            Log.d(TAG, "::locator - href=${locator.href} prog=${locator.locations.progression}")
+            onCurrentLocatorChanges(locator)
+            state[EpubNavigatorState.LOCATOR_KEY] = locator
+        }
 
-            var emissionCount = 0
-            currentLocator.throttleLatest(100.milliseconds)
-                .distinctUntilChanged()
-                .onEach { locator ->
-                    emissionCount++
-                    val emitTime = System.currentTimeMillis()
-                    val elapsedMs = emitTime - subscribeTime
-                    Log.d(TAG, "::setupNavigatorListeners - StateFlow emit #$emissionCount at t=$emitTime (elapsed=${elapsedMs}ms): " +
-                        "href=${locator.href}, progression=${locator.locations.progression}")
-                    onCurrentLocatorChanges(locator)
-                    state[currentVisualCurrentLocatorKey] = locator
-                }
-                .launchIn(mainScope)
-                .let { jobs.add(it) }
-
-            subscribedFragmentInstance = navigator  // Track subscribed fragment
-        } else {
+        if (job == null) {
             Log.d(TAG, "::setupNavigatorListeners - currentLocator is null - navigator not ready?")
+            return
         }
+
+        jobs.add(job)
+        subscribedFragmentInstance = navigator
     }
 
-    override fun storeState(): Bundle {
-        return Bundle().apply {
-            putString(
-                currentVisualCurrentLocatorKey,
-                (state[currentVisualCurrentLocatorKey] as? Locator)?.toJSON()?.toString()
-            )
+    override fun storeState(): Bundle =
+        EpubNavigatorState.toBundle(state[EpubNavigatorState.LOCATOR_KEY] as? Locator, preferences)
 
-            preferences?.let { prefs ->
-                putString(
-                    epubPreferencesKey,
-                    Json.encodeToString(EpubPreferences.serializer(), prefs)
-                )
-            }
-        }
+    override fun onNavigatorReleased() {
+        // The fragment has removed its Readium navigator. Registering follows the
+        // page load, so releasing has to follow the teardown, or this forwarder
+        // holds a removed navigator fragment and its WebViews until the next
+        // resume rebinds — and removeInputListener never runs for that instance.
+        tapForwarder.unbind()
     }
-
-    private var pageLoadCount = 0
 
     override fun onPageLoaded() {
-        pageLoadCount++
         val currentFragment = epubNavigator
-        val currentLocatorValue = currentFragment?.currentLocator?.value
-        Log.d(TAG, "::onPageLoaded #$pageLoadCount - " +
-            "currentLocator=${currentLocatorValue?.let {
-                "href=${it.href}, prog=${it.locations.progression}"
-            } ?: "null"}, " +
-            "pendingScroll=${pendingScrollToLocations != null}, " +
-            "subscribedInstance=$subscribedFragmentInstance, " +
-            "currentInstance=$currentFragment")
+        Log.d(TAG, "::onPageLoaded - href=${currentFragment?.currentLocator?.value?.href}")
+
+        // The fragment drops its Readium navigator on pause and builds a new one
+        // on resume, and hasNotifiedIsReady stops setupNavigatorListeners from
+        // running again — so the tap registration follows the page load instead.
+        tapForwarder.bindTo(currentFragment?.visualNavigator)
 
         visualListener.onPageLoaded()
 
-        pendingScrollToLocations?.let { locations ->
-            Log.d(TAG, "::onPageLoaded #$pageLoadCount - executing pendingScrollToLocations: $locations")
-
-            mainScope.async {
-                // Keep follow-up scrolling consistent with explicit goToLocator behavior.
-                scrollToLocations(locations, toStart = false)
-            }
-
-            pendingScrollToLocations = null
-
-        }
+        mainScope.async { scrollRestore.flush() }
 
         // If fragment recreated (pause/resume), re-subscribe
         if (currentFragment != null && currentFragment !== subscribedFragmentInstance) {
-            Log.d(TAG, "::onPageLoaded #$pageLoadCount - fragment changed detected! " +
-                "current=$currentFragment, subscribed=$subscribedFragmentInstance, " +
-                "currentLocator=${currentFragment.currentLocator?.value?.let {
-                    "href=${it.href}, prog=${it.locations.progression}"
-                }}")
+            Log.d(TAG, "::onPageLoaded - fragment recreated, resubscribing")
             hasNotifiedIsReady = false
+            locatorSubscription.cancel()
             jobs.forEach { it.cancel() }
             jobs.clear()
         }
@@ -342,7 +305,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         locator: Locator
     ) {
         visualListener.onPageChanged(pageIndex, totalPages, locator)
-        state[currentVisualCurrentLocatorKey] = locator
+        state[EpubNavigatorState.LOCATOR_KEY] = locator
     }
 
     override fun onExternalLinkActivated(url: AbsoluteUrl) {
@@ -354,6 +317,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
     }
 
     override suspend fun release() {
+        tapForwarder.unbind()
         super.dispose()
 
         epubNavigator?.let { fragment ->
@@ -366,6 +330,7 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
     }
 
     override fun dispose() {
+        tapForwarder.unbind()
         super.dispose()
 
         mainScope.launch {
@@ -435,29 +400,8 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         }
     }
 
-    suspend fun getLocatorFragments(locator: Locator): Locator? {
-        val json =
-            evaluateJavascript("window.epubPage.getLocatorFragments(${locator.toJSON()}, $isVerticalScroll)")
-        try {
-            if (json == null || json == "null" || json == "undefined") {
-                Log.e(
-                    TAG,
-                    "getLocatorFragments: window.epubPage.getVisibleRange failed!"
-                )
-                return null
-            }
-            val jsonLocator = jsonDecode(json) as JSONObject
-            val locatorWithFragments = Locator.fromJSON(jsonLocator)
-
-            return locatorWithFragments
-        } catch (e: Exception) {
-            Log.e(
-                TAG,
-                "getLocatorFragments: window.epubPage.getVisibleRange json: $json failed! $e"
-            )
-        }
-        return null
-    }
+    suspend fun getLocatorFragments(locator: Locator): Locator? =
+        pageScript.locatorFragments(locator)
 
     suspend fun firstVisibleElementLocator(): Locator? {
         val navigator = epubNavigator
@@ -480,77 +424,18 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
         }.await()
     }
 
-    private suspend fun scrollToLocations(
-        locations: Locator.Locations,
-        toStart: Boolean
-    ) {
-        val json = locations.toJSON().toString()
-        val beforeScroll = epubNavigator?.currentLocator?.value
-        Log.d(TAG, "::scrollToLocations: BEFORE scroll - currentLocator=${beforeScroll?.let {
-            "href=${it.href}, prog=${it.locations.progression}"
-        } ?: "null"}")
-        Log.d(TAG, "::scrollToLocations: Go to locations $json, toStart: $toStart")
-
-        evaluateJavascript("window.epubPage.scrollToLocations($json,$isVerticalScroll,$toStart);")
-
-        val afterScroll = epubNavigator?.currentLocator?.value
-        Log.d(TAG, "::scrollToLocations: AFTER scroll - currentLocator=${afterScroll?.let {
-            "href=${it.href}, prog=${it.locations.progression}"
-        } ?: "null"}")
-    }
-
     /**
      * Go to a specific locator in the EPUB navigator, this scrolls to the locator position if needed.
      */
     suspend fun goToLocator(locator: Locator, animated: Boolean) {
-        mainScope.async {
-            val locations = locator.locations
-            val shouldScroll = canScroll(locations)
-            val locatorHref = locator.href
-            val currentHref = currentLocator?.value?.href
-            val shouldGo = currentHref?.isEquivalent(locatorHref) == false
-
-            // TODO: Figure out why we can't just use rely on Readium's own go-function to scroll
-            // the locator.
-            if (shouldGo) {
-                Log.d(TAG, "::goToLocator: Go to $locatorHref from $currentHref")
-                pendingScrollToLocations = locations
-                go(locator, animated)
-            } else if (!shouldScroll) {
-                Log.d(TAG, "::goToLocator: Already at $locatorHref, no scroll data, staying put")
-            } else {
-                // Check if we're already at the correct progression to avoid unnecessary scroll
-                // that would recalculate position from bounding rect and introduce drift.
-                // This matches iOS behavior which doesn't re-scroll during restore.
-                val currentProgression = currentLocator?.value?.locations?.progression
-                val targetProgression = locations.progression
-
-                if (currentProgression != null && targetProgression != null) {
-                    val progressionDelta = kotlin.math.abs(currentProgression - targetProgression)
-                    if (progressionDelta < 0.01) {  // Within 1% - already positioned correctly
-                        Log.d(TAG, "::goToLocator: Already at $locatorHref with correct progression " +
-                            "(current=$currentProgression, target=$targetProgression, delta=$progressionDelta), " +
-                            "skipping scroll to avoid drift")
-                        return@async
-                    }
-                }
-
-                Log.d(TAG, "::goToLocator: Already at $locatorHref, scroll to position " +
-                    "(current=${currentProgression}, target=${targetProgression})")
-
-                scrollToLocations(locations, false)
-            }
-        }.await()
+        mainScope.async { scrollRestore.goTo(locator, animated) }.await()
     }
 
     /**
      * Clears any deferred scroll that was queued before an explicit external restore/navigation call.
      */
     fun clearPendingScrollTarget() {
-        if (pendingScrollToLocations != null) {
-            Log.d(TAG, "::clearPendingScrollTarget")
-        }
-        pendingScrollToLocations = null
+        scrollRestore.clear()
     }
 
     companion object {
@@ -559,15 +444,9 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
             listener: VisualListener,
             state: Bundle
         ): EpubNavigator {
-            val locator = state.getString(currentVisualCurrentLocatorKey)
-                ?.let { json -> Locator.fromJSON(JSONObject(json)) }
-            val preferences = state.getString(epubPreferencesKey)
-                ?.let { string -> Json.decodeFromString<EpubPreferences>(string) }
-                ?: EpubPreferences()
+            val restored = EpubNavigatorState.fromBundle(state)
 
-            Log.d(TAG, "::restoreState - locator: $locator, preferences: $preferences")
-
-            return EpubNavigator(publication, locator, listener, preferences)
+            return EpubNavigator(publication, restored.locator, listener, restored.preferences)
         }
     }
 }

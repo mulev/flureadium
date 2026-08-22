@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flureadium_platform_interface/flureadium_platform_interface.dart';
-import 'package:rxdart/rxdart.dart';
 
 import 'reader_channel.dart';
 import 'src/reader/orientation_handler_mixin.dart';
@@ -21,11 +20,13 @@ ReadiumReaderChannel createReadiumReaderChannel(
   int id, {
   required ValueChanged<Locator> onPageChanged,
   ValueChanged<String>? onExternalLinkActivated,
+  void Function(Offset)? onTap,
 }) {
   return ReadiumReaderChannel(
     '$_viewType:$id',
     onPageChanged: onPageChanged,
     onExternalLinkActivated: onExternalLinkActivated,
+    onTap: onTap,
   );
 }
 
@@ -33,12 +34,8 @@ ReadiumReaderChannel createReadiumReaderChannel(
 class ReadiumReaderWidget extends StatefulWidget {
   const ReadiumReaderWidget({
     required this.publication,
-    this.loadingWidget = const Center(child: CircularProgressIndicator()),
     this.initialLocator,
     this.onTap,
-    this.onGoLeft,
-    this.onGoRight,
-    this.onSwipe,
     this.onExternalLinkActivated,
     this.onLocatorChanged,
     this.onReady,
@@ -46,12 +43,23 @@ class ReadiumReaderWidget extends StatefulWidget {
   });
 
   final Publication publication;
-  final Widget loadingWidget;
   final Locator? initialLocator;
-  final VoidCallback? onTap;
-  final VoidCallback? onGoLeft;
-  final VoidCallback? onGoRight;
-  final VoidCallback? onSwipe;
+
+  /// Called when the user taps the content and Readium handled nothing
+  /// internally — no hyperlink, no footnote, no interactive element.
+  ///
+  /// That filter is WebView-only. PDF and CBZ have no equivalent, so a tap on
+  /// a PDF link annotation both follows the link and fires this callback.
+  ///
+  /// Does not fire where the native edge-tap overlay claims the touch: the
+  /// left and right edge strips, `edgeTapAreaPoints` wide. Both platforms
+  /// claim them only while `enableEdgeTapNavigation` is on and the reader is
+  /// paginated. `docs/api-reference/reader-widget.md` has the whole rule.
+  ///
+  /// The position is in logical pixels, relative to the top-left of the
+  /// platform view.
+  final void Function(Offset position)? onTap;
+
   final Function(String)? onExternalLinkActivated;
   final void Function(Locator)? onLocatorChanged;
 
@@ -74,7 +82,6 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
     implements ReadiumReaderWidgetInterface {
   ReadiumReaderChannel? _channel;
   Locator? _currentLocator;
-  StreamSubscription<Locator>? _locatorDebugSub;
   bool isReady = false;
 
   /// Bumped on every publication swap and used as the platform view's key.
@@ -127,8 +134,6 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
   /// is built. Leaves [_isReadyCompleter] settled rather than replacing it —
   /// only a swap has a new view to hand a fresh one to.
   void _teardownCurrentView() {
-    _locatorDebugSub?.cancel();
-    _locatorDebugSub = null;
     cleanupWidgetInterface(_channel?.name);
     // Detached before dispose() because dispose() awaits a native round-trip
     // and only drops the handler afterwards. A page change delivered in that
@@ -211,6 +216,7 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
     publication: widget.publication,
     currentLocator: _currentLocator,
     channel: _channel,
+    whenReady: _isReadyCompleter.future,
   );
 
   @override
@@ -219,6 +225,7 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
         publication: widget.publication,
         currentLocator: _currentLocator,
         channel: _channel,
+        whenReady: _isReadyCompleter.future,
       );
 
   @override
@@ -352,6 +359,7 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
         }
       },
       onExternalLinkActivated: widget.onExternalLinkActivated,
+      onTap: widget.onTap,
     );
 
     // Register as current widget only after _channel is assigned.
@@ -365,16 +373,5 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
     widget.onReady?.call();
 
     R2Log.d('New widget is: ${_channel?.name}');
-
-    // TODO: This is just to demo how to use and debounce the Stream, remove when appropriate.
-    final nativeLocatorStream = readium.onTextLocatorChanged
-        .debounceTime(const Duration(milliseconds: 50))
-        .asBroadcastStream()
-        .distinct();
-
-    _locatorDebugSub?.cancel();
-    _locatorDebugSub = nativeLocatorStream.listen((locator) {
-      R2Log.d('ReaderWidget.LocatorChanged - $locator');
-    });
   }
 }

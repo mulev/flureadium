@@ -7,14 +7,10 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.commitNow
 import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.ReadiumReaderWidget.Companion.NAVIGATOR_FRAGMENT_TAG
-import dev.mulev.flureadium.throttleLatest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -25,7 +21,6 @@ import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.data.ReadError
-import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "ImageNavigator"
 private const val currentVisualCurrentLocatorKey = "currentVisualCurrentLocator"
@@ -45,12 +40,24 @@ class ImageNavigator(
 
         fun onExternalLinkActivated(url: AbsoluteUrl)
 
+        /**
+         * Called when the user tapped the content and Readium handled nothing
+         * internally. Coordinates are logical pixels relative to the view.
+         */
+        fun onTap(x: Double, y: Double)
+
         fun onVisualCurrentLocationChanged(locator: Locator)
 
         fun onVisualReaderIsReady()
     }
 
     private var imageNavigator: ImageNavigatorFragment? = null
+
+    /** Forwards content taps from the Readium navigator this class hosts. */
+    private val tapForwarder = NavigatorTapForwarder { x, y -> visualListener.onTap(x, y) }
+
+    /** Reports throttled locator changes, subscribed once the fragment is attached. */
+    private val locatorSubscription = VisualLocatorSubscription()
 
     val currentLocator
         get() = imageNavigator?.currentLocator
@@ -91,21 +98,21 @@ class ImageNavigator(
     }
 
     override fun setupNavigatorListeners() {
-        val currentLocator = currentLocator
-        if (currentLocator == null) {
+        // Above the locator guard on purpose: a CBZ opened before its first
+        // locator arrives would otherwise never report a tap.
+        tapForwarder.bindTo(imageNavigator)
+
+        val job = locatorSubscription.subscribe(currentLocator, mainScope) { locator ->
+            onCurrentLocatorChanges(locator)
+            state[currentVisualCurrentLocatorKey] = locator
+        }
+
+        if (job == null) {
             Log.d(TAG, "::setupNavigatorListeners - currentLocator is null")
             return
         }
 
-        currentLocator
-            .throttleLatest(100.milliseconds)
-            .distinctUntilChanged()
-            .onEach { locator ->
-                onCurrentLocatorChanges(locator)
-                state[currentVisualCurrentLocatorKey] = locator
-            }
-            .launchIn(mainScope)
-            .let { jobs.add(it) }
+        jobs.add(job)
     }
 
     override fun storeState(): Bundle {
@@ -134,8 +141,8 @@ class ImageNavigator(
         visualListener.onVisualCurrentLocationChanged(locator)
     }
 
-    override fun onResourceLoadFailed(url: Url, error: ReadError) {
-        Log.e(TAG, "::onResourceLoadFailed $url $error")
+    override fun onResourceLoadFailed(href: Url, error: ReadError) {
+        Log.e(TAG, "::onResourceLoadFailed $href $error")
     }
 
     override fun onJumpToLocator(locator: Locator) {
@@ -143,6 +150,7 @@ class ImageNavigator(
     }
 
     override suspend fun release() {
+        tapForwarder.unbind()
         super.dispose()
 
         imageNavigator?.let { fragment ->
@@ -155,6 +163,7 @@ class ImageNavigator(
     }
 
     override fun dispose() {
+        tapForwarder.unbind()
         super.dispose()
 
         mainScope.launch {

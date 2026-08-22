@@ -1,3 +1,24 @@
+## 0.10.2
+
+No API change. `lib/` is byte-identical to `0.10.1`; this release exists because the
+package's analyzer configuration and its whole test suite moved, and those changes
+have nowhere else to be recorded.
+
+### Tooling
+
+- `analysis_options.yaml` wires the `flureadium_lints` analyzer plugin, with `vacuous_type_assertion` and `vacuous_not_null_assertion` enabled. Both catch an assertion that cannot fail: an `isA<T>()` against a value whose static type is already `T`, and an `isNotNull` on something that cannot be null. `dart analyze --fatal-infos` is the only command that reports them — `flutter analyze` prints nothing — so that is what this package's analysis row runs. See `flureadium/docs/05-testing/lint-rules.md`.
+
+### Testing
+
+- Assertions that could not fail are corrected across twelve suites: `link_test.dart`, `localized_string_test.dart`, `locator_test.dart`, `contributor_test.dart`, `metadata_test.dart`, `publication_test.dart`, `subject_test.dart`, `format_test.dart`, `dom_range_test.dart`, `exception_test.dart`, `flureadium_platform_interface_test.dart` and `integration/method_channel_test.dart`. Most were an `isNotNull` or `isNotEmpty` standing in for the value the test meant to check, so they now assert the value: `expect(json['sortAs'], equals({'und': 'Collection, Test'}))` rather than that the key exists, and `expect(error.stackTrace.toString(), equals('at line 1\nat line 2'))` rather than that a stack trace is present.
+- Two of those corrections changed what the suite says the code does. `Link.mediaType` was tested as "returns binary media type for invalid type" against `invalid/type`, asserting only `isNotNull`; that string is a syntactically valid media type and is kept verbatim, so the case is split — one for a valid-but-unknown type kept as written, one for unparseable input falling back to `MediaType.binary`. And `link.toUrl(null)` was asserted `isNotNull`; it resolves the relative href against the root, so the test says `/chapter.html`.
+- `localized_string_test.dart` asked `json.containsKey(null)` of a `Map<String, String>`, which cannot hold a null key, so the check could never have found one. It compares the whole key set instead, which is what "the null language became `und` and nothing else appeared with it" actually means.
+- `format_test.dart` compared `PublicationFormat.pdf` with itself, which identity satisfies before equality is ever consulted. It builds a second instance and compares that.
+- The locator event-channel test was skipped as flaky and was deterministically dead: its mock pushed a Dart object where the getter decodes a JSON string. Fixed and re-enabled.
+- Two suites asserted that a mock had been called without asserting what it returned. They check the returned values now.
+
+---
+
 ## 0.10.1
 
 ### Bug Fixes

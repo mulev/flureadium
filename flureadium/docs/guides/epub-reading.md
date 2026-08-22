@@ -63,7 +63,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     return Scaffold(
       body: ReadiumReaderWidget(
         publication: _publication!,
-        onTap: () => _toggleControls(),
+        onTap: (_) => _toggleControls(),
         onLocatorChanged: (locator) => _saveProgress(locator),
       ),
     );
@@ -85,56 +85,73 @@ await flureadium.goRight();
 
 ### Swipe Gestures
 
+Swiping to turn pages is not a widget you build — a gesture layer stacked over the
+platform view is not the supported path for it. What the flag does depends on the
+platform, and for EPUB on Android it does less than its name suggests:
+
 ```dart
-GestureDetector(
-  onHorizontalDragEnd: (details) {
-    if (details.primaryVelocity! < 0) {
-      // Swipe left -> go to next page
-      flureadium.goRight();
-    } else if (details.primaryVelocity! > 0) {
-      // Swipe right -> go to previous page
-      flureadium.goLeft();
-    }
-  },
-  child: ReadiumReaderWidget(publication: pub),
-)
+await flureadium.setNavigationConfig(
+  ReaderNavigationConfig(enableSwipeNavigation: true),
+);
 ```
+
+- **iOS, EPUB**: the flag adds a swipe, it does not remove one. On, the plugin's
+  own recognizers page from a swipe anywhere in the reader. Off, Readium's
+  `PaginationView` — a paging `UIScrollView` the plugin never disables — still
+  pages on a horizontal drag. So `enableSwipeNavigation: false` does not stop
+  iOS EPUB swiping either.
+- **Android, EPUB**: a paginated EPUB is paged by Readium's own internal
+  `R2WebView`, which has no toggle in Readium Kotlin 3.1.2. A horizontal drag turns
+  the page whether this flag is on or off. What the flag controls is narrow: whether
+  a fling starting inside an edge strip the edge-tap gate already claimed pages
+  through the plugin's overlay. Do not reach for it to switch EPUB swiping off — that
+  is not available on Android today.
+- **Android, PDF**: the flag works as written. It reaches the pdfium view's own
+  `enableSwipe`, so drag paging stops while taps and zoom keep working.
+
+An EPUB in scroll mode leaves swiping to the WebView, which scrolls.
 
 ### Tap Zones
 
+You do not build them any more. One `onTap` reports where the reader was
+tapped, and edge paging belongs to the native overlay, so nothing has to sit
+between the user and the reader to catch a tap.
+
 ```dart
-Widget build(BuildContext context) {
-  return Stack(
-    children: [
-      ReadiumReaderWidget(publication: pub),
-
-      // Left tap zone
-      Positioned(
-        left: 0,
-        top: 0,
-        bottom: 0,
-        width: MediaQuery.of(context).size.width * 0.3,
-        child: GestureDetector(
-          onTap: () => flureadium.goLeft(),
-          child: Container(color: Colors.transparent),
-        ),
-      ),
-
-      // Right tap zone
-      Positioned(
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: MediaQuery.of(context).size.width * 0.3,
-        child: GestureDetector(
-          onTap: () => flureadium.goRight(),
-          child: Container(color: Colors.transparent),
-        ),
-      ),
-    ],
-  );
-}
+ReadiumReaderWidget(
+  publication: pub,
+  onTap: (position) {
+    // One callback, one decision: show the chrome or hide it.
+    setState(() => _showControls = !_showControls);
+  },
+)
 ```
+
+Tapping the left and right edges to turn pages is configuration, not a widget:
+
+```dart
+await flureadium.setNavigationConfig(
+  ReaderNavigationConfig(
+    enableEdgeTapNavigation: true,
+    edgeTapAreaPoints: 60, // per side, clamped to 44-120
+  ),
+);
+```
+
+`position` is in logical pixels from the top-left of the reader. What a region
+of the page means is yours to decide; the plugin only says where the tap
+landed.
+
+**A tap on a link never reaches `onTap`.** Readium checks whether the pointer
+landed on an interactive element — a hyperlink, a footnote — follows it, and
+reports no tap, so what arrives at `onTap` is a tap nothing else claimed. That
+is what makes a single tap safe to toggle chrome with: you cannot swallow a
+link by accident. The filter is WebView-only. PDF and CBZ have no equivalent,
+so a tap on a PDF link annotation is reported as a content tap.
+
+`onTap` also stays quiet in the edge strips while the overlay is claiming them.
+[The `onTap` reference](../api-reference/reader-widget.md#ontap) has the
+per-platform rule.
 
 ## Chapter Navigation
 
@@ -633,7 +650,7 @@ class _FullReaderScreenState extends State<FullReaderScreen> {
           ReadiumReaderWidget(
             publication: _publication!,
             initialLocator: _initialLocator,
-            onTap: () => setState(() => _showControls = !_showControls),
+            onTap: (_) => setState(() => _showControls = !_showControls),
             onLocatorChanged: _saveProgress,
           ),
 

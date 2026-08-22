@@ -229,7 +229,8 @@ void main() {
 
         expect(methodCalls.length, equals(1));
         expect(methodCalls.last.method, equals('ttsGetAvailableVoices'));
-        expect(voices, isA<List<ReaderTTSVoice>>());
+        expect(voices.single.identifier, equals('voice-1'));
+        expect(voices.single.language, equals('en-US'));
       });
 
       test(
@@ -290,7 +291,8 @@ void main() {
 
         expect(methodCalls.length, equals(1));
         expect(methodCalls.last.method, equals('ttsGetSystemVoices'));
-        expect(voices, isA<List<ReaderTTSVoice>>());
+        expect(voices.single.identifier, equals('voice-1'));
+        expect(voices.single.language, equals('en-US'));
       });
 
       test(
@@ -370,7 +372,7 @@ void main() {
       test('ttsCanSpeak returns bool result from native', () async {
         final result = await platform.ttsCanSpeak();
         expect(methodCalls.last.method, equals('ttsCanSpeak'));
-        expect(result, isA<bool>());
+        expect(result, isTrue);
       });
 
       test('ttsRequestInstallVoice sends correct method', () async {
@@ -403,7 +405,8 @@ void main() {
 
         expect(methodCalls.length, equals(1));
         expect(methodCalls.last.method, equals('play'));
-        expect(methodCalls.last.arguments[0], isNotNull);
+        final args = methodCalls.last.arguments as List;
+        expect((args[0] as Map)['href'], equals('audio.mp3'));
       });
 
       test('play sends null when no locator', () async {

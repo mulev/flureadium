@@ -140,7 +140,7 @@ void main() {
 
         final json = metadata.toJson();
 
-        expect(json['title'], isNotNull);
+        expect(json['title'], equals({'und': 'Test Book'}));
         expect(json['identifier'], equals('test-id'));
         expect(json['language'], equals(['en']));
         expect(json['description'], equals('A description'));
@@ -302,7 +302,7 @@ void main() {
           }),
         );
 
-        expect(metadata.title, isNotEmpty);
+        expect(metadata.title, equals('English Title'));
       });
 
       test('language returns first language', () {
@@ -369,7 +369,8 @@ void main() {
     test('fromStrings creates multi-language string', () {
       final str = LocalizedString.fromStrings({'en': 'Hello', 'fr': 'Bonjour'});
 
-      expect(str.string, isNotEmpty);
+      expect(str.string, equals('Hello'));
+      expect(str.translations['fr']?.string, equals('Bonjour'));
     });
   });
 }

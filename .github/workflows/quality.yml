@@ -17,7 +17,25 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: '3.44.7'
           cache: true
+
+      # `dart format` reads a file's language version from the surrounding
+      # package config, and falls back to the SDK's newest language version when
+      # there is none (dart_style io.dart:38-40). Without these three resolves it
+      # would read our language-3.8 sources as the newest version and reject
+      # `final` parameters, which Dart 3.13 reserves for primary constructors.
+      - name: Get dependencies - platform interface
+        working-directory: flureadium_platform_interface
+        run: flutter pub get
+
+      - name: Get dependencies - main package
+        working-directory: flureadium
+        run: flutter pub get
+
+      - name: Get dependencies - example
+        working-directory: flureadium/example
+        run: flutter pub get
 
       - name: Check format - platform interface
         run: dart format --set-exit-if-changed flureadium_platform_interface/lib
@@ -38,6 +56,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: '3.44.7'
           cache: true
 
       - name: Get dependencies - platform interface
@@ -56,6 +75,36 @@ jobs:
         working-directory: flureadium
         run: flutter analyze --fatal-infos --fatal-warnings
 
+      - name: Get dependencies - example
+        working-directory: flureadium/example
+        run: flutter pub get
+
+      # flureadium/analysis_options.yaml excludes example/**, so the main-package
+      # analyze no longer walks it. Keep the Flutter-specific diagnostics.
+      - name: Analyze - example
+        working-directory: flureadium/example
+        run: flutter analyze --fatal-infos --fatal-warnings
+
+      # dart analyze is what enforces the two flureadium_lints rules; flutter
+      # analyze reports nothing. See flureadium/docs/05-testing/lint-rules.md.
+      - name: Plugin lints - platform interface
+        working-directory: flureadium_platform_interface
+        run: dart analyze --fatal-infos
+
+      - name: Plugin lints - main package
+        working-directory: flureadium
+        run: dart analyze --fatal-infos
+
+      - name: Plugin lints - example
+        working-directory: flureadium/example
+        run: dart analyze --fatal-infos
+
+      # Positive control: dart analyze exits 0 whether the rules ran or never
+      # loaded, so require both diagnostics on a planted violation.
+      - name: Plugin lints - wiring canary
+        working-directory: .
+        run: ./flureadium/scripts/check_lint_wiring.sh
+
   pub-score:
     name: Pub.dev Score Check
     runs-on: ubuntu-latest
@@ -66,6 +115,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: '3.44.7'
           cache: true
 
       - name: Install pana

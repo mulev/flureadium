@@ -23,10 +23,15 @@ class EdgeTapInterceptView: UIView {
     var onSwipeRight: (() -> Void)?
     /// Edge threshold in absolute points (default 44pt, iOS HIG minimum tap target)
     var edgeThresholdPoints: CGFloat = 44.0
-    /// When true, hitTest returns self for any touch in an edge zone,
-    /// preventing downstream gesture recognizers (e.g. DirectionalNavigationAdapter)
-    /// from seeing those touches. Set to true in paginated mode regardless of
-    /// whether edge tap callbacks are configured.
+    /// When true, hitTest returns self for any touch in an edge zone, so the
+    /// touch never reaches the WKWebView behind the overlay — neither as a page
+    /// turn for Readium nor as a content tap for the tap observer.
+    ///
+    /// Set only when the overlay has a page turn to run on that touch:
+    /// `shouldInterceptEdgeTaps` is `!isScrollMode && edgeTapEnabled`. Claiming
+    /// while edge tap is off would swallow a content tap for nothing, now that
+    /// `DirectionalNavigationAdapter` is built with an empty pointer policy and
+    /// no longer competes for those touches.
     var interceptEdgeTaps: Bool = false
 
     override init(frame: CGRect) {

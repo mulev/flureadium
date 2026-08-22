@@ -1,13 +1,20 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flureadium_platform_interface/flureadium_platform_interface.dart';
+import 'package:flureadium_platform_interface/method_channel_flureadium.dart';
 import 'package:flureadium/src/reader/reader_lifecycle_mixin.dart';
 
 import '../mocks/mock_platform.dart';
 
-// Test class that uses the mixin and implements required interface
+/// Test class that uses the mixin and implements the reader widget interface.
+///
+/// Records every navigation config handed to it, so a test can count
+/// deliveries rather than just observe the last one.
 class TestLifecycleManager
     with ReaderLifecycleMixin
     implements ReadiumReaderWidgetInterface {
+  final List<ReaderNavigationConfig> configs = [];
+
   @override
   Future<void> applyDecorations(
     String id,
@@ -40,13 +47,26 @@ class TestLifecycleManager
   Future<void> setPDFPreferences(PDFPreferences preferences) async {}
 
   @override
-  Future<void> setNavigationConfig(ReaderNavigationConfig config) async {}
+  Future<void> setNavigationConfig(ReaderNavigationConfig config) async {
+    configs.add(config);
+  }
 
   @override
   Future<void> skipToNext({bool animated = true}) async {}
 
   @override
   Future<void> skipToPrevious({bool animated = true}) async {}
+}
+
+/// A reader whose channel call fails, the way a torn-down platform view would.
+class _FailingLifecycleManager extends TestLifecycleManager {
+  bool attempted = false;
+
+  @override
+  Future<void> setNavigationConfig(ReaderNavigationConfig config) async {
+    attempted = true;
+    throw PlatformException(code: 'no-view');
+  }
 }
 
 void main() {
@@ -106,5 +126,87 @@ void main() {
 
       expect(mockPlatform.currentReaderWidget, isNull);
     });
+  });
+
+  group('ReaderLifecycleMixin navigation config replay', () {
+    late TestLifecycleManager manager;
+    late MethodChannelFlureadium platform;
+
+    setUp(() {
+      manager = TestLifecycleManager();
+      // The real platform, not the mock: the store-and-forward under test
+      // (MethodChannelFlureadium.setNavigationConfig) is production code.
+      platform = MethodChannelFlureadium();
+      FlureadiumPlatform.instance = platform;
+    });
+
+    test(
+      'a config set before any reader registers arrives at registration',
+      () async {
+        final config = ReaderNavigationConfig(enableEdgeTapNavigation: false);
+
+        await platform.setNavigationConfig(config);
+        expect(manager.configs, isEmpty);
+
+        manager.setCurrentWidgetInterface(manager);
+
+        expect(manager.configs, [same(config)]);
+      },
+    );
+
+    test(
+      'set before plus set after delivers each once, later value last',
+      () async {
+        final a = ReaderNavigationConfig(enableEdgeTapNavigation: false);
+        final b = ReaderNavigationConfig(enableEdgeTapNavigation: true);
+
+        await platform.setNavigationConfig(a);
+        manager.setCurrentWidgetInterface(manager);
+        await platform.setNavigationConfig(b);
+
+        expect(manager.configs, [same(a), same(b)]);
+      },
+    );
+
+    test(
+      'a reader registering after cleanup gets the stored config too',
+      () async {
+        final config = ReaderNavigationConfig(enableSwipeNavigation: true);
+        await platform.setNavigationConfig(config);
+
+        manager.setCurrentWidgetInterface(manager);
+        manager.cleanupWidgetInterface(null);
+
+        final second = TestLifecycleManager();
+        second.setCurrentWidgetInterface(second);
+
+        expect(second.configs, [same(config)]);
+      },
+    );
+
+    test('nothing stored means nothing sent', () {
+      manager.setCurrentWidgetInterface(manager);
+
+      expect(manager.configs, isEmpty);
+    });
+
+    test(
+      'a replay that fails is logged, not thrown into the ambient zone',
+      () async {
+        // The replay is the one setNavigationConfig call whose future no host
+        // holds. Without a catch, a PlatformException from the channel surfaces as
+        // an unhandled async error in whatever zone created the platform view,
+        // which in a test run fails an unrelated case.
+        final failing = _FailingLifecycleManager();
+        await platform.setNavigationConfig(
+          ReaderNavigationConfig(enableEdgeTapNavigation: true),
+        );
+
+        failing.setCurrentWidgetInterface(failing);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(failing.attempted, isTrue);
+      },
+    );
   });
 }

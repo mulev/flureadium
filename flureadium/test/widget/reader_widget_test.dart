@@ -51,7 +51,6 @@ void main() {
         final widget = ReadiumReaderWidget(publication: publication);
 
         expect(widget.publication, equals(publication));
-        expect(widget.loadingWidget, isA<Center>());
         expect(widget.initialLocator, isNull);
       });
 
@@ -61,37 +60,18 @@ void main() {
           href: 'chapter1.xhtml',
           type: 'application/xhtml+xml',
         );
-        const customLoading = Text('Loading...');
+
+        void onTap(Offset _) {}
 
         final widget = ReadiumReaderWidget(
           publication: publication,
           initialLocator: locator,
-          loadingWidget: customLoading,
-          onTap: () {},
-          onGoLeft: () {},
-          onGoRight: () {},
-          onSwipe: () {},
+          onTap: onTap,
         );
 
         expect(widget.publication, equals(publication));
         expect(widget.initialLocator, equals(locator));
-        expect(widget.loadingWidget, equals(customLoading));
-        expect(widget.onTap, isNotNull);
-        expect(widget.onGoLeft, isNotNull);
-        expect(widget.onGoRight, isNotNull);
-        expect(widget.onSwipe, isNotNull);
-      });
-    });
-
-    group('default loading widget', () {
-      test('default loadingWidget is CircularProgressIndicator', () {
-        final publication = createTestPublication();
-
-        final widget = ReadiumReaderWidget(publication: publication);
-
-        expect(widget.loadingWidget, isA<Center>());
-        final center = widget.loadingWidget as Center;
-        expect(center.child, isA<CircularProgressIndicator>());
+        expect(widget.onTap, same(onTap));
       });
     });
 
@@ -168,54 +148,28 @@ void main() {
         final widget = ReadiumReaderWidget(
           publication: publication,
           onReady: () => readyCalled = true,
-          onTap: () => tappedCalled = true,
+          onTap: (_) => tappedCalled = true,
         );
 
         widget.onReady!();
-        widget.onTap!();
+        widget.onTap!(Offset.zero);
         expect(readyCalled, isTrue);
         expect(tappedCalled, isTrue);
       });
     });
 
     group('callbacks', () {
-      test('onTap callback is stored', () {
-        var tapped = false;
+      test('onTap callback is stored and receives the tap position', () {
+        Offset? tapped;
         final publication = createTestPublication();
 
         final widget = ReadiumReaderWidget(
           publication: publication,
-          onTap: () => tapped = true,
+          onTap: (position) => tapped = position,
         );
 
-        widget.onTap!();
-        expect(tapped, isTrue);
-      });
-
-      test('onGoLeft callback is stored', () {
-        var wentLeft = false;
-        final publication = createTestPublication();
-
-        final widget = ReadiumReaderWidget(
-          publication: publication,
-          onGoLeft: () => wentLeft = true,
-        );
-
-        widget.onGoLeft!();
-        expect(wentLeft, isTrue);
-      });
-
-      test('onGoRight callback is stored', () {
-        var wentRight = false;
-        final publication = createTestPublication();
-
-        final widget = ReadiumReaderWidget(
-          publication: publication,
-          onGoRight: () => wentRight = true,
-        );
-
-        widget.onGoRight!();
-        expect(wentRight, isTrue);
+        widget.onTap!(const Offset(4, 8));
+        expect(tapped, const Offset(4, 8));
       });
 
       test('createReadiumReaderChannel carries onExternalLinkActivated', () {
@@ -228,6 +182,18 @@ void main() {
         );
 
         expect(channel.onExternalLinkActivated, same(onExternalLink));
+      });
+
+      test('createReadiumReaderChannel carries onTap', () {
+        void onTap(Offset _) {}
+
+        final channel = createReadiumReaderChannel(
+          43,
+          onPageChanged: (_) {},
+          onTap: onTap,
+        );
+
+        expect(channel.onTap, same(onTap));
       });
     });
 
@@ -260,156 +226,6 @@ void main() {
         expect(widget.publication.coverLink, isNotNull);
         expect(widget.publication.coverLink!.href, equals('cover.jpg'));
       });
-    });
-  });
-
-  group('skip navigation with hierarchical TOC', () {
-    test('flattenToc exposes nested chapters for navigation', () {
-      final publication = Publication(
-        metadata: Metadata(
-          localizedTitle: LocalizedString.fromString('Hierarchical Book'),
-          identifier: 'hierarchical-book',
-        ),
-        readingOrder: [
-          Link(href: '/part.xhtml', type: 'application/xhtml+xml'),
-          Link(href: '/ch1.xhtml', type: 'application/xhtml+xml'),
-          Link(href: '/ch2.xhtml', type: 'application/xhtml+xml'),
-        ],
-        tableOfContents: [
-          Link(
-            href: '/part.xhtml',
-            children: [
-              Link(href: '/ch1.xhtml'),
-              Link(href: '/ch2.xhtml'),
-            ],
-          ),
-        ],
-      );
-
-      final flatToc = flattenToc(publication.toc);
-      expect(flatToc.map((l) => l.href).toList(), [
-        '/part.xhtml',
-        '/ch1.xhtml',
-        '/ch2.xhtml',
-      ]);
-    });
-
-    test(
-      'skipToNext from child chapter navigates to next child, not sibling',
-      () {
-        final publication = Publication(
-          metadata: Metadata(
-            localizedTitle: LocalizedString.fromString('Hierarchical Book'),
-            identifier: 'hierarchical-book',
-          ),
-          readingOrder: [
-            Link(href: '/part.xhtml', type: 'application/xhtml+xml'),
-            Link(href: '/ch1.xhtml', type: 'application/xhtml+xml'),
-            Link(href: '/ch2.xhtml', type: 'application/xhtml+xml'),
-            Link(href: '/appendix.xhtml', type: 'application/xhtml+xml'),
-          ],
-          tableOfContents: [
-            Link(
-              href: '/part.xhtml',
-              children: [
-                Link(href: '/ch1.xhtml'),
-                Link(href: '/ch2.xhtml'),
-              ],
-            ),
-            Link(href: '/appendix.xhtml'),
-          ],
-        );
-
-        // reader_widget uses flattenToc(publication.toc)
-        final flatToc = flattenToc(publication.toc);
-        final ch1Locator = Locator(
-          href: '/ch1.xhtml',
-          type: 'application/xhtml+xml',
-        );
-        final curIndex = flatToc.indexWhere((l) => l.href == ch1Locator.href);
-
-        final decision = decideSkipToNext(
-          currentLocator: ch1Locator,
-          toc: flatToc,
-          readingOrder: publication.readingOrder,
-          currentTocIndex: curIndex,
-          publication: publication,
-        );
-
-        expect(decision.canNavigate, isTrue);
-        expect(decision.targetLink?.href, '/ch2.xhtml');
-        expect(decision.targetTocIndex, 2);
-      },
-    );
-
-    test('skipToPrevious from child chapter navigates to previous child', () {
-      final publication = Publication(
-        metadata: Metadata(
-          localizedTitle: LocalizedString.fromString('Hierarchical Book'),
-          identifier: 'hierarchical-book',
-        ),
-        readingOrder: [
-          Link(href: '/part.xhtml', type: 'application/xhtml+xml'),
-          Link(href: '/ch1.xhtml', type: 'application/xhtml+xml'),
-          Link(href: '/ch2.xhtml', type: 'application/xhtml+xml'),
-        ],
-        tableOfContents: [
-          Link(
-            href: '/part.xhtml',
-            children: [
-              Link(href: '/ch1.xhtml'),
-              Link(href: '/ch2.xhtml'),
-            ],
-          ),
-        ],
-      );
-
-      final flatToc = flattenToc(publication.toc);
-      final ch2Locator = Locator(
-        href: '/ch2.xhtml',
-        type: 'application/xhtml+xml',
-      );
-      final curIndex = flatToc.indexWhere((l) => l.href == ch2Locator.href);
-
-      final decision = decideSkipToPrevious(
-        currentLocator: ch2Locator,
-        toc: flatToc,
-        readingOrder: publication.readingOrder,
-        currentTocIndex: curIndex,
-        publication: publication,
-      );
-
-      expect(decision.canNavigate, isTrue);
-      expect(decision.targetLink?.href, '/ch1.xhtml');
-      expect(decision.targetTocIndex, 1);
-    });
-  });
-
-  group('ReadiumReaderWidget custom loading', () {
-    test('accepts custom loading widget', () {
-      final publication = createTestPublication();
-      const customWidget = Column(
-        children: [CircularProgressIndicator(), Text('Please wait...')],
-      );
-
-      final widget = ReadiumReaderWidget(
-        publication: publication,
-        loadingWidget: customWidget,
-      );
-
-      expect(widget.loadingWidget, isA<Column>());
-    });
-
-    test('accepts Placeholder as loading widget', () {
-      final publication = createTestPublication();
-      const placeholder = Placeholder();
-
-      final widget = ReadiumReaderWidget(
-        publication: publication,
-        loadingWidget: placeholder,
-      );
-
-      expect(widget.loadingWidget, isA<Placeholder>());
     });
   });
 
@@ -474,7 +290,15 @@ void main() {
           .getLocatorFragments(
             Locator(href: 'chapter1.xhtml', type: 'application/xhtml+xml'),
           )
-          .then((value) => outcome = value, onError: (Object e) => outcome = e)
+          .then(
+            (value) => outcome = value,
+            // A block, not an arrow: the arrow returned the assignment's value,
+            // and `onError` has to return the future's own type.
+            onError: (Object e) {
+              outcome = e;
+              return null;
+            },
+          )
           .ignore();
 
       await tester.pumpWidget(host(createTestPublication()));
@@ -499,7 +323,13 @@ void main() {
           .getLocatorFragments(
             Locator(href: 'chapter1.xhtml', type: 'application/xhtml+xml'),
           )
-          .then((value) => outcome = value, onError: (Object e) => outcome = e)
+          .then(
+            (value) => outcome = value,
+            onError: (Object e) {
+              outcome = e;
+              return null;
+            },
+          )
           .ignore();
       await tester.pump();
 

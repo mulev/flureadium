@@ -1,0 +1,319 @@
+#!/bin/sh
+# Repo validators — generic runner. Copy this file verbatim to a repo root and
+# write the repo's rules in ./validators.conf next to it. The runner decides
+# nothing; the config decides everything.
+#
+# Usage:
+#   ./validate list   <stage>
+#   ./validate run    <stage>
+#   ./validate verify <stage> <ledger-file>
+#
+# Stages (defined by the execute skill):
+#   phase-exit  every phase, run by whoever executed it, before plan update /
+#               commit / bead close. Main runs it once as the epic baseline.
+#   finalize    once per execution, run by the main session.
+#   user        never run automatically; recorded as PENDING-USER and handed over.
+#
+# `run` stamps provenance ahead of the rows:
+#   # stage=phase-exit conf=<cksum> commit=<sha> dirty=no started=<ts>
+#     finished=<ts> finished_epoch=<s> rows=id,id,id
+# `verify` re-reads that stamp instead of the calendar. It asks three questions
+# the old date-only ledger could not answer:
+#   * was every row of THAT run stamped inside THAT run's window — a row pasted
+#     in from another run falls outside it;
+#   * has the code moved since — a source file dirty and newer than the run
+#     means the ledger is older than what it claims to prove;
+#   * did the stage gain rows afterwards — a config fingerprint mismatch makes
+#     those rows DRIFT, not failure, because a phase that adds a row cannot have
+#     run it.
+# There is no "dated today" rule: a stage is re-run because the code moved, never
+# to refresh a stamp. A ledger with no header is LEGACY — verified for content
+# only, since it predates stamping.
+#
+# Exit codes:
+#   0  every row for the stage passed (or was handed over); `list` on a stage with
+#      no rows also exits 0 — "nothing to hand over" is an answer, not an error.
+#      DRIFT, LEGACY and NOTE lines are reports, not failures.
+#   1  a row failed, or verification found a missing, mis-stamped or stale row
+#   2  misconfigured: usage error, missing config, or `run`/`verify` on a stage
+#      this repo does not define → do not loop, fix the config
+#
+# Doctrine, config format and per-stack recipes:
+#   /Users/mulev/Documents/projects/skills/_shared/validators.md
+set -u
+
+CONF=${VALIDATORS_CONF:-./validators.conf}
+ESC=$(printf '\033')
+
+sub=${1:-}
+stage=${2:-}
+ledger=${3:-}
+
+case $sub in
+list | run | verify) ;;
+*)
+	echo "usage: validate list|run|verify <stage> [ledger-file]" >&2
+	exit 2
+	;;
+esac
+[ -n "$stage" ] || {
+	echo "validate: stage required (phase-exit, finalize, user)" >&2
+	exit 2
+}
+if [ "$sub" = verify ]; then
+	[ -n "$ledger" ] || {
+		echo "validate: verify needs a ledger file" >&2
+		exit 2
+	}
+	[ -f "$ledger" ] || {
+		echo "validate: no such ledger file: $ledger" >&2
+		exit 2
+	}
+fi
+[ -f "$CONF" ] || {
+	echo "validate: no $CONF in $(pwd)" >&2
+	exit 2
+}
+
+now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+now_epoch() { date -u +%s; }
+
+# cksum is POSIX; sha1sum/shasum are not. Change detection is all that is needed
+# here — this fingerprint answers "is this the config that ran?", not "is this
+# config trustworthy".
+conf_fingerprint() { cksum <"$CONF" | awk '{print $1 "-" $2}'; }
+
+in_git() { git rev-parse --git-dir >/dev/null 2>&1; }
+
+# mtime in epoch seconds. BSD and GNU stat disagree, so probe once.
+if stat -f %m . >/dev/null 2>&1; then
+	mtime_of() { stat -f %m "$1" 2>/dev/null; }
+else
+	mtime_of() { stat -c %Y "$1" 2>/dev/null; }
+fi
+
+# ISO-8601 UTC of fixed width compares lexicographically, so no date parsing.
+within() { awk -v s="$1" -v a="$2" -v b="$3" 'BEGIN { exit !(s >= a && s <= b) }'; }
+
+# Rows go to a temp file, not a pipe: a `while` in a pipeline runs in a subshell
+# and would discard $rc. The awk pass drops comments/blank lines and splits on
+# the first two `|` only — stage and id are trimmed, the command keeps every byte
+# after its first non-blank character, so `|` and `||` inside commands survive.
+rows=$(mktemp) || exit 2
+out_rows=$(mktemp) || exit 2
+trap 'rm -f "$rows" "$out_rows"' EXIT
+awk '
+	/^[ \t]*#/ { next }
+	/^[ \t]*$/ { next }
+	{
+		i = index($0, "|"); if (i == 0) next
+		row_stage = substr($0, 1, i - 1); rest = substr($0, i + 1)
+		j = index(rest, "|"); if (j == 0) next
+		id = substr(rest, 1, j - 1); cmd = substr(rest, j + 1)
+		gsub(/^[ \t]+|[ \t]+$/, "", row_stage)
+		gsub(/^[ \t]+|[ \t]+$/, "", id)
+		sub(/^[ \t]+/, "", cmd)
+		if (row_stage == "" || id == "" || cmd == "") next
+		print row_stage "|" id "|" cmd
+	}
+' "$CONF" >"$rows"
+
+stage_ids=$(awk -F'|' -v s="$stage" '$1 == s { printf "%s%s", sep, $2; sep = "," }' "$rows")
+[ -n "$stage_ids" ] || {
+	[ "$sub" = list ] && exit 0
+	echo "validate: no '$stage' rows in $CONF" >&2
+	exit 2
+}
+
+want=PASS
+[ "$stage" = user ] && want=PENDING-USER
+
+rc=0
+
+case $sub in
+list)
+	awk -F'|' -v s="$stage" '$1 == s { printf "%s\t", $2; sub(/^[^|]*\|[^|]*\|/, ""); print }' "$rows"
+	exit 0
+	;;
+
+run)
+	started=$(now_iso)
+	while IFS='|' read -r row_stage id cmd; do
+		[ "$row_stage" = "$stage" ] || continue
+		if [ "$stage" = user ]; then
+			printf '%s\t%s\t%s\t%s\n' "$id" "$want" "$(now_iso)" "$cmd" >>"$out_rows"
+			continue
+		fi
+		out=$(sh -c "$cmd" 2>&1)
+		if [ $? -eq 0 ]; then
+			result=PASS
+		else
+			result=FAIL
+			rc=1
+		fi
+		# Last line that actually says something: strip ANSI and CR, then keep only
+		# lines with a word character, so box-drawing rules and blank spacers from
+		# pretty runners never become the ledger's evidence.
+		evidence=$(printf '%s\n' "$out" |
+			sed -e "s/${ESC}\[[0-9;]*[A-Za-z]//g" -e 's/\r//g' |
+			grep -E '[A-Za-z0-9]' | tail -n 1 | cut -c1-120)
+		[ -n "$evidence" ] || evidence='(no output)'
+		printf '%s\t%s\t%s\t%s\n' "$id" "$result" "$(now_iso)" "$evidence" >>"$out_rows"
+	done <"$rows"
+
+	finished=$(now_iso)
+	commit='-'
+	dirty='-'
+	if in_git; then
+		commit=$(git rev-parse --short HEAD 2>/dev/null || echo '-')
+		if [ -n "$(git status --porcelain 2>/dev/null)" ]; then dirty=yes; else dirty=no; fi
+	fi
+	printf '# stage=%s conf=%s commit=%s dirty=%s started=%s finished=%s finished_epoch=%s rows=%s\n' \
+		"$stage" "$(conf_fingerprint)" "$commit" "$dirty" \
+		"$started" "$finished" "$(now_epoch)" "$stage_ids"
+	cat "$out_rows"
+	exit $rc
+	;;
+esac
+
+# ------------------------------------------------------------------- verify
+
+# A row id is data, not a pattern: escape ERE metacharacters so `a.c` cannot
+# match `abc`.
+id_re() { printf '%s' "$1" | sed 's/[][\.^$*+?(){}|\\]/\\&/g'; }
+
+# The ledger is usually a plan file, so a row is matched by its own line shape
+# rather than by position in the file.
+row_stamp() {
+	grep -E "^$(id_re "$1")[[:space:]]+${want}[[:space:]]" "$ledger" |
+		head -n1 | awk '{print $3}'
+}
+row_failed() {
+	grep -qE "^$(id_re "$1")[[:space:]]+FAIL[[:space:]]" "$ledger"
+}
+in_list() {
+	printf '%s' ",$2," | grep -qF ",$1,"
+}
+
+# A plan file accumulates runs: a red-state proof, a bug round, a final sweep,
+# and often a `finalize` block beside the `phase-exit` ones. Verify the latest
+# run of the stage asked for — picked by its finish stamp, so a block inserted
+# above a later one cannot hijack the check.
+header=$(awk -v s="stage=$stage" '
+	/^# stage=/ {
+		is_stage = 0; fin = ""
+		for (i = 1; i <= NF; i++) {
+			if ($i == s) is_stage = 1
+			if ($i ~ /^finished=/) { fin = $i; sub(/^finished=/, "", fin) }
+		}
+		if (is_stage && fin >= best) { best = fin; line = $0 }
+	}
+	END { if (line != "") print line }
+' "$ledger" 2>/dev/null)
+
+if [ -z "$header" ] && grep -q '^# stage=' "$ledger" 2>/dev/null; then
+	other=$(grep -o '^# stage=[^ ]*' "$ledger" | sed 's/^# stage=//' | sort -u | tr '\n' ' ')
+	echo "validate: this file holds no '$stage' run — the stage(s) stamped here: $other" >&2
+	exit 1
+fi
+
+if [ -z "$header" ]; then
+	echo "validate: LEGACY ledger — $ledger carries no provenance header, so only its"
+	echo "validate: LEGACY row results are checkable. Re-run the stage to stamp it."
+	for id in $(printf '%s' "$stage_ids" | tr ',' ' '); do
+		if [ -z "$(row_stamp "$id")" ]; then
+			echo "validate: DRIFT (legacy) $id — absent from an unstamped ledger, cannot be dated"
+		elif row_failed "$id"; then
+			# Without stamps a FAIL cannot be attributed to a run: an unstamped plan
+			# file holding a red-state proof looks the same as a failing phase.
+			echo "validate: NOTE $id also appears FAIL in this unstamped ledger — check which run that was"
+		fi
+	done
+	exit $rc
+fi
+
+hfield() { printf '%s\n' "$header" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n1; }
+
+ledger_conf=$(hfield conf)
+ledger_rows=$(hfield rows)
+started=$(hfield started)
+finished=$(hfield finished)
+finished_epoch=$(hfield finished_epoch)
+ledger_commit=$(hfield commit)
+
+# 1. Every row the ledger claims must have passed inside that run's window. A
+#    plan file routinely holds other runs too — a red-state proof, an earlier bug
+#    round — so a row is judged by the line stamped inside THIS run, never by any
+#    line bearing its id.
+for id in $(printf '%s' "$ledger_rows" | tr ',' ' '); do
+	status=$(awk -v id="$id" -v a="$started" -v b="$finished" \
+		'$1 == id && $3 >= a && $3 <= b { print $2; exit }' "$ledger")
+	if [ -z "$status" ]; then
+		echo "validate: $id has no line stamped inside this run ($started .. $finished) in $ledger" >&2
+		rc=1
+	elif [ "$status" != "$want" ]; then
+		echo "validate: $id is $status in this run, not $want" >&2
+		rc=1
+	fi
+done
+
+# 2. Rows the config has now but the ledger never ran: a mismatched fingerprint
+#    means the stage grew after this ledger, which is drift, not a stale claim.
+conf_now=$(conf_fingerprint)
+for id in $(printf '%s' "$stage_ids" | tr ',' ' '); do
+	in_list "$id" "$ledger_rows" && continue
+	if [ "$ledger_conf" = "$conf_now" ]; then
+		echo "validate: $id is missing from $ledger and the config has not changed since" >&2
+		rc=1
+	else
+		echo "validate: DRIFT $id — the stage gained this row after this ledger ran"
+	fi
+done
+[ "$ledger_conf" = "$conf_now" ] ||
+	echo "validate: NOTE the config changed after this run — new rows are DRIFT, and a row it does claim may have been redefined since"
+
+# 3. Freshness: a ledger cannot prove code that changed after it was written.
+#    Source changes fail; prose changes are a note, because updating a plan file
+#    after the stage is the normal order of work.
+if in_git && [ -n "$finished_epoch" ]; then
+	ledger_base=$(basename "$ledger")
+	conf_base=$(basename "$CONF")
+	stale_src=''
+	stale_docs=''
+	changed=$( (
+		git -c core.quotePath=false diff --name-only HEAD 2>/dev/null
+		git -c core.quotePath=false ls-files --others --exclude-standard 2>/dev/null
+	) | sort -u)
+	for path in $changed; do
+		[ -f "$path" ] || continue
+		[ "$(basename "$path")" = "$ledger_base" ] && continue
+		# The config is not code under test: a changed config is what the `conf`
+		# fingerprint and the DRIFT rules above are for, not a stale-code failure.
+		[ "$(basename "$path")" = "$conf_base" ] && continue
+		mt=$(mtime_of "$path")
+		[ -n "$mt" ] || continue
+		[ "$mt" -gt "$finished_epoch" ] || continue
+		case $path in
+		*.md | *.markdown) stale_docs="$stale_docs $path" ;;
+		*) stale_src="$stale_src $path" ;;
+		esac
+	done
+	if [ -n "$stale_src" ]; then
+		echo "validate: this ledger finished $finished, before these files changed:" >&2
+		for path in $stale_src; do echo "validate:   $path" >&2; done
+		echo "validate: re-run the stage — the code moved after it was proven" >&2
+		rc=1
+	fi
+	[ -n "$stale_docs" ] && echo "validate: NOTE prose changed after the run:$stale_docs"
+
+	if [ "$ledger_commit" != '-' ] && [ -n "$ledger_commit" ] &&
+		! git cat-file -e "${ledger_commit}^{commit}" 2>/dev/null; then
+		echo "validate: NOTE commit $ledger_commit is not in history — amended or rebased"
+	fi
+	later=$(git log --format=%ct 2>/dev/null | awk -v t="$finished_epoch" '$1 > t' | wc -l | tr -d ' ')
+	[ "${later:-0}" -gt 0 ] &&
+		echo "validate: NOTE $later commit(s) landed after this run — expected when they record what it proved"
+fi
+
+[ "$rc" = 0 ] && echo "validate: $stage ledger verified — $ledger_rows, run $started .. $finished"
+exit $rc

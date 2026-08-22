@@ -40,15 +40,28 @@ internal class EdgeTapInterceptViewDispatchTest {
         view.layout(0, 0, viewWidth, viewHeight)
     }
 
-    private fun down(x: Float, y: Float = 400f): MotionEvent {
+    /**
+     * Builds an event at mid-height. A fling needs distinct down and event
+     * times; [down] and [up] stamp both alike.
+     */
+    private fun event(action: Int, x: Float, downTime: Long, eventTime: Long): MotionEvent =
+        MotionEvent.obtain(downTime, eventTime, action, x, 400f, 0)
+
+    private fun down(x: Float): MotionEvent {
         val now = SystemClock.uptimeMillis()
-        return MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0)
+        return event(MotionEvent.ACTION_DOWN, x, now, now)
     }
 
-    private fun up(x: Float, y: Float = 400f): MotionEvent {
+    private fun up(x: Float): MotionEvent {
         val now = SystemClock.uptimeMillis()
-        return MotionEvent.obtain(now, now, MotionEvent.ACTION_UP, x, y, 0)
+        return event(MotionEvent.ACTION_UP, x, now, now)
     }
+
+    /** Edge taps off, swipe on — the pairing that used to swallow the touch. */
+    private val edgeTapOffSwipeOn = FlutterNavigationConfig(
+        enableEdgeTapNavigation = false,
+        enableSwipeNavigation = true,
+    )
 
     // ── Gesture claiming ──────────────────────────────────────────────────────
 
@@ -215,5 +228,85 @@ internal class EdgeTapInterceptViewDispatchTest {
         val ev = down(x = 390f)
         assertFalse(view.dispatchTouchEvent(ev), "Edge with no callbacks should pass through")
         ev.recycle()
+    }
+
+    // ── Config gating ─────────────────────────────────────────────────────────
+
+    @Test
+    fun dispatchTouchEvent_edgeTapOff_swipeOn_leftEdgePassesThrough() {
+        view.wireCallbacks(onLeft = {}, onRight = {}, onSwipeLeft = {}, onSwipeRight = {})
+        view.applyConfig(edgeTapOffSwipeOn)
+
+        val ev = down(x = 20f)
+        assertFalse(
+            view.dispatchTouchEvent(ev),
+            "With edge tap off the left strip must pass through so Readium can report the tap",
+        )
+        ev.recycle()
+    }
+
+    @Test
+    fun dispatchTouchEvent_edgeTapOff_swipeOn_rightEdgePassesThrough() {
+        view.wireCallbacks(onLeft = {}, onRight = {}, onSwipeLeft = {}, onSwipeRight = {})
+        view.applyConfig(edgeTapOffSwipeOn)
+
+        val ev = down(x = 390f)
+        assertFalse(
+            view.dispatchTouchEvent(ev),
+            "With edge tap off the right strip must pass through so Readium can report the tap",
+        )
+        ev.recycle()
+    }
+
+    @Test
+    fun dispatchTouchEvent_edgeTapOn_flingInsideClaimedStrip_firesSwipe() {
+        var swipedLeft = false
+        view.wireCallbacks(
+            onLeft = {},
+            onRight = {},
+            onSwipeLeft = { swipedLeft = true },
+            onSwipeRight = {},
+        )
+        view.applyConfig(
+            FlutterNavigationConfig(
+                enableEdgeTapNavigation = true,
+                enableSwipeNavigation = true,
+            )
+        )
+
+        // DOWN inside the right strip claims the sequence, then a leftward
+        // fling: 190 px in 40 ms is ~4750 px/s, far over the 50 px/s floor.
+        val t0 = SystemClock.uptimeMillis()
+        view.dispatchTouchEvent(event(MotionEvent.ACTION_DOWN, x = 390f, t0, t0))
+        view.dispatchTouchEvent(event(MotionEvent.ACTION_MOVE, x = 300f, t0, t0 + 20))
+        view.dispatchTouchEvent(event(MotionEvent.ACTION_MOVE, x = 200f, t0, t0 + 40))
+        view.dispatchTouchEvent(event(MotionEvent.ACTION_UP, x = 200f, t0, t0 + 50))
+
+        assertTrue(swipedLeft, "A fling inside a claimed strip must still reach onSwipeLeft")
+    }
+
+    @Test
+    fun dispatchTouchEvent_edgeTapOff_flingInsideStrip_firesNothing() {
+        var swipedLeft = false
+        view.wireCallbacks(
+            onLeft = {},
+            onRight = {},
+            onSwipeLeft = { swipedLeft = true },
+            onSwipeRight = {},
+        )
+        view.applyConfig(edgeTapOffSwipeOn)
+
+        // The same fling as the case above. With edge tap off nothing is
+        // claimed, so the detector never sees the sequence: on Android a fling
+        // pages only inside a strip the edge-tap gate already claimed. The
+        // documented consequence of releasing the strips, pinned here so a
+        // future claim source cannot reappear unnoticed.
+        val t0 = SystemClock.uptimeMillis()
+        view.dispatchTouchEvent(event(MotionEvent.ACTION_DOWN, x = 390f, t0, t0))
+        view.dispatchTouchEvent(event(MotionEvent.ACTION_MOVE, x = 300f, t0, t0 + 20))
+        view.dispatchTouchEvent(event(MotionEvent.ACTION_MOVE, x = 200f, t0, t0 + 40))
+        view.dispatchTouchEvent(event(MotionEvent.ACTION_UP, x = 200f, t0, t0 + 50))
+
+        assertFalse(swipedLeft, "With edge tap off no strip is claimed, so no fling can page")
     }
 }

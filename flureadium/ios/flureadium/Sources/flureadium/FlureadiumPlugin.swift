@@ -55,8 +55,13 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
   /// re-opens them. Owning them here matches Android, where
   /// `ReaderStatusEventChannel` lives on the plugin.
   ///
-  /// `reader-status` buffers (see `ReaderStatusEventStream`): a view reports
-  /// its status from `init`, before a host subscribes from `onReady`.
+  /// Neither buffers a backlog, and neither is silent to a late subscriber:
+  /// `reader-status` replays the latest status (see `ReaderStatusEventStream`)
+  /// because a view reports its status from `init`, before a host subscribes
+  /// from `onReady`; `text-locator` replays nothing but answers a new
+  /// subscriber from the live navigator (see `TextLocatorEventStream`),
+  /// because an image publication's only locator for the page lands in that
+  /// same window.
   internal var readerStatusStreamHandler: EventStreamSink?
   internal var textLocatorStreamHandler: EventStreamSink?
 
@@ -78,7 +83,14 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
     instance.timebasedPlayerStateStreamHandler = EventStreamHandler(withName: "timebased-state", messenger: registrar.messenger())
     instance.errorStreamHandler = EventStreamHandler(withName: "error", messenger: registrar.messenger())
     instance.readerStatusStreamHandler = ReaderStatusEventStream(withName: "reader-status", messenger: registrar.messenger())
-    instance.textLocatorStreamHandler = EventStreamHandler(withName: "text-locator", messenger: registrar.messenger())
+    instance.textLocatorStreamHandler = TextLocatorEventStream(
+      withName: "text-locator",
+      messenger: registrar.messenger(),
+      currentLocatorJson: {
+        (currentReaderView?.getCurrentLocation()
+          ?? currentImageReaderView?.getCurrentLocation()
+          ?? currentPdfReaderView?.getCurrentLocation())?.jsonString
+      })
 
     // Register reader view factory
     let factory = ReadiumReaderViewFactory(registrar: registrar)
@@ -368,14 +380,23 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
     case "setDecorationStyle":
       let args = call.arguments as! [Any?]
 
-      if let uttDecorationMap = args[0] as? Dictionary<String, String> {
-        ttsUtteranceDecorationStyle = try! Decoration.Style(fromMap: uttDecorationMap)
-      }
+      do {
+        if let uttDecorationMap = args[0] as? Dictionary<String, String> {
+          ttsUtteranceDecorationStyle = try Decoration.Style(fromMap: uttDecorationMap)
+        }
 
-      if let rangeDecorationMap = args[1] as? Dictionary<String, String> {
-        ttsRangeDecorationStyle = try! Decoration.Style(fromMap: rangeDecorationMap)
+        if let rangeDecorationMap = args[1] as? Dictionary<String, String> {
+          ttsRangeDecorationStyle = try Decoration.Style(fromMap: rangeDecorationMap)
+        }
+        result(nil)
+      } catch {
+        // A style map missing `style` or `tint` is a wrong payload, not a reason
+        // to take the host process down. Both styles are optional to begin with.
+        result(FlutterError.init(
+          code: "InvalidArgument",
+          message: "setDecorationStyle: unusable decoration style: \(error)",
+          details: nil))
       }
-      result(nil)
     case "ttsSetPreferences":
       let args = call.arguments as? Dictionary<String, Any> ?? [:]
       guard let ttsNavigator = self.timebasedNavigator as? FlutterTTSNavigator else {

@@ -29,13 +29,9 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
   private let _view: UIView
   private let pdfViewController: PDFNavigatorViewController
   private var hasSentReady = false
-  private var disableDoubleTapZoom: Bool
-  private var disableTextSelection: Bool
-  private var disableDragGestures: Bool
-  private var disableDoubleTapTextSelection: Bool
-  private var enableEdgeTapNavigation: Bool
-  private var enableSwipeNavigation: Bool
-  private var edgeTapAreaPoints: CGFloat?
+  private var gestureSuppression = PdfGestureSuppression()
+  private var edgeNavigation = ReaderEdgeNavigationState()
+  private var tapObserverToken: InputObservableToken?
 
   var publicationIdentifier: String?
 
@@ -62,15 +58,6 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
 
     let preferencesMap = creationParams["preferences"] as? [String: Any]
     let pdfPreferences = preferencesMap != nil ? PDFPreferences(fromMap: preferencesMap!) : PDFPreferences()
-
-    // Navigation config uses defaults; updated via setNavigationConfig channel call
-    disableDoubleTapZoom = false
-    disableTextSelection = false
-    disableDragGestures = false
-    disableDoubleTapTextSelection = false
-    enableEdgeTapNavigation = true
-    enableSwipeNavigation = true
-    edgeTapAreaPoints = nil
 
     let locatorStr = creationParams["initialLocator"] as? String
     let locator = locatorStr == nil ? nil : try! Locator.init(jsonString: locatorStr!)
@@ -103,26 +90,16 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
     channel.setMethodCallHandler(onMethodCall)
     pdfViewController.delegate = self
 
-    let child: UIView = pdfViewController.view
-    let view = _view
-    view.addSubview(pdfViewController.view)
-
-    child.translatesAutoresizingMaskIntoConstraints = false
-
-    NSLayoutConstraint.activate(
-      [
-        child.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-        child.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-        child.topAnchor.constraint(equalTo: view.topAnchor),
-        child.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-      ]
-    )
+    _view.addPinnedSubview(pdfViewController.view)
 
     currentPdfReaderView = self
     publicationIdentifier = publication.metadata.identifier
 
-    // Configure edge tap handlers for page navigation
     configureEdgeTapHandlers()
+
+    // A tap on a PDF link annotation reports here and follows the link:
+    // Readium's interactive-element filter is WebView-only.
+    tapObserverToken = observeTaps(on: pdfViewController, reportingTo: channel)
 
     print(TAG, "::init success")
   }
@@ -155,7 +132,7 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
       self.readerStatusStreamHandler?.sendEvent(PdfReaderStatusReady)
       hasSentReady = true
     }
-    if disableDoubleTapTextSelection {
+    if gestureSuppression.disableDoubleTapTextSelection {
       scheduleDisableDoubleTapWordSelection()
     }
     emitOnPageChanged(locator: locator)
@@ -172,30 +149,11 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
   // MARK: - PDFNavigatorDelegate
 
   func navigator(_ navigator: PDFNavigatorViewController, setupPDFView view: PDFDocumentView) {
-    print(TAG, "setupPDFView called - disableDoubleTapZoom: \(disableDoubleTapZoom), disableTextSelection: \(disableTextSelection), disableDragGestures: \(disableDragGestures), disableDoubleTapTextSelection: \(disableDoubleTapTextSelection)")
-
-    if disableDoubleTapZoom {
-      print(TAG, "Calling disableDoubleTapZoomGesture...")
-      disableDoubleTapZoomGesture(in: view)
-    }
-
-    if disableTextSelection {
-      print(TAG, "Calling disableTextSelectionGesture...")
-      disableTextSelectionGesture(in: view)
-    }
-
-    if disableDoubleTapTextSelection {
-      print(TAG, "Calling removeEditMenuInteractions...")
-      removeEditMenuInteractions(in: view)
+    print(TAG, "setupPDFView: \(gestureSuppression)")
+    gestureSuppression.apply(to: view)
+    if gestureSuppression.disableDoubleTapTextSelection {
       scheduleDisableDoubleTapWordSelection()
     }
-
-    if disableDragGestures {
-      print(TAG, "Calling disableDragGesturesRecognizer...")
-      disableDragGesturesRecognizer(in: view)
-    }
-
-    print(TAG, "setupPDFView completed")
   }
 
   // MARK: - Public Methods
@@ -215,157 +173,11 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
     configureEdgeTapHandlers()
   }
 
-  /// Configure edge tap handlers for page navigation.
-  /// Tapping on the left edge triggers goLeft (previous page).
-  /// Tapping on the right edge triggers goRight (next page).
+  /// PDF has no scroll mode on this view path, so the paginated gate always holds.
   private func configureEdgeTapHandlers() {
     guard let edgeTapView = _view as? EdgeTapInterceptView else { return }
-
-    // Intercept edge zones only when edge tap navigation is active.
-    // PDF reader has no scroll mode on this view path.
-    edgeTapView.interceptEdgeTaps = enableEdgeTapNavigation
-
-    if enableEdgeTapNavigation {
-      if let points = edgeTapAreaPoints {
-        edgeTapView.edgeThresholdPoints = points
-      }
-      edgeTapView.onLeftEdgeTap = { [weak self] in
-        guard let self = self else { return }
-        print(TAG, "[FALLBACK] Triggering goLeft via edge tap")
-        Task { @MainActor in
-          let _ = await self.pdfViewController.goLeft(options: NavigatorGoOptions(animated: true))
-        }
-      }
-      edgeTapView.onRightEdgeTap = { [weak self] in
-        guard let self = self else { return }
-        print(TAG, "[FALLBACK] Triggering goRight via edge tap")
-        Task { @MainActor in
-          let _ = await self.pdfViewController.goRight(options: NavigatorGoOptions(animated: true))
-        }
-      }
-    } else {
-      edgeTapView.onLeftEdgeTap = nil
-      edgeTapView.onRightEdgeTap = nil
-    }
-
-    if enableSwipeNavigation {
-      edgeTapView.onSwipeLeft = { [weak self] in
-        guard let self = self else { return }
-        print(TAG, "[FALLBACK] Triggering goRight via swipe left handler")
-        Task { @MainActor in
-          let _ = await self.pdfViewController.goRight(options: NavigatorGoOptions(animated: true))
-        }
-      }
-      edgeTapView.onSwipeRight = { [weak self] in
-        guard let self = self else { return }
-        print(TAG, "[FALLBACK] Triggering goLeft via swipe right handler")
-        Task { @MainActor in
-          let _ = await self.pdfViewController.goLeft(options: NavigatorGoOptions(animated: true))
-        }
-      }
-    } else {
-      edgeTapView.onSwipeLeft = nil
-      edgeTapView.onSwipeRight = nil
-    }
-  }
-
-  private func disableDoubleTapZoomGesture(in view: UIView) {
-    // Disable double-tap gesture recognizers on this view
-    for gestureRecognizer in view.gestureRecognizers ?? [] {
-      if let tapGesture = gestureRecognizer as? UITapGestureRecognizer,
-         tapGesture.numberOfTapsRequired == 2 {
-        tapGesture.isEnabled = false
-      }
-    }
-    // Recursively disable on all subviews
-    for subview in view.subviews {
-      disableDoubleTapZoomGesture(in: subview)
-    }
-  }
-
-  private func disableTextSelectionGesture(in view: UIView) {
-    print(TAG, "disableTextSelectionGesture: Found \(view.gestureRecognizers?.count ?? 0) gesture(s) on \(type(of: view))")
-
-    var disabledCount = 0
-
-    if let gestureRecognizers = view.gestureRecognizers {
-      for recognizer in gestureRecognizers {
-        // UILongPressGestureRecognizer - for text selection
-        if recognizer is UILongPressGestureRecognizer {
-          recognizer.isEnabled = false
-          disabledCount += 1
-        }
-
-        // UITapGestureRecognizer (single tap) - for showing text selection menu
-        if let tapRecognizer = recognizer as? UITapGestureRecognizer {
-          if tapRecognizer.numberOfTapsRequired == 1 {
-            tapRecognizer.isEnabled = false
-            disabledCount += 1
-          }
-        }
-      }
-    }
-
-    if disabledCount > 0 {
-      print(TAG, "disableTextSelectionGesture: Disabled \(disabledCount) gesture(s) on \(type(of: view))")
-    }
-
-    // Recursively disable on all subviews
-    for subview in view.subviews {
-      disableTextSelectionGesture(in: subview)
-    }
-  }
-
-  private func disableDragGesturesRecognizer(in view: UIView) {
-    // Disable drag gesture recognizers that can trigger text selection/drag-and-drop
-    var disabledCount = 0
-    for gestureRecognizer in view.gestureRecognizers ?? [] {
-      let gestureTypeName = String(describing: type(of: gestureRecognizer))
-
-      // Disable drag gesture recognizers (for text selection/drag-and-drop)
-      if gestureTypeName.contains("Drag") {
-        print(TAG, "  → Disabling drag gesture: \(gestureTypeName)")
-        gestureRecognizer.isEnabled = false
-        disabledCount += 1
-      }
-    }
-
-    if disabledCount > 0 {
-      print(TAG, "disableDragGesturesRecognizer: Disabled \(disabledCount) gesture(s) on \(type(of: view))")
-    }
-
-    // Recursively disable on all subviews
-    for subview in view.subviews {
-      disableDragGesturesRecognizer(in: subview)
-    }
-  }
-
-  private func removeEditMenuInteractions(in view: UIView) {
-    print(TAG, "removeEditMenuInteractions: Checking interactions on \(type(of: view))")
-
-    // Remove text selection and editing menu interactions (iOS 13+)
-    if #available(iOS 13.0, *) {
-      var removedCount = 0
-      for interaction in view.interactions {
-        let interactionTypeName = String(describing: type(of: interaction))
-        let isEditMenuInteraction = interactionTypeName.contains("EditMenu") ||
-                                     interactionTypeName.contains("ContextMenu")
-        let isTextInteraction = interactionTypeName.contains("TextInteraction")
-        if isEditMenuInteraction || isTextInteraction {
-          print(TAG, "  → Removing \(interactionTypeName)")
-          view.removeInteraction(interaction)
-          removedCount += 1
-        }
-      }
-      if removedCount > 0 {
-        print(TAG, "  Removed \(removedCount) edit menu interaction(s) from \(type(of: view))")
-      }
-    }
-
-    // Recursively disable on all subviews
-    for subview in view.subviews {
-      removeEditMenuInteractions(in: subview)
-    }
+    edgeNavigation.configure(
+      edgeTapView: edgeTapView, navigator: pdfViewController, animated: true)
   }
 
   private func emitOnPageChanged(locator: Locator) -> Void {
@@ -394,39 +206,14 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
 
   // MARK: - Double-Tap Word Selection
 
-  /// Schedules repeated attempts to find PDFTextInputView and remove UITextNonEditableInteraction.
-  /// PDFTextInputView is added asynchronously after page rendering, so a single deferred attempt
-  /// is not sufficient — we retry at 0.1s, 0.5s, and 1.0s after the call.
+  /// Schedules repeated attempts to find PDFTextInputView and remove
+  /// UITextNonEditableInteraction on the navigator's live view.
   private func scheduleDisableDoubleTapWordSelection() {
-    for delay in [0.1, 0.5, 1.0] {
+    for delay in PdfGestureSuppression.doubleTapRetryDelays {
       DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
         guard let self = self else { return }
-        self.disableDoubleTapWordSelection(in: self.pdfViewController.view)
+        PdfGestureSuppression.removeDoubleTapWordSelection(in: self.pdfViewController.view)
       }
-    }
-  }
-
-  /// Recursively searches the view tree for PDFTextInputView and removes
-  /// UITextNonEditableInteraction — the interaction responsible for double-tap
-  /// word selection. Long-press selection lives in UITextRefinementInteraction
-  /// and is unaffected.
-  private func disableDoubleTapWordSelection(in view: UIView) {
-    let className = String(describing: type(of: view))
-    if className == "PDFTextInputView" {
-      var removed = 0
-      for interaction in view.interactions {
-        if String(describing: type(of: interaction)) == "UITextNonEditableInteraction" {
-          view.removeInteraction(interaction)
-          removed += 1
-        }
-      }
-      if removed > 0 {
-        print(TAG, "disableDoubleTapWordSelection: removed \(removed) UITextNonEditableInteraction(s) from PDFTextInputView")
-      }
-      return
-    }
-    for subview in view.subviews {
-      disableDoubleTapWordSelection(in: subview)
     }
   }
 
@@ -469,44 +256,33 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
         }
       }
     case "setPreferences":
-      let args = call.arguments as! [String: Any]
+      // `PDFPreferences.init(fromMap:)` (utils/ReadiumExtensions.swift:230) takes a
+      // non-optional map and iterates its keys, so an empty map is the same as no
+      // preferences — which is what a non-dictionary argument should mean here
+      // rather than a trap.
+      let args = call.arguments as? [String: Any] ?? [:]
       print(TAG, "onMethodCall[setPreferences] args = \(args)")
       let preferences = PDFPreferences(fromMap: args)
       setUserPreferences(preferences: preferences)
       result(nil)
     case "setNavigationConfig":
-      let args = call.arguments as! [String: Any]
-      print(TAG, "onMethodCall[setNavigationConfig] args = \(args)")
+      let args = call.arguments as? [String: Any]
+      print(TAG, "onMethodCall[setNavigationConfig] args = \(String(describing: args))")
       let navConfig = FlutterNavigationConfig(fromMap: args)
-      if let v = navConfig.enableEdgeTapNavigation { enableEdgeTapNavigation = v }
-      if let v = navConfig.enableSwipeNavigation { enableSwipeNavigation = v }
-      if let v = navConfig.disableDoubleTapZoom {
-        disableDoubleTapZoom = v
-        // setupPDFView has already run — apply immediately to the live view
-        if v { disableDoubleTapZoomGesture(in: pdfViewController.view) }
+      let newlyDisabled = gestureSuppression.apply(navConfig)
+      // setupPDFView has already run — apply what this call switched on to the
+      // live view; everything else was applied when it was switched on.
+      newlyDisabled.apply(to: pdfViewController.view)
+      if newlyDisabled.disableDoubleTapTextSelection {
+        scheduleDisableDoubleTapWordSelection()
       }
-      if let v = navConfig.disableTextSelection {
-        disableTextSelection = v
-        if v { disableTextSelectionGesture(in: pdfViewController.view) }
-      }
-      if let v = navConfig.disableDragGestures {
-        disableDragGestures = v
-        if v { disableDragGesturesRecognizer(in: pdfViewController.view) }
-      }
-      if let v = navConfig.disableDoubleTapTextSelection {
-        disableDoubleTapTextSelection = v
-        if v {
-          removeEditMenuInteractions(in: pdfViewController.view)
-          scheduleDisableDoubleTapWordSelection()
-        }
-      }
-      if let pts = navConfig.edgeTapAreaPoints {
-        edgeTapAreaPoints = CGFloat(min(max(pts, 44.0), 120.0))
-      }
+      edgeNavigation.apply(navConfig)
       configureEdgeTapHandlers()
       result(nil)
     case "dispose":
       print(TAG, "Disposing pdfViewController")
+      if let token = tapObserverToken { pdfViewController.removeObserver(token) }
+      tapObserverToken = nil
       pdfViewController.view.removeFromSuperview()
       pdfViewController.delegate = nil
       self.readerStatusStreamHandler?.sendEvent(PdfReaderStatusClosed)

@@ -17,4 +17,10 @@ class ReadiumReaderChannel: FlutterMethodChannel {
   func onExternalLinkActivated(url: URL) {
     invokeMethod("onExternalLinkActivated", arguments: url.absoluteString as String?)
   }
+
+  /// Reports a tap on content, in points relative to the navigator's view.
+  /// Dart decodes the pair as an `Offset`.
+  func onTap(position: CGPoint) {
+    invokeMethod("onTap", arguments: ["x": Double(position.x), "y": Double(position.y)])
+  }
 }

@@ -21,8 +21,15 @@
 		C1D2E3F4A5B6C7D800005002 /* FlutterMediaOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6C7D800005001 /* FlutterMediaOverlayTests.swift */; };
 		C1D2E3F4A5B6C7D800006002 /* ReadiumErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6C7D800006001 /* ReadiumErrorTests.swift */; };
 		D1E2F3A4B5C6D7E800007002 /* EdgeTapInterceptViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E800007001 /* EdgeTapInterceptViewTests.swift */; };
+		D1E2F3A4B5C6D7E800009002 /* ReaderEdgeNavigationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E800009001 /* ReaderEdgeNavigationStateTests.swift */; };
+		D1E2F3A4B5C6D7E800009102 /* FlutterNavigationConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E800009101 /* FlutterNavigationConfigTests.swift */; };
 		D1E2F3A4B5C6D7E800008002 /* NowPlayingInfoUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E800008001 /* NowPlayingInfoUpdaterTests.swift */; };
-		E1F2A3B4C5D6E7F800008002 /* EpubEditingActionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */; };
+		E1F2A3B4C5D6E7F800008002 /* EpubNavigatorConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F800008001 /* EpubNavigatorConfigurationTests.swift */; };
+		E1F2A3B4C5D6E7F800009002 /* EpubUserScriptsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F800009001 /* EpubUserScriptsTests.swift */; };
+		E1F2A3B4C5D6E7F80000A002 /* EpubPageBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F80000A001 /* EpubPageBridgeTests.swift */; };
+		E1F2A3B4C5D6E7F80000B002 /* EpubLocatorReporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F80000B001 /* EpubLocatorReporterTests.swift */; };
+		E1F2A3B4C5D6E7F80000C002 /* EpubReaderCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F80000C001 /* EpubReaderCommandTests.swift */; };
+		E1F2A3B4C5D6E7F80000D002 /* PdfGestureSuppressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6E7F80000D001 /* PdfGestureSuppressionTests.swift */; };
 		F1A2B3C4D5E6F7A800009002 /* ImageCacheURLProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */; };
 		A2B3C4D5E6F7A8B900010002 /* FlureadiumPluginGoToLocatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */; };
 		A2B3C4D5E6F7A8B900020002 /* FlureadiumPluginAudioEnableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */; };
@@ -45,6 +52,8 @@
 		DDBBCC0011223344AABBCC0A /* AudioReaderViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC09 /* AudioReaderViewTests.swift */; };
 		DDBBCC0011223344AABBCC0C /* ReaderViewKindRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC0B /* ReaderViewKindRoutingTests.swift */; };
 		DDBBCC0011223344AABBCC0E /* FlureadiumPluginStreamOwnershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC0D /* FlureadiumPluginStreamOwnershipTests.swift */; };
+		DDBBCC0011223344AABBCC10 /* ReaderTapObserverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC0F /* ReaderTapObserverTests.swift */; };
+		DDBBCC0011223344AABBCC12 /* FlureadiumPluginDecorationStyleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBBCC0011223344AABBCC11 /* FlureadiumPluginDecorationStyleTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		CA90AC1234567890ABCDEF22 /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA90AC1234567890ABCDEF21 /* CarPlaySceneDelegate.swift */; };
@@ -98,6 +107,8 @@
 		C1D2E3F4A5B6C7D800005001 /* FlutterMediaOverlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlutterMediaOverlayTests.swift; sourceTree = "<group>"; };
 		C1D2E3F4A5B6C7D800006001 /* ReadiumErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadiumErrorTests.swift; sourceTree = "<group>"; };
 		D1E2F3A4B5C6D7E800007001 /* EdgeTapInterceptViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeTapInterceptViewTests.swift; sourceTree = "<group>"; };
+		D1E2F3A4B5C6D7E800009101 /* FlutterNavigationConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlutterNavigationConfigTests.swift; sourceTree = "<group>"; };
+		D1E2F3A4B5C6D7E800009001 /* ReaderEdgeNavigationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderEdgeNavigationStateTests.swift; sourceTree = "<group>"; };
 		D1E2F3A4B5C6D7E800008001 /* NowPlayingInfoUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInfoUpdaterTests.swift; sourceTree = "<group>"; };
 		CA90AC1234567890ABCDEF01 /* CarPlayChapterListTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayChapterListTests.swift; sourceTree = "<group>"; };
 		CA90AC1234567890ABCDEF11 /* CarPlayPlaybackBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayPlaybackBridgeTests.swift; sourceTree = "<group>"; };
@@ -114,7 +125,14 @@
 		DDBBCC0011223344AABBCC09 /* AudioReaderViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioReaderViewTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC0B /* ReaderViewKindRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewKindRoutingTests.swift; sourceTree = "<group>"; };
 		DDBBCC0011223344AABBCC0D /* FlureadiumPluginStreamOwnershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginStreamOwnershipTests.swift; sourceTree = "<group>"; };
-		E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubEditingActionsTests.swift; sourceTree = "<group>"; };
+		DDBBCC0011223344AABBCC11 /* FlureadiumPluginDecorationStyleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginDecorationStyleTests.swift; sourceTree = "<group>"; };
+		DDBBCC0011223344AABBCC0F /* ReaderTapObserverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderTapObserverTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D6E7F800008001 /* EpubNavigatorConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubNavigatorConfigurationTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D6E7F800009001 /* EpubUserScriptsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubUserScriptsTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D6E7F80000A001 /* EpubPageBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubPageBridgeTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D6E7F80000B001 /* EpubLocatorReporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubLocatorReporterTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D6E7F80000C001 /* EpubReaderCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpubReaderCommandTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D6E7F80000D001 /* PdfGestureSuppressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PdfGestureSuppressionTests.swift; sourceTree = "<group>"; };
 		F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheURLProtocolTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginGoToLocatorTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginAudioEnableTests.swift; sourceTree = "<group>"; };
@@ -189,10 +207,17 @@
 				C1D2E3F4A5B6C7D800004001 /* ReadiumExtensionsTests.swift */,
 				C1D2E3F4A5B6C7D800005001 /* FlutterMediaOverlayTests.swift */,
 				C1D2E3F4A5B6C7D800006001 /* ReadiumErrorTests.swift */,
+				D1E2F3A4B5C6D7E800009101 /* FlutterNavigationConfigTests.swift */,
 				D1E2F3A4B5C6D7E800007001 /* EdgeTapInterceptViewTests.swift */,
+				D1E2F3A4B5C6D7E800009001 /* ReaderEdgeNavigationStateTests.swift */,
 				D1E2F3A4B5C6D7E800008001 /* NowPlayingInfoUpdaterTests.swift */,
-				E1F2A3B4C5D6E7F800008001 /* EpubEditingActionsTests.swift */,
+				E1F2A3B4C5D6E7F800008001 /* EpubNavigatorConfigurationTests.swift */,
+				E1F2A3B4C5D6E7F800009001 /* EpubUserScriptsTests.swift */,
+				E1F2A3B4C5D6E7F80000A001 /* EpubPageBridgeTests.swift */,
+				E1F2A3B4C5D6E7F80000B001 /* EpubLocatorReporterTests.swift */,
 				F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */,
+				E1F2A3B4C5D6E7F80000C001 /* EpubReaderCommandTests.swift */,
+				E1F2A3B4C5D6E7F80000D001 /* PdfGestureSuppressionTests.swift */,
 				A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */,
 				A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */,
 				A2B3C4D5E6F7A8B900030001 /* FlureadiumPluginCarRefreshTests.swift */,
@@ -214,6 +239,8 @@
 				DDBBCC0011223344AABBCC09 /* AudioReaderViewTests.swift */,
 				DDBBCC0011223344AABBCC0B /* ReaderViewKindRoutingTests.swift */,
 				DDBBCC0011223344AABBCC0D /* FlureadiumPluginStreamOwnershipTests.swift */,
+				DDBBCC0011223344AABBCC11 /* FlureadiumPluginDecorationStyleTests.swift */,
+				DDBBCC0011223344AABBCC0F /* ReaderTapObserverTests.swift */,
 			);
 			path = RunnerTests;
 			sourceTree = "<group>";
@@ -503,10 +530,17 @@
 				C1D2E3F4A5B6C7D800004002 /* ReadiumExtensionsTests.swift in Sources */,
 				C1D2E3F4A5B6C7D800005002 /* FlutterMediaOverlayTests.swift in Sources */,
 				C1D2E3F4A5B6C7D800006002 /* ReadiumErrorTests.swift in Sources */,
+				D1E2F3A4B5C6D7E800009102 /* FlutterNavigationConfigTests.swift in Sources */,
 				D1E2F3A4B5C6D7E800007002 /* EdgeTapInterceptViewTests.swift in Sources */,
+				D1E2F3A4B5C6D7E800009002 /* ReaderEdgeNavigationStateTests.swift in Sources */,
 				D1E2F3A4B5C6D7E800008002 /* NowPlayingInfoUpdaterTests.swift in Sources */,
-				E1F2A3B4C5D6E7F800008002 /* EpubEditingActionsTests.swift in Sources */,
+				E1F2A3B4C5D6E7F800008002 /* EpubNavigatorConfigurationTests.swift in Sources */,
+				E1F2A3B4C5D6E7F800009002 /* EpubUserScriptsTests.swift in Sources */,
+				E1F2A3B4C5D6E7F80000A002 /* EpubPageBridgeTests.swift in Sources */,
+				E1F2A3B4C5D6E7F80000B002 /* EpubLocatorReporterTests.swift in Sources */,
 				F1A2B3C4D5E6F7A800009002 /* ImageCacheURLProtocolTests.swift in Sources */,
+				E1F2A3B4C5D6E7F80000C002 /* EpubReaderCommandTests.swift in Sources */,
+				E1F2A3B4C5D6E7F80000D002 /* PdfGestureSuppressionTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900010002 /* FlureadiumPluginGoToLocatorTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900020002 /* FlureadiumPluginAudioEnableTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900030002 /* FlureadiumPluginCarRefreshTests.swift in Sources */,
@@ -528,6 +562,8 @@
 				DDBBCC0011223344AABBCC0A /* AudioReaderViewTests.swift in Sources */,
 				DDBBCC0011223344AABBCC0C /* ReaderViewKindRoutingTests.swift in Sources */,
 				DDBBCC0011223344AABBCC0E /* FlureadiumPluginStreamOwnershipTests.swift in Sources */,
+				DDBBCC0011223344AABBCC12 /* FlureadiumPluginDecorationStyleTests.swift in Sources */,
+				DDBBCC0011223344AABBCC10 /* ReaderTapObserverTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -27,3 +27,10 @@ linter:
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
+
+plugins:
+  flureadium_lints:
+    path: ../../flureadium_lints
+    diagnostics:
+      vacuous_type_assertion: true
+      vacuous_not_null_assertion: true

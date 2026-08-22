@@ -346,7 +346,7 @@ void main() {
         final range = DomRange.fromJson(json);
 
         expect(range, isNotNull);
-        expect(range!.start, isNotNull);
+        expect(range!.start.cssSelector, equals('#start'));
         expect(range.end, isNull);
       });
     });

@@ -57,33 +57,25 @@ extension Link {
 }
 
 extension Decoration {
-  init(fromJson jsonString: String) throws {
-    let jsonMap: Dictionary<String, String>?
-    do {
-      jsonMap = try JSONSerialization.jsonObject(with: jsonString.data(using: .utf8)!) as? Dictionary<String, String>
-    } catch {
-      print("Invalid Decoration object: \(error)")
-      throw JSONError.parsing(Self.self)
-    }
-    try self.init(fromMap: jsonMap)
-  }
-
-  init(fromMap jsonMap: Dictionary<String, String>?) throws {
-    guard let jsonObject = jsonMap,
-          let idString = jsonObject["id"],
-          let locator = try Locator.init(jsonString: jsonObject["locator"]!),
-          let styleStr = jsonObject["style"],
-          let tintHexStr = jsonObject["tint"],
+  /// Decodes one entry of the `applyDecorations` payload:
+  /// `{"id": String, "locator": Locator.toJson(), "style": {"style": String, "tint": "#AARRGGBB"}}`.
+  ///
+  /// Every field is bound through the guard chain, so a missing or malformed one
+  /// throws instead of trapping and the caller's `try?` answers the documented
+  /// `FlutterError`.
+  init(fromDartMap map: [String: Any]?) throws {
+    guard let map,
+          let idString = map["id"] as? String,
+          let locator = try? Locator(json: map["locator"], warnings: nil),
+          let styleMap = map["style"] as? [String: Any],
+          let styleStr = styleMap["style"] as? String,
+          let tintHexStr = styleMap["tint"] as? String,
           let tintColor = Color(hex: tintHexStr),
-          let style = try? Decoration.Style.init(withStyle: styleStr, tintColor: tintColor) else {
-      print("Decoration parse error: `id`, `locator`, `style` and `tint` required")
+          let style = try? Decoration.Style(withStyle: styleStr, tintColor: tintColor) else {
+      print("Decoration parse error: `id`, `locator` and `style` {style, tint} required")
       throw JSONError.parsing(Self.self)
     }
-    self.init(
-      id: idString as Id,
-      locator: locator,
-      style: style,
-    )
+    self.init(id: idString, locator: locator, style: style)
   }
 }
 
@@ -91,17 +83,6 @@ extension Decoration.Style {
   init(withStyle style: String, tintColor: Color) throws {
     let styleId = Decoration.Style.Id(rawValue: style)
     self.init(id: styleId, config: HighlightConfig(tint: tintColor.uiColor))
-  }
-
-  init(fromJson jsonString: String) throws {
-    let jsonMap: Dictionary<String, String>?
-    do {
-      jsonMap = try JSONSerialization.jsonObject(with: jsonString.data(using: .utf8)!) as? Dictionary<String, String>
-    } catch {
-      print("Invalid Decoration.Style json map: \(error)")
-      throw JSONError.parsing(Self.self)
-    }
-    try self.init(fromMap: jsonMap)
   }
 
   init(fromMap jsonMap: Dictionary<String, String>?) throws {

@@ -2,6 +2,7 @@ package dev.mulev.flureadium
 
 import android.util.Log
 import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 /** Code carried by every error event raised from an uncaught reader coroutine failure. */
 internal const val readerFailureErrorCode = "ReaderFailure"
@@ -34,6 +35,7 @@ internal const val readerFailureErrorCode = "ReaderFailure"
  * A scope whose own failure would travel through the reporting path must use
  * [channelCoroutineExceptionHandler] instead — see the note there.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 internal fun readerCoroutineExceptionHandler(
     tag: String,
     shouldReport: () -> Boolean = { true },

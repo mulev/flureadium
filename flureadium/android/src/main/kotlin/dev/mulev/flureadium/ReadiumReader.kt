@@ -209,6 +209,23 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     val pdfCurrentLocator: Locator?
         get() = pdfNavigator?.currentLocator?.value
 
+    /**
+     * The navigation config last received from Flutter.
+     *
+     * The three *SetNavigationConfig entry points are `navigator?.set…`, so
+     * before epubEnable/imageEnable/pdfEnable has built its navigator they are
+     * silent no-ops. Keeping the config here and replaying it at build time is
+     * what makes one that arrives first survive.
+     *
+     * Never cleared after a replay: it is the last known config, and a reader
+     * that closes and reopens builds a fresh navigator that needs it again.
+     */
+    private var navigationConfig: FlutterNavigationConfig? = null
+
+    /** The position the active reader is on right now, whatever kind it is. */
+    val currentTextLocator: Locator?
+        get() = currentReaderWidget?.currentKindLocator
+
     private var _pdfPreferences: FlutterPdfPreferences = FlutterPdfPreferences()
 
     /** Current PDF preferences (defaults if PDF hasn't been enabled yet). */
@@ -267,7 +284,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         errorEventChannel = ErrorEventChannel(messenger)
 
         textLocatorEventChannel?.dispose()
-        textLocatorEventChannel = TextLocatorEventChannel(messenger)
+        textLocatorEventChannel = TextLocatorEventChannel(messenger) { currentTextLocator }
 
         // store weak ref only
         (activity as? SavedStateRegistryOwner)?.savedStateRegistry?.let {
@@ -464,6 +481,13 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
 
         _assetRetriever = null
         _publicationOpener = null
+
+        // The retained navigation config dies with the engine that set it. It is
+        // kept across a publication swap on purpose, but this object outlives a
+        // FlutterEngine, and Dart's copy does not — so leaving it here would
+        // replay one host's edge-tap and swipe settings into the next engine's
+        // reader, which has nothing to override it with.
+        navigationConfig = null
 
         readerViewRef?.clear()
         readerViewRef = null
@@ -809,6 +833,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
             EpubNavigator(pub, initialLocator, this@ReadiumReader, initialPreferences).apply {
                 initNavigator()
                 epubNavigator = this
+                navigationConfig?.let { setNavigationConfig(it) }
                 attachEpubNavigator(fragmentManager, viewGroup)
                 return@withScope
             }
@@ -861,6 +886,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
             ImageNavigator(pub, initialLocator, this@ReadiumReader).apply {
                 initNavigator()
                 imageNavigator = this
+                navigationConfig?.let { setNavigationConfig(it) }
                 attachImageNavigator(fragmentManager, viewGroup)
                 return@withScope
             }
@@ -887,6 +913,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     }
 
     fun imageSetNavigationConfig(config: FlutterNavigationConfig) {
+        navigationConfig = config
         imageNavigator?.setNavigationConfig(config)
     }
 
@@ -933,6 +960,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
             PdfNavigator(pub, initialLocator, this@ReadiumReader, initialPreferences).apply {
                 initNavigator()
                 pdfNavigator = this
+                navigationConfig?.let { setNavigationConfig(it) }
                 attachPdfNavigator(fragmentManager, viewGroup)
                 return@withScope
             }
@@ -977,6 +1005,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
      * Apply a navigation config to the PDF navigator overlay.
      */
     fun pdfSetNavigationConfig(config: FlutterNavigationConfig) {
+        navigationConfig = config
         pdfNavigator?.setNavigationConfig(config)
     }
 
@@ -1191,6 +1220,10 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         currentReaderWidget?.onExternalLinkActivated(url)
     }
 
+    override fun onTap(x: Double, y: Double) {
+        currentReaderWidget?.onTap(x, y)
+    }
+
     override fun onVisualCurrentLocationChanged(locator: Locator) {
         currentReaderWidget?.onVisualCurrentLocationChanged(locator)
     }
@@ -1237,6 +1270,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
      * Apply a navigation config to the EPUB navigator overlay.
      */
     fun epubSetNavigationConfig(config: FlutterNavigationConfig) {
+        navigationConfig = config
         epubNavigator?.setNavigationConfig(config)
     }
 

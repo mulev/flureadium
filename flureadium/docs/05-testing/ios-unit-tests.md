@@ -17,15 +17,24 @@ Instead, tests live in the **example app's RunnerTests target** and run via `xco
 flureadium/example/ios/RunnerTests/
 ├── RunnerTests.swift                  # Plugin handler dispatch
 ├── FlutterTTSNavigatorTests.swift     # TTS navigator lifecycle, play/suppression, dispose, initNavigator errors
-├── UtilityTests.swift                 # clamp, firstMap, asyncCompactMap
-├── ModelTests.swift                   # ControlPanelInfoType, NavigationConfig, TTS/Audio/PDF preferences
+├── UtilityTests.swift                 # clamp, firstMap, asyncCompactMap, addPinnedSubview
+├── ModelTests.swift                   # ControlPanelInfoType, TTS/Audio/PDF preferences
+├── FlutterNavigationConfigTests.swift # setNavigationConfig dictionary decoding
+├── ReaderEdgeNavigationStateTests.swift # Edge tap/swipe gate matrix and page-turn direction
+├── EpubUserScriptsTests.swift         # Injected script count, order, injection times, generated sources
+├── EpubNavigatorConfigurationTests.swift # Content insets, preload counts, decorations, editing actions, preferences
+├── EpubPageBridgeTests.swift          # Exact window.epubPage JavaScript per call, and every reply shape
+├── EpubLocatorReporterTests.swift     # Page-changed publishing, the dispose race, external links
+├── EpubReaderCommandTests.swift       # Method-channel argument decoding: order, optional defaults, malformed JSON, decoration maps (valid payload + every malformed field)
+├── PdfGestureSuppressionTests.swift # PDF gesture/interaction removal: every predicate, subtree recursion, retry schedule
 ├── StateSerializationTests.swift      # ReadiumTimebasedState toJson, toJsonString, Equatable
-├── ReadiumExtensionsTests.swift       # Locator extensions, state mappings, EPUB/PDF preferences fromMap
+├── ReadiumExtensionsTests.swift       # Locator extensions, state mappings, EPUB/PDF preferences fromMap, Decoration/Decoration.Style fromMap (valid map, missing locator, unusable style)
+├── FlureadiumPluginDecorationStyleTests.swift # setDecorationStyle argument decoding: valid style maps, and malformed ones answered as a FlutterError instead of trapping
 ├── FlutterMediaOverlayTests.swift     # FlutterMediaOverlayItem parsing/matching/locators
 ├── ReadiumErrorTests.swift            # ReadiumError/FlureadiumError to FlutterError conversions
 ├── EdgeTapInterceptViewTests.swift   # hitTest geometry, edge interception, subview bypass, property behavior
 ├── NowPlayingInfoUpdaterTests.swift  # Chapter formatting for all ControlPanelInfoType variants
-├── ScrollModeNavigationTests.swift   # strippedHref, chapterLink before/after, isBackwardNavigation
+├── ScrollModeNavigationTests.swift   # strippedHref, isBackwardNavigation, SpineItemPositionMemory
 └── EventStreamHandlerTests.swift     # EventStreamHandler listen/cancel/dispose lifecycle
 ```
 

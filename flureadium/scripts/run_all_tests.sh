@@ -4,8 +4,8 @@
 #
 # Runs every Flureadium test suite in one shot and prints one consolidated
 # summary:
-#   1. Unit / widget tests  — flutter test in each Dart package
-#                             (plugin, platform interface, example)
+#   1. Unit / widget tests  — flutter test / dart test in each Dart package
+#                             (plugin, platform interface, example, lints)
 #   2. Native unit tests    — scripts/run_native_unit_tests.sh
 #                             (Android Kotlin/Robolectric JVM + iOS Swift/XCTest)
 #   3. Integration tests    — scripts/run_integration_tests.sh
@@ -20,7 +20,7 @@
 #   ./scripts/run_all_tests.sh [options]
 #
 # Suite selection:
-#   --skip-unit             Skip the flutter unit/widget tests
+#   --skip-unit             Skip the Dart unit/widget tests
 #   --skip-native           Skip the native (Android + iOS) unit tests
 #   --skip-integration      Skip the integration tests
 #   --unit-only             Run only the unit/widget tests
@@ -57,7 +57,7 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# Terminal-only noise filter for the raw `flutter test` (unit) suites: drops the
+# Terminal-only noise filter for the raw Dart unit suites: drops the
 # plugin's own reader/page bracket prints so the live view keeps test progress
 # and failures. Full output always lands in the log file. The native/integration
 # runners already filter their own output.
@@ -69,6 +69,7 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$PLUGIN_DIR/.." && pwd)"
 PLATFORM_INTERFACE_DIR="$REPO_ROOT/flureadium_platform_interface"
 EXAMPLE_DIR="$PLUGIN_DIR/example"
+LINTS_DIR="$REPO_ROOT/flureadium_lints"
 LOG_BASE="$PLUGIN_DIR/test_logs/all_tests"
 NATIVE_RUNNER="$SCRIPT_DIR/run_native_unit_tests.sh"
 INTEGRATION_RUNNER="$SCRIPT_DIR/run_integration_tests.sh"
@@ -178,6 +179,21 @@ flutter_test_locked() {
 # $1 = package directory
 pkg_flutter_test() {
   ( cd "$1" && flutter_test_locked )
+}
+
+# Runs a pure Dart package's locked test suite inside a package directory —
+# flureadium_lints, which has no Flutter dependency. Its pubspec.lock is
+# version-controlled, so resolve strictly to it with --enforce-lockfile: drift
+# fails the row loudly instead of silently rewriting the lock under a different
+# SDK. Then `dart test`, never `flutter test`: the analyzer rule harness pulls
+# test_reflective_loader, which imports dart:mirrors, and the Flutter test
+# runtime rejects that import — worse, it then retries the load forever instead
+# of exiting, so a wrong wiring hangs this runner rather than reporting red.
+# Passed to run_suite as the command so the package is timed and recorded on its
+# own row.
+# $1 = package directory
+pkg_dart_test() {
+  ( cd "$1" && dart pub get --enforce-lockfile && dart test )
 }
 
 # Runs a suite command, tees full output to its log, times it, and records the
@@ -296,7 +312,7 @@ fi
 
 # ── Run suites (fastest first) ────────────────────────────────────────────────
 # Unit / widget tests — one row per Dart package so the summary pinpoints which
-# package broke. All three share the SKIP_UNIT gate.
+# package broke. All four share the SKIP_UNIT gate.
 run_or_skip "Unit — plugin" "$LOG_DIR/unit_plugin.log" "$SKIP_UNIT" "$NOISE_RE" \
   pkg_flutter_test "$PLUGIN_DIR"
 
@@ -305,6 +321,9 @@ run_or_skip "Unit — platform interface" "$LOG_DIR/unit_platform_interface.log"
 
 run_or_skip "Unit — example" "$LOG_DIR/unit_example.log" "$SKIP_UNIT" "$NOISE_RE" \
   pkg_flutter_test "$EXAMPLE_DIR"
+
+run_or_skip "Unit — lints" "$LOG_DIR/unit_lints.log" "$SKIP_UNIT" "$NOISE_RE" \
+  pkg_dart_test "$LINTS_DIR"
 
 run_or_skip "Native unit tests" "$LOG_DIR/native.log" "$SKIP_NATIVE" "" \
   "$NATIVE_RUNNER" "${NATIVE_ARGS[@]}"

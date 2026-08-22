@@ -67,7 +67,16 @@ void main() {
         // so the remount is what asks native to enable a publication it has
         // already closed.
         await tester.tap(find.text('Close Native Only'));
-        await tester.pumpAndSettle();
+        // Not pumpAndSettle: the load cover keeps an indeterminate
+        // CircularProgressIndicator on screen until the reader reports
+        // 'ready', and that schedules frames forever. There is no status to
+        // wait on either - ReadiumReader.closePublication() emits none
+        // (android/.../ReadiumReader.kt:717-740; 'closed' comes only from
+        // ReadiumReaderWidget.dispose(), which a mounted widget never runs) -
+        // so give the close a bounded window, the way webpub_test.dart does.
+        // A close that has not landed makes the remount succeed, and the
+        // 'error' expectation below fails loudly rather than passing.
+        await tester.pump(const Duration(seconds: 2));
         await tester.tap(find.text('Remount Reader'));
 
         await pumpUntil(
@@ -90,7 +99,6 @@ void main() {
         // the native view by itself — a second remount tap would only throw away
         // the view that just came up.
         await tester.tap(find.text('Open EPUB'));
-        await tester.pumpAndSettle();
         await pumpUntil(
           tester,
           () => readerStatus(tester) == 'ready',

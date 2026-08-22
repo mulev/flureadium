@@ -25,12 +25,21 @@ class ReadiumReaderChannel extends MethodChannel {
     super.name, {
     required this.onPageChanged,
     this.onExternalLinkActivated,
+    this.onTap,
   }) {
     setMethodCallHandler(onMethodCall);
   }
 
   final void Function(Locator) onPageChanged;
   void Function(String)? onExternalLinkActivated;
+
+  /// Called when the user taps the content and Readium handled nothing
+  /// internally — no hyperlink, no footnote, no interactive element.
+  ///
+  /// The position is in logical pixels, relative to the top-left of the
+  /// platform view. Senders on Android must divide `MotionEvent` coordinates
+  /// by `displayMetrics.density` before posting them.
+  void Function(Offset)? onTap;
 
   /// Go e.g. navigate to a specific locator in the publication.
   Future<void> go(
@@ -172,6 +181,16 @@ class ReadiumReaderChannel extends MethodChannel {
           final link = call.arguments as String;
           R2Log.d('onExternalLinkActivated $link');
           onExternalLinkActivated?.call(link);
+
+          return null;
+        case 'onTap':
+          final args = call.arguments as Map;
+          final position = Offset(
+            (args['x'] as num).toDouble(),
+            (args['y'] as num).toDouble(),
+          );
+          R2Log.d('onTap $position');
+          onTap?.call(position);
 
           return null;
         default:

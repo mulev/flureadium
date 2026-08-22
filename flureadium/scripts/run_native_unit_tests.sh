@@ -7,9 +7,11 @@
 #   - iOS:     Swift/XCTest tests (RunnerTests)
 #
 # Runs both sequentially, continues on failure, and prints a summary.
-# It detects the tools each platform needs and, when detection fails,
-# asks you for a path instead of giving up — so it works on a fresh
-# checkout by another contributor, not just the original machine.
+# It detects the tools each platform needs and, when detection fails and a
+# terminal is attached, asks you for a path instead of giving up — so it works on
+# a fresh checkout by another contributor, not just the original machine. With no
+# terminal (CI, a supervised gate run) it never prompts: it boots a simulator
+# itself and reports a missing JDK as a failure.
 #
 # Usage:
 #   ./scripts/run_native_unit_tests.sh [options]
@@ -58,7 +60,7 @@ EXAMPLE_DIR="$PLUGIN_DIR/example"
 ANDROID_APP_DIR="$EXAMPLE_DIR/android"
 IOS_APP_DIR="$EXAMPLE_DIR/ios"
 LOG_BASE="$PLUGIN_DIR/test_logs"
-MIN_JAVA_MAJOR=17
+MIN_JAVA_MAJOR=21
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 VERBOSE=false
@@ -105,6 +107,14 @@ SUMMARY_LOG="$LOG_DIR/summary.log"
 log() {
   echo -e "$1" | tee -a "$SUMMARY_LOG"
 }
+
+# True only when a human can answer a prompt. `/dev/tty` exists and is
+# world-readable even with no controlling terminal, so `[ -r /dev/tty ]` lies —
+# probe by opening it. Without this, every `read </dev/tty` below fails instantly
+# and its retry loop spins, flooding the log (measured: 2 GiB in 24 minutes).
+# Redirect stderr first: bash applies redirections left to right, so opening
+# `/dev/tty` before `2> /dev/null` leaks a "Device not configured" line.
+has_tty() { : 2> /dev/null < /dev/tty; }
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 cleanup() {
@@ -236,20 +246,22 @@ detect_java() {
     try_java_home "$home" && return 0
   fi
 
-  # 5. Ask the user.
+  # 5. Ask the user — only possible with a terminal. A skip nobody chose is a
+  # failure, not a pass, so an unattended run reports non-zero.
   log "${YELLOW}Could not auto-detect a JDK ${MIN_JAVA_MAJOR}+ for Android tests.${NC}"
   log "Gradle 8.x needs JDK ${MIN_JAVA_MAJOR} or newer."
+  if ! has_tty; then
+    log "  ${RED}No terminal to ask on — Android tests cannot run.${NC}"
+    OVERALL_EXIT=1
+    return 1
+  fi
   while true; do
     printf "\n  Enter the path to a JDK %d+ home (or 'skip' to skip Android): " \
       "$MIN_JAVA_MAJOR" >&2
     local answer
-    read -r answer </dev/tty
-    if [ "$answer" = "skip" ]; then
-      return 1
-    fi
-    if try_java_home "$answer"; then
-      return 0
-    fi
+    read -r answer </dev/tty || return 1
+    [ "$answer" = "skip" ] && return 1
+    try_java_home "$answer" && return 0
     printf "  Not a valid JDK %d+ home: %s\n" "$MIN_JAVA_MAJOR" "$answer" >&2
   done
 }
@@ -283,8 +295,11 @@ resolve_ios_simulator() {
     names+=("$name"); ids+=("$id")
   done < <(xcrun simctl list devices available 2>/dev/null | grep -E 'iPhone')
 
+  # Same rule as the JDK path above: a skip nobody chose is a failure, not a pass.
+  # Reporting success with the whole iOS target unrun is how a crashing test ships.
   if [ ${#ids[@]} -eq 0 ]; then
     log "  ${RED}No iPhone simulators installed.${NC} Create one in Xcode, then re-run."
+    OVERALL_EXIT=1
     return 1
   fi
 
@@ -293,15 +308,20 @@ resolve_ios_simulator() {
     log "    $((i+1))) ${names[$i]}  (${ids[$i]})"
   done
 
-  local choice
-  while true; do
-    printf "\n  Select a simulator to boot [1-%d]: " "${#ids[@]}" >&2
-    read -r choice </dev/tty
-    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#ids[@]} )); then
-      break
-    fi
-    printf "  Enter a number between 1 and %d.\n" "${#ids[@]}" >&2
-  done
+  # Booting a simulator is the runner's job, so an unattended run takes the first
+  # one instead of asking. Only a human at a terminal gets the choice.
+  local choice=1
+  if has_tty; then
+    while true; do
+      printf "\n  Select a simulator to boot [1-%d]: " "${#ids[@]}" >&2
+      # EOF (piped stdin) leaves `choice` at 1 rather than re-prompting forever.
+      read -r choice </dev/tty || { choice=1; break; }
+      [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#ids[@]} )) && break
+      printf "  Enter a number between 1 and %d.\n" "${#ids[@]}" >&2
+    done
+  else
+    log "  No terminal to ask on — taking the first one."
+  fi
 
   IOS_DEVICE="${ids[$((choice-1))]}"
   log "  Booting ${names[$((choice-1))]} ($IOS_DEVICE)..."
@@ -330,6 +350,8 @@ if [ "$SKIP_ANDROID" = false ]; then
     log "  Run 'flutter pub get' in $EXAMPLE_DIR first."
     OVERALL_EXIT=1
   elif ! detect_java; then
+    # Unattended, detect_java already set OVERALL_EXIT; a human who typed "skip"
+    # chose this, so the exit code is theirs to keep at 0.
     log "  Skipped — no usable JDK ${MIN_JAVA_MAJOR}+."
   else
     log "  JDK:    $RESOLVED_JAVA_HOME"
@@ -363,12 +385,16 @@ log ""
 log "${CYAN}── iOS (Swift/XCTest) ───────────────────────────────────────────────${NC}"
 if [ "$SKIP_IOS" = false ]; then
   if [ "$(uname)" != "Darwin" ]; then
-    log "  Skipped — iOS tests require macOS."
+    # Not a chosen skip: the caller asked for iOS tests on a host that cannot run
+    # them. Pass --skip-ios to say you meant to run without them.
+    log "  ${RED}NOT RUN — iOS tests require macOS.${NC} Pass --skip-ios to run without them."
+    OVERALL_EXIT=1
   elif ! command -v xcrun > /dev/null 2>&1; then
     log "  ${RED}xcrun not found.${NC} Install Xcode and command-line tools, then re-run."
     OVERALL_EXIT=1
   elif ! resolve_ios_simulator; then
-    log "  Skipped — no simulator available."
+    log "  ${RED}NOT RUN — no simulator available.${NC} Boot one, or pass --skip-ios."
+    OVERALL_EXIT=1
   else
     # Mandatory: build before testing, or XCTest fails silently.
     log "  Building example app for the simulator (required before XCTest)..."

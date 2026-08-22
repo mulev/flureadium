@@ -44,6 +44,16 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
         fun onPageLoaded()
 
         /**
+         * Called when this fragment has let go of its Readium navigator, so
+         * anything registered on that navigator has to be released too.
+         *
+         * onPause removes the navigator fragment and its WebViews. Without this,
+         * a listener registered on it stays registered and keeps it alive until
+         * the next page load rebinds — a retention window nobody owned.
+         */
+        fun onNavigatorReleased()
+
+        /**
          * Called when the current page has changed.
          */
         fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator)
@@ -60,6 +70,7 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
 
     private var edgeTapInterceptView: EdgeTapInterceptView? = null
     private var storedNavigationConfig: FlutterNavigationConfig? = null
+    private var storedIsScrollMode: Boolean? = null
 
     private val instance = ++instanceNo
 
@@ -154,8 +165,15 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
     /**
      * Enable or disable all overlay gestures when the EPUB reader enters/exits
      * vertical scroll mode. In scroll mode Readium's WebView handles scrolling.
+     *
+     * Stored for the same reason the navigation config is: onPause drops the
+     * overlay and onResume builds a new one, which starts paginated. Without
+     * this, a background/foreground cycle in scroll mode left the fresh overlay
+     * claiming both edge strips again — swallowing scroll touches there and
+     * stopping `onTap` from firing, until the next setPreferences round trip.
      */
     fun setScrollMode(isScrollMode: Boolean) {
+        storedIsScrollMode = isScrollMode
         edgeTapInterceptView?.setScrollMode(isScrollMode)
     }
 
@@ -278,6 +296,11 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
             edgeTapInterceptView?.let { (view as? FrameLayout)?.removeView(it) }
             edgeTapInterceptView = null
 
+            // After the navigator is gone, not before: the listener releases what
+            // it registered on it, and holding that registration through a pause
+            // would keep the removed fragment and its WebViews alive.
+            listener?.onNavigatorReleased()
+
             super.onPause()
         } finally {
             Log.d(TAG, "::onPause - $instance - ended")
@@ -309,6 +332,13 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
 
         val preferences = model.preferences ?: EpubPreferences()
         model.preferences = preferences
+
+
+        // The overlay a resume rebuilds starts paginated, so its scroll state has
+        // to be handed to it again. What Flutter last said wins; the navigator's
+        // own preference covers a reader opened straight into scroll mode, which
+        // never gets a setPreferences round trip at all.
+        val isScrollMode = seedScrollMode(storedIsScrollMode, preferences.scroll)
         val navigatorFactory = model.navigatorFactory!!
         val fragmentFactory = navigatorFactory.createFragmentFactory(
             configuration = EpubNavigatorFragment.Configuration(
@@ -360,7 +390,7 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
                 onSwipeLeft = { goRight(animated = true) },
                 onSwipeRight = { goLeft(animated = true) },
             )
-            storedNavigationConfig?.let { overlay.applyConfig(it) }
+            configureOverlay(overlay, storedNavigationConfig, isScrollMode)
             rootView.addView(overlay)
             edgeTapInterceptView = overlay
         }

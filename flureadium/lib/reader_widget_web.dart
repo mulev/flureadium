@@ -12,23 +12,21 @@ ReadiumReaderChannel createReadiumReaderChannel(
   int id, {
   required ValueChanged<Locator> onPageChanged,
   ValueChanged<String>? onExternalLinkActivated,
+  void Function(Offset)? onTap,
 }) {
   return ReadiumReaderChannel(
     '$_viewType:$id',
     onPageChanged: onPageChanged,
     onExternalLinkActivated: onExternalLinkActivated,
+    onTap: onTap,
   );
 }
 
 class ReadiumReaderWidget extends StatefulWidget {
   const ReadiumReaderWidget({
     required this.publication,
-    this.loadingWidget = const Center(child: CircularProgressIndicator()),
     this.initialLocator,
     this.onTap,
-    this.onGoLeft,
-    this.onGoRight,
-    this.onSwipe,
     this.onExternalLinkActivated,
     this.onLocatorChanged,
     this.onReady,
@@ -36,12 +34,11 @@ class ReadiumReaderWidget extends StatefulWidget {
   });
 
   final Publication publication;
-  final Widget loadingWidget;
   final Locator? initialLocator;
-  final VoidCallback? onTap;
-  final VoidCallback? onGoLeft;
-  final VoidCallback? onGoRight;
-  final VoidCallback? onSwipe;
+
+  /// Never invoked on web: there is no native tap source.
+  final void Function(Offset position)? onTap;
+
   final Function(String)? onExternalLinkActivated;
   final void Function(Locator)? onLocatorChanged;
 

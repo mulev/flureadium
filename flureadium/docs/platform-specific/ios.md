@@ -183,9 +183,42 @@ ios/Sources/flureadium/
 ├── PdfReaderView.swift          # PDF reader view
 ├── ImageReaderView.swift        # CBZ / DIVINA reader view
 ├── AudioReaderView.swift        # Audio-only reader host (no navigator)
+├── EpubUserScripts.swift        # The WKUserScripts the EPUB WebView injects
+├── EpubNavigatorConfiguration.swift # The configuration handed to the Readium EPUB navigator
+├── SpineItemPositionMemory.swift # The scroll position remembered per spine item, for swipe-back
+├── EpubPageBridge.swift         # Every call into the window.epubPage JavaScript API
+├── EpubLocatorReporter.swift    # Publishes fragment-resolved locators to the Flutter reader channel
+├── EpubReaderCommand.swift      # Decodes a reader method-channel call into a typed command
+├── PdfGestureSuppression.swift  # Removes the built-in PDF gestures the host disabled
 ├── EdgeTapInterceptView.swift   # Edge tap and swipe overlay
-└── PageThumbnailExtractor.swift # Downscaled JPEG thumbnails for image resources
+├── ReaderEdgeNavigationState.swift # Host edge tap/swipe config, shared by all three visual readers
+├── ReaderTapObserver.swift      # Registers Readium's tap observer on a navigator
+├── PageThumbnailExtractor.swift # Downscaled JPEG thumbnails for image resources
+└── utils/UIViewPinning.swift    # Adds a subview pinned to its parent's four edges
 ```
+
+`ReadiumReaderView` no longer reads channel arguments itself. Every call the
+EPUB reader receives goes through `EpubReaderCommand(call)` first, which turns
+the method name and its argument list into a typed command — or nil for a method
+the view does not implement, which the view answers with
+`FlutterMethodNotImplemented`. The view's switch then only executes. Argument
+order and the optional trailing flags (`isAudioBookWithText` on `go` and
+`setLocation`) are covered by `EpubReaderCommandTests`.
+
+PDF gesture suppression is one type, `PdfGestureSuppression`. It holds the four
+host flags (`disableDoubleTapZoom`, `disableTextSelection`, `disableDragGestures`,
+`disableDoubleTapTextSelection`) and walks the navigator's live view tree,
+matching UIKit recognizers and interactions by class and by runtime type name.
+`PdfReaderView` applies it in two places: the full retained state when the
+navigator hands over its view (`setupPDFView`), and on a `setNavigationConfig`
+call only the flags that call turned on, against the live view. So switching a
+flag on takes effect while the PDF is open, but switching one off does not bring
+the gesture back — nothing re-enables a disabled recognizer or re-adds a removed
+interaction, so the gesture returns only once the navigator hands over a fresh
+view. Because `PDFTextInputView` is attached asynchronously after a page
+renders, removing double-tap word selection is retried at 0.1s, 0.5s and 1.0s.
+`PdfGestureSuppressionTests` covers every
+predicate against synthetic view trees.
 
 ### Platform View
 
@@ -272,6 +305,12 @@ ways:
   also registers best-effort observers for `AVPlayerItemFailedToPlayToEndTime`
   and `AVPlayerItemNewErrorLogEntry` (`object: nil`) over its lifetime, removed
   in `dispose()`. Both route through the same `handlePlaybackFailure` seam.
+  Each observer closure hands off with `Task { @MainActor in … }`, because the
+  closure `NotificationCenter` calls is nonisolated while `handlePlaybackFailure`
+  is main-actor isolated through the `AudioNavigatorDelegate` conformance. A
+  failure therefore reaches the listener one main-actor hop after the notification
+  posts — see [the hop rule](../architecture/overview.md#ios-a-stored-closure-that-reads-a-navigator-is-mainactor)
+  for why a hop rather than `MainActor.assumeIsolated`.
 
 **Limitation:** the container wrapper catches resource-load failures — a track
 that fails to load and never starts. It does not catch **post-load** problems:
@@ -355,6 +394,37 @@ Uses GCDWebServer to serve EPUB resources:
 - Requires NSAppTransportSecurity exception
 - Automatically starts/stops with publication
 
+### Content Taps
+
+`ReadiumReaderWidget.onTap` fires for a tap on content — a tap that nothing else
+claimed. The plugin does not detect these taps itself: it registers Readium's own
+observer on the navigator, so the toolkit decides what counts as a content tap
+before the plugin hears about it.
+
+`observeTaps(on:reportingTo:)` (`ReaderTapObserver.swift`) adds an
+`ActivatePointerObserver` through `InputObservable.addObserver` and returns the
+token the view keeps. All three visual views register in `init` and unregister in
+their `dispose` handler. Coordinates come from `PointerEvent.location`, already in
+points relative to the navigator view, and cross the channel as `{"x": …, "y": …}`
+— the same unit Flutter calls logical pixels.
+
+**EPUB filters link taps for you.** Inside the WebView, Readium drops a pointer
+event that landed on an interactive element before any observer runs
+(`EPUBSpreadView.didReceivePointerEvent` checks `interactiveElement`, fed by
+`gestures.js`). A tap on a hyperlink or footnote navigates and reports no tap, so
+a host can safely toggle its chrome on every `onTap`.
+
+**PDF and CBZ do not.** That filter is WebView-specific. Tapping an internal link
+annotation in a PDF both follows the link and reports a tap. PDFKit exposes no way
+to ask whether an annotation consumed the touch, so the plugin does not guess —
+hosts that care can ignore taps that arrive alongside a page change.
+
+The observer returns `false`, so it never consumes the event. Registration order
+still matters — the tap observer is added after
+`DirectionalNavigationAdapter.bind(to:)` — but that adapter no longer registers a
+pointer observer at all, so nothing behind the tap observer turns a page. See
+[Edge Tap and Swipe Navigation](#edge-tap-and-swipe-navigation).
+
 ### Edge Tap and Swipe Navigation
 
 The flureadium iOS plugin supports both edge tap and swipe gesture navigation for EPUB, PDF, and image-based readers.
@@ -392,21 +462,58 @@ await flureadium.setNavigationConfig(
 
 Both default to enabled (`true`) when not set. The `edgeTapAreaPoints` value is in absolute iOS points (44–120, clamped automatically) and defaults to 44pt (iOS HIG minimum tap target).
 
-**iOS 26 touch routing — `interceptEdgeTaps`:**
+**One pointer edge owner:**
 
-On iOS 26+, Flutter changed how platform view touches are routed. Edge-zone touches now fall through `EdgeTapInterceptView` to the underlying WKWebView when there are no intercept callbacks set, which lets Readium's `DirectionalNavigationAdapter` see those touches — even when edge tap navigation is turned off.
+`EdgeTapInterceptView` is the only component on iOS that reacts to a pointer near an
+edge. Readium's `DirectionalNavigationAdapter` is built with
+`pointerPolicy: .init(types: [])` (`ReadiumReaderView.edgeTapPointerPolicy`), and
+`bind(to:)` skips every pointer type absent from that set. It registers the key
+observer unconditionally, so arrow keys and the space bar still turn pages.
 
-To fix this, `EdgeTapInterceptView` has an `interceptEdgeTaps: Bool` property (default `false`) that is independent of callback presence:
+Before 0.17.0 both components claimed edge taps, with two widths and one gate between
+them. The overlay absorbed `edgeTapAreaPoints` — 44 pt by default — while the adapter
+claimed `max(80, 0.3 × width)`, or 117.9 pt on a 393 pt iPhone, and only the overlay
+was gated on `enableEdgeTapNavigation`. A tap anywhere in the 147.8 pt between the two
+widths, 37.6% of that screen, turned a page while the host's preference read `false`.
+Android never had a second owner, so this brings iOS in line with it.
 
-- **EPUB paginated mode** — `interceptEdgeTaps = true` always. The view absorbs all edge-zone touches regardless of whether callbacks are configured. `DirectionalNavigationAdapter` never sees them.
-- **EPUB scroll mode** — `interceptEdgeTaps = false`. WKWebView receives all touches natively for scrolling.
-- **PDF reader** — `interceptEdgeTaps = enableEdgeTapNavigation`. PDF has no scroll mode on this path, so the view only intercepts when the feature is on.
-- **Image reader** — `interceptEdgeTaps = enableEdgeTapNavigation`. CBZ and DIVINA use the same edge-tap/swipe overlay pattern as the PDF path.
+**Touch routing — `interceptEdgeTaps`:**
 
-This is a native iOS layer change only. No Dart or Flutter changes are required.
+Flutter delivers a platform-view touch to whatever `hitTest` returns, and on iOS 26+
+an edge-zone touch falls through to the WKWebView unless the overlay claims it. That
+claim turns a page when edge tap is on, and swallows a content tap when it is off —
+which would keep `onTap` from firing anywhere near an edge. So the property follows
+the gate rather than the mode alone.
+
+All three visual readers run the same gate, held by one type —
+`ReaderEdgeNavigationState`. It keeps the host's `enableEdgeTapNavigation`,
+`enableSwipeNavigation` and `edgeTapAreaPoints`, and `configure(edgeTapView:navigator:isScrollMode:animated:)`
+points the overlay's callbacks at the navigator or clears them:
+
+- **EPUB** — passes its live scroll mode, so `interceptEdgeTaps = !isScrollMode && enableEdgeTapNavigation`,
+  from the `shouldInterceptEdgeTaps` helper. Paginated with edge tap on, the overlay
+  absorbs both edge zones and turns pages. With edge tap off, or in scroll mode, it
+  absorbs nothing: every tap reaches the WebView, and Readium reports it as a content
+  tap. Page turns are animated.
+- **PDF reader** — no scroll mode on this path, so it omits the argument and the
+  paginated gate always holds: `interceptEdgeTaps = enableEdgeTapNavigation`. Page
+  turns are animated.
+- **Image reader** — same gate as PDF. CBZ and DIVINA turn pages without animation.
+
+Swipes follow the same rule as taps except for the threshold: the plugin's two
+recognizers are wired whenever the reader is paginated and the host left
+`enableSwipeNavigation` on. Swiping left advances, swiping right goes back.
+
+What turning the flag off does **not** do is stop paging. It clears those two
+callbacks — the recognizers stay attached to the overlay container and fire into
+nothing — while Readium's `PaginationView`, a paging `UIScrollView` this plugin
+never disables, still turns the page on a horizontal drag. Android has the same
+gap for its own reason (`R2WebView` owns the drag there), so no platform can
+switch EPUB swiping off through this flag.
 
 **Files:**
 - `EdgeTapInterceptView.swift` - Shared edge tap and swipe detection view
+- `ReaderEdgeNavigationState.swift` - The host's gate, and the wiring all three readers share
 - `ReadiumReaderView.swift` - EPUB reader using EdgeTapInterceptView
 - `PdfReaderView.swift` - PDF reader using EdgeTapInterceptView
 - `ImageReaderView.swift` - CBZ / DIVINA reader using EdgeTapInterceptView

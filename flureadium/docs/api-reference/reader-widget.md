@@ -19,12 +19,8 @@ ReadiumReaderWidget(
 ```dart
 const ReadiumReaderWidget({
   required Publication publication,
-  Widget loadingWidget = const Center(child: CircularProgressIndicator()),
   Locator? initialLocator,
-  VoidCallback? onTap,
-  VoidCallback? onGoLeft,
-  VoidCallback? onGoRight,
-  VoidCallback? onSwipe,
+  void Function(Offset position)? onTap,
   Function(String)? onExternalLinkActivated,
   void Function(Locator)? onLocatorChanged,
   VoidCallback? onReady,
@@ -56,29 +52,6 @@ Assigning a different `Publication` to a mounted widget rebuilds the native read
 
 A swap resets the widget's per-view state: the reading position, the last-skipped chapter, and the reader-ready signal all start over. A `getLocatorFragments` call still in flight resolves to `null`.
 
-### loadingWidget
-
-**Type:** `Widget`
-**Default:** `Center(child: CircularProgressIndicator())`
-
-Widget shown while the native reader is loading.
-
-```dart
-ReadiumReaderWidget(
-  publication: pub,
-  loadingWidget: const Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        CircularProgressIndicator(),
-        SizedBox(height: 16),
-        Text('Loading book...'),
-      ],
-    ),
-  ),
-)
-```
-
 ### initialLocator
 
 **Type:** `Locator?`
@@ -100,54 +73,66 @@ ReadiumReaderWidget(
 
 ### onTap
 
-**Type:** `VoidCallback?`
+**Type:** `void Function(Offset position)?`
 
-Called when the user taps on the reader content.
+Called when the user taps the content and Readium handled nothing internally.
+The position is in logical pixels, relative to the reader view.
+
+Readium filters the tap before this callback runs. In an EPUB, a tap on a
+hyperlink, a footnote, or any other interactive element navigates and does not
+fire `onTap` — you get taps on plain content only, so a host can toggle its
+chrome on a single tap without swallowing links.
+
+That filter is WebView-specific, and PDF and CBZ have no equivalent. On iOS, a tap
+on a PDF link annotation follows the link and reports the tap as well. On Android
+the pdfium adapter forwards the point and follows nothing, so the same tap is
+reported and navigates nowhere.
+
+One region may not be yours: the left and right edge strips, `edgeTapAreaPoints`
+wide, belong to the native edge-tap overlay. A touch the overlay claims never
+reaches Readium, so `onTap` does not fire there.
+
+The overlay claims an edge strip only when it has a page turn to run on it —
+the reader is paginated and `enableEdgeTapNavigation` is on. Turn edge-tap
+navigation off, or put an EPUB into scroll mode, and the overlay claims nothing:
+`onTap` fires across the full width.
+
+Two exceptions to read before you rely on it:
+
+- **Android CBZ has no overlay at all.** It is created by the EPUB and PDF
+  readers only, and `ImageNavigator.setNavigationConfig` is an empty body. So on
+  an Android CBZ nothing claims the edge strips and `enableEdgeTapNavigation` has
+  nothing to act on — taps there reach the navigator like any other, which is
+  what the tap forwarder reports. That follows from the wiring rather than from a
+  device run; the CBZ edge case is on the manual verification list. iOS CBZ does
+  have the overlay and follows the rule above.
+- **Swipes are gated differently per platform, and neither platform can switch
+  EPUB swiping off.** On Android a fling only pages through the overlay if the
+  edge-tap gate already claimed that strip, so `enableSwipeNavigation` never
+  holds a strip open — and Readium's own `R2WebView` still pages a paginated
+  EPUB on a horizontal drag, whatever either flag says. On iOS the plugin's swipe
+  recognizers sit on the full-size container and test direction only, so with
+  `enableSwipeNavigation` on a swipe anywhere pages regardless of
+  `enableEdgeTapNavigation`; with it off their callbacks are cleared, but
+  Readium's `PaginationView` keeps paging on a drag.
+
+See
+[Edge Tap and Swipe Navigation](../platform-specific/ios.md#edge-tap-and-swipe-navigation)
+for iOS and
+[Edge Tap and Swipe Navigation](../platform-specific/android.md#edge-tap-and-swipe-navigation)
+for Android.
+
+Everywhere else on the page, what a region means is a host decision — the plugin
+reports where the tap landed and nothing more.
 
 ```dart
 ReadiumReaderWidget(
   publication: pub,
-  onTap: () {
+  onTap: (position) {
     setState(() => _showControls = !_showControls);
   },
 )
 ```
-
-### onGoLeft
-
-**Type:** `VoidCallback?`
-
-Called when the reader navigates left (previous page).
-
-```dart
-ReadiumReaderWidget(
-  publication: pub,
-  onGoLeft: () {
-    print('Went to previous page');
-  },
-)
-```
-
-### onGoRight
-
-**Type:** `VoidCallback?`
-
-Called when the reader navigates right (next page).
-
-```dart
-ReadiumReaderWidget(
-  publication: pub,
-  onGoRight: () {
-    print('Went to next page');
-  },
-)
-```
-
-### onSwipe
-
-**Type:** `VoidCallback?`
-
-Called on swipe gestures.
 
 ### onExternalLinkActivated
 
@@ -196,6 +181,18 @@ ReadiumReaderWidget(
 )
 ```
 
+One open can deliver several locators for the same page. On Android the first
+one comes from Readium's initial position for the resource and carries no
+`position` or `totalProgression` — the example above reads `0` for progress on
+that delivery — and a second locator follows within roughly 200 ms with both
+fields filled in. Neither is a page turn: `href` and `progression` are the same
+in both.
+
+So treat this callback as "here is the current position", not "the reader
+moved". Compare `href` and `progression` if you need to know whether the reader
+actually went somewhere; counting callbacks will tell you it moved when it did
+not.
+
 ### onReady
 
 **Type:** `VoidCallback?`
@@ -231,6 +228,61 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 }
 ```
+
+## Covering the load
+
+The reader shows no content between mount and the moment Readium reports it. There is no plugin-side parameter for that window — cover it yourself by stacking a widget over the reader and dropping it when the reader reports `ready`:
+
+```dart
+class _ReaderPageState extends State<ReaderPage> {
+  final _flureadium = Flureadium();
+  StreamSubscription<ReadiumReaderStatus>? _statusSub;
+  var _ready = false;
+
+  void _subscribe() {
+    _statusSub = _flureadium.onReaderStatusChanged.listen((status) {
+      if (mounted) setState(() => _ready = status.isReady);
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+        children: [
+          ReadiumReaderWidget(
+            publication: widget.publication,
+            onReady: _subscribe,
+          ),
+          if (!_ready)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Colors.white,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            ),
+        ],
+      );
+}
+```
+
+Two things about this recipe are load-bearing.
+
+**The reader stays in the tree.** Returning the cover *instead of* `ReadiumReaderWidget` never finishes loading: the platform view is what triggers creation, creation is what fires `onReady`, and `onReady` is where you subscribe. Swap the widget out and the status you are waiting for is never sent. Put the cover over the reader, not in place of it.
+
+**Subscribing from `onReady` is early enough.** On Android and iOS the reader reports `loading` while the platform view is still being created, before Flutter can reply to Dart, so the first status is sent before any host can be listening. Both platforms hold the latest status and hand it to the first subscriber, so `ready` reaches a host that subscribes from `onReady` even when it was sent before the subscription existed. Web keeps no such buffer, since its status stream is a plain broadcast stream, but web fires `onReady` from the first frame while the JavaScript reader is still loading. The subscription is in place well before `ready` either way.
+
+**One exception: PDF on iOS.** `PdfReaderView` publishes its statuses to its own `pdf-reader-status` channel (the `readerStatusStreamHandler` it creates in `PdfReaderView.init`), and nothing on the Dart side subscribes to it — `onReaderStatusChanged` listens on `dev.mulev.flureadium/reader-status` only. An iOS PDF therefore reports no status at all, so a cover gated on `ready` never comes down. Drop it on the first locator there, or on a timeout.
+
+Whether the cover blocks input is your call. Wrap it in `IgnorePointer` to let touches through to the reader underneath, or leave it out to swallow them until the reader is up.
+
+One note for your own widget tests: an indeterminate `CircularProgressIndicator` schedules frames for as long as it is mounted, so `pumpAndSettle` never returns while the cover is up. Pump in bounded steps until the condition you care about holds — the reader reporting `ready`, a finder matching — instead.
+
+See [onReaderStatusChanged](streams-events.md#onreaderstatuschanged) for the full status set.
 
 ## Interface Methods
 
@@ -274,6 +326,8 @@ Future<void> skipToNext({bool animated = true})
 
 Moves to the next TOC entry. For EPUB3 books with a nested `toc.xhtml`, this is the next chapter at any depth — not the next top-level sibling. If the current page has no TOC entry, scans the reading order to find the nearest TOC entry ahead.
 
+On a reader that has not yet reported a page, the call waits for the first reported position instead of returning silently. A host that subscribes from `onReady` and skips right away gets the skip it asked for, rather than a no-op. If the view is released before it reports anything — a publication swap, for instance — the call returns without navigating.
+
 ### skipToPrevious
 
 Skip to the previous chapter.
@@ -282,7 +336,7 @@ Skip to the previous chapter.
 Future<void> skipToPrevious({bool animated = true})
 ```
 
-Moves to the previous TOC entry, with the same hierarchical and between-entries behavior as `skipToNext`.
+Moves to the previous TOC entry, with the same hierarchical and between-entries behavior as `skipToNext`. It also waits for the first reported position on a reader that has not reported one yet, and returns without navigating if the view is released first.
 
 ### getCurrentLocator
 
@@ -418,10 +472,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
           ReadiumReaderWidget(
             publication: _publication!,
             initialLocator: _initialLocator,
-            loadingWidget: const Center(
-              child: CircularProgressIndicator(),
-            ),
-            onTap: () {
+            onTap: (position) {
               setState(() => _showControls = !_showControls);
             },
             onExternalLinkActivated: (url) {

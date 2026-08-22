@@ -13,11 +13,16 @@ private final class MockTimebasedListener: TimebasedListener {
     var stateChanges: [ReadiumTimebasedState] = []
     var errors: [(error: Error, description: String?)] = []
 
+    /// Fired after `errors` is appended: the playback-failure observers hop to
+    /// the main actor, so a test cannot assert straight after posting.
+    var onError: ((Error, String?) -> Void)?
+
     func timebasedNavigator(_ nav: FlutterTimebasedNavigator, didChangeState state: ReadiumTimebasedState) {
         stateChanges.append(state)
     }
     func timebasedNavigator(_ nav: FlutterTimebasedNavigator, encounteredError error: Error, withDescription desc: String?) {
         errors.append((error, desc))
+        onError?(error, desc)
     }
     func timebasedNavigator(_ nav: FlutterTimebasedNavigator, reachedLocator locator: Locator, readingOrderLink: Link?) {
         reachedLocatorCalls.append((locator, readingOrderLink))
@@ -190,6 +195,8 @@ final class FlutterAudioNavigatorTests: XCTestCase {
 
     func testFailedToPlayNotificationRoutesToListener() {
         let (nav, mock) = makeNavigator()
+        let routed = expectation(description: "listener received the playback failure")
+        mock.onError = { _, _ in routed.fulfill() }
         nav.registerPlaybackFailureObservers()
 
         let underlying = NSError(domain: "avf", code: 7)
@@ -199,19 +206,20 @@ final class FlutterAudioNavigatorTests: XCTestCase {
             userInfo: [AVPlayerItemFailedToPlayToEndTimeErrorKey: underlying]
         )
 
-        // Observers hop to OperationQueue.main; drain it before asserting.
-        let drained = expectation(description: "main queue drained")
-        OperationQueue.main.addOperation { drained.fulfill() }
-        wait(for: [drained], timeout: 1.0)
-
+        wait(for: [routed], timeout: 1.0)
         XCTAssertEqual(mock.errors.count, 1,
             "a failed-to-play-to-end notification must forward an error to the listener")
         XCTAssertEqual((mock.errors.first?.error as NSError?)?.code, 7)
         nav.removePlaybackFailureObservers()
     }
 
+    /// Inverted expectation waited to the full timeout: a leaked observer fails
+    /// the case however late the main-actor hop lands.
     func testRemovedObserverDoesNotRouteAfterDispose() {
         let (nav, mock) = makeNavigator()
+        let routed = expectation(description: "listener must not hear from a removed observer")
+        routed.isInverted = true
+        mock.onError = { _, _ in routed.fulfill() }
         nav.registerPlaybackFailureObservers()
         nav.dispose()
 
@@ -221,10 +229,7 @@ final class FlutterAudioNavigatorTests: XCTestCase {
             userInfo: [AVPlayerItemFailedToPlayToEndTimeErrorKey: NSError(domain: "avf", code: 1)]
         )
 
-        let drained = expectation(description: "main queue drained")
-        OperationQueue.main.addOperation { drained.fulfill() }
-        wait(for: [drained], timeout: 1.0)
-
+        wait(for: [routed], timeout: 0.5)
         XCTAssertEqual(mock.errors.count, 0,
             "after dispose(), a posted notification must not reach the listener")
     }

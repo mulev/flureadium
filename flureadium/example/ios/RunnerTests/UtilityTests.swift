@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import flureadium
 
 final class UtilityTests: XCTestCase {
@@ -81,5 +82,23 @@ final class UtilityTests: XCTestCase {
     func testAsyncCompactMapAllNonNil() async {
         let result = await [1, 2, 3].asyncCompactMap { "\($0)" }
         XCTAssertEqual(result, ["1", "2", "3"])
+    }
+
+    // MARK: - UIView.addPinnedSubview
+
+    func testAddPinnedSubviewActivatesFourEdgeConstraints() {
+        let parent = UIView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
+        let child = UIView()
+
+        parent.addPinnedSubview(child)
+
+        XCTAssertIdentical(child.superview, parent)
+        XCTAssertFalse(child.translatesAutoresizingMaskIntoConstraints)
+        XCTAssertEqual(parent.constraints.filter(\.isActive).count, 4)
+
+        // Counting constraints passes even when an anchor is paired to the wrong
+        // edge, so resolve the layout and check the geometry it produced.
+        parent.layoutIfNeeded()
+        XCTAssertEqual(child.frame, parent.bounds)
     }
 }

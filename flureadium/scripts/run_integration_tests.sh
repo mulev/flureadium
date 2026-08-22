@@ -45,6 +45,15 @@
 # iOS note:
 #   Runs everything too, including the audio suites. Requires a connected
 #   device or booted simulator (iOS >= 16).
+#
+# Skips, and which ones are allowed:
+#   A suite skipped because you asked for it (--skip-android, --skip-ios,
+#   --skip-web, or answering "skip web" at the prompt) is a choice, and the run
+#   still exits 0. A suite skipped for any other reason — no device found, no
+#   ChromeDriver on an unattended run — did not execute what was asked of it, so
+#   the run exits non-zero and says which suite never ran. A green run therefore
+#   means every requested suite actually executed; it never means "nothing was
+#   available to run".
 
 # ── Colours ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -127,6 +136,14 @@ log() {
   echo -e "$1" | tee -a "$SUMMARY_LOG"
 }
 
+# True only when a human can answer a prompt. `/dev/tty` exists and is
+# world-readable even with no controlling terminal, so `[ -r /dev/tty ]` lies —
+# probe by opening it. Without this, every `read </dev/tty` below fails instantly
+# and its retry loop spins, flooding the log (measured: 2 GiB in 24 minutes).
+# Redirect stderr first: bash applies redirections left to right, so opening
+# `/dev/tty` before `2> /dev/null` leaks a "Device not configured" line.
+has_tty() { : 2> /dev/null < /dev/tty; }
+
 # ── Device selection ──────────────────────────────────────────────────────────
 # Filters ALL_DEVICES_STRIPPED by <pattern>, auto-selects if only one match,
 # prompts if multiple. Sets SELECTED_DEVICE; returns 1 if none found.
@@ -162,15 +179,19 @@ select_device() {
     log "    $((i+1))) ${lines[$i]}"
   done
 
-  local choice
-  while true; do
-    printf "\n  Select $label device [1-%d]: " "${#lines[@]}" >&2
-    read -r choice </dev/tty
-    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#lines[@]} )); then
-      break
-    fi
-    printf "  Enter a number between 1 and %d.\n" "${#lines[@]}" >&2
-  done
+  local choice=1
+  if has_tty; then
+    while true; do
+      printf "\n  Select $label device [1-%d]: " "${#lines[@]}" >&2
+      read -r choice </dev/tty || { choice=1; break; }
+      if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#lines[@]} )); then
+        break
+      fi
+      printf "  Enter a number between 1 and %d.\n" "${#lines[@]}" >&2
+    done
+  else
+    log "  No terminal to ask on — taking the first $label device."
+  fi
 
   local selected="${lines[$((choice-1))]}"
   SELECTED_DEVICE=$(echo "$selected" | awk -F' • ' '{print $2}' | xargs)
@@ -316,6 +337,7 @@ try_start_chromedriver() {
 # ── Resolve devices ───────────────────────────────────────────────────────────
 ANDROID_SKIP_REASON=""
 IOS_SKIP_REASON=""
+WEB_SKIP_REASON=""
 
 NEEDS_SCAN=false
 { [ "$SKIP_ANDROID" = false ] && [ -z "$ANDROID_DEVICE" ]; } && NEEDS_SCAN=true
@@ -362,11 +384,17 @@ if [ "$SKIP_WEB" = false ]; then
         log "  (Chrome not found on this machine; install Chrome or Chromium first)"
       fi
       log "Alternatively, check $LOG_DIR/chromedriver.log for the error."
-      printf "\nSkip web tests and continue? [Y/n]: " >&2
-      read -r skip_web_answer </dev/tty
-      if [[ "$skip_web_answer" =~ ^[Nn]$ ]]; then
-        log "Aborted."
-        exit 1
+      if has_tty; then
+        printf "\nSkip web tests and continue? [Y/n]: " >&2
+        read -r skip_web_answer </dev/tty || skip_web_answer=""
+        if [[ "$skip_web_answer" =~ ^[Nn]$ ]]; then
+          log "Aborted."
+          exit 1
+        fi
+        # A human chose to skip, so this run is still allowed to pass.
+      else
+        log "No terminal to ask on — the web suite cannot run."
+        WEB_SKIP_REASON="ChromeDriver unavailable"
       fi
       SKIP_WEB=true
     fi
@@ -413,6 +441,21 @@ flutter_test_locked() {
   flutter test --no-pub "$@"
 }
 
+# Reports a suite that did not run. A skip the caller asked for is a choice and
+# leaves the exit code alone; a skip forced by the environment means the run did
+# not do what was asked, so it fails and names the suite. Silence here is how a
+# whole platform's suite went unrun while the run reported success.
+report_skip() {
+  local label="$1" reason="$2" fix="$3"
+  if [ -z "$reason" ]; then
+    log "  Skipped (explicitly skipped)"
+    return
+  fi
+  log "  ${RED}NOT RUN — $reason.${NC} $label was requested, so this run fails."
+  [ -n "$fix" ] && log "  $fix"
+  OVERALL_EXIT=1
+}
+
 # ── Android ───────────────────────────────────────────────────────────────────
 log "${CYAN}── Android ──────────────────────────────────────────────────────────${NC}"
 if [ "$SKIP_ANDROID" = false ]; then
@@ -440,7 +483,8 @@ if [ "$SKIP_ANDROID" = false ]; then
   LOGCAT_PID=""
   log "  Native logs: $LOG_DIR/android_native.log"
 else
-  log "  Skipped (${ANDROID_SKIP_REASON:-explicitly skipped})"
+  report_skip "Android" "$ANDROID_SKIP_REASON" \
+    "Start an emulator or attach a device, then re-run — or pass --skip-android to run without it."
 fi
 
 # ── iOS ───────────────────────────────────────────────────────────────────────
@@ -455,7 +499,8 @@ if [ "$SKIP_IOS" = false ]; then
     OVERALL_EXIT=1
   fi
 else
-  log "  Skipped (${IOS_SKIP_REASON:-explicitly skipped})"
+  report_skip "iOS" "$IOS_SKIP_REASON" \
+    "Boot a simulator (open -a Simulator) or attach a device, then re-run — or pass --skip-ios to run without it."
 fi
 
 # ── Web ───────────────────────────────────────────────────────────────────────
@@ -474,16 +519,17 @@ if [ "$SKIP_WEB" = false ]; then
     OVERALL_EXIT=1
   fi
 else
-  log "  Skipped (explicitly skipped or ChromeDriver unavailable)"
+  report_skip "Web" "$WEB_SKIP_REASON" \
+    "Start ChromeDriver on port 4444, then re-run — or pass --skip-web to run without it."
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 log ""
 log "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
 if [ $OVERALL_EXIT -eq 0 ]; then
-  log "${GREEN}All tests passed.${NC}"
+  log "${GREEN}All requested suites ran and passed.${NC}"
 else
-  log "${RED}One or more tests failed.${NC}"
+  log "${RED}One or more suites failed or did not run.${NC}"
   log "Logs: $LOG_DIR/"
   if [ "$VERBOSE" = false ]; then
     log "Re-run with --verbose to see full flutter output inline."

@@ -9,14 +9,17 @@ Integration tests run the example app on a real device or simulator and assert w
 | `all_tests.dart` | Android, iOS | The only mobile runner — imports every file below into a single compilation unit. CI narrows it with `--exclude-tags`, never with a second import list |
 | `all_tests_web.dart` | Web | Web-specific runner — only includes tests that pass on web (see note below) |
 | `launch_test.dart` | All | App starts, MaterialApp renders |
-| `epub_test.dart` | Android, iOS | EPUB auto-opens, navigation/prefs/highlight don't crash, TTS sentence nav buttons appear, close removes widget |
-| `text_locator_test.dart` | Android, iOS | A page turn is pushed on the text-locator stream, the stream follows a publication swap, and a swap to audio leaves no locator behind |
+| `epub_test.dart` | Android, iOS | Each case opens its own EPUB, navigation/prefs don't crash, TTS sentence nav buttons appear, close removes widget |
+| `decoration_contract_test.dart` | Android, iOS | A decoration built from the reader's real current locator is accepted, a malformed one raises a `PlatformException` naming the decoration, and the example's Highlight button leaves the reader ready at the same position |
+| `text_locator_test.dart` | Android, iOS | A page turn is pushed on the text-locator stream, the stream follows a publication swap, a swap to audio leaves no locator behind, and a subscriber that arrives after the reader already has a position is answered on subscribe |
 | `audiobook_host_test.dart` | Android, iOS | An audio-only publication mounts and reports `ready` from a host with no navigator. Split from `audiobook_test.dart` because it needs no player, so it runs where audio does not work |
 | `audiobook_test.dart` | Android, iOS (`native`) | Audiobook opens, play changes button label, seek doesn't crash, pause/resume button labels cycle correctly, playing the last track to its end surfaces `TimebasedState.ended` |
 | `cbz_test.dart` | Android, iOS | CBZ auto-opens, navigation works, `goToLocator` reaches an image page, `extractPageThumbnail` returns JPEG bytes/null as appropriate |
 | `divina_test.dart` | Android, iOS | DIVINA auto-opens, `ReadiumReaderWidget` present, left/right navigation works |
 | `webpub_test.dart` | Android, iOS (`network`) | Remote WebPub manifest opens, `ReadiumReaderWidget` present |
 | `error_handling_test.dart` | Android, iOS | A corrupted file and a missing file both raise `ReadiumException`, and (Android only) a failed native enable reports `error` instead of killing the app — see [Forcing a reader failure](#forcing-a-reader-failure) |
+| `tap_test.dart` | Android | A content tap is reported once through `onTap` with a position, a hyperlink tap navigates and reports nothing, a plain page in the same book does report, and a publication swap rebinds the listener. Android only, and reflowable only — see [What a synthesized tap can reach](#what-a-synthesized-tap-can-reach) |
+| `edge_strip_tap_test.dart` | Android | With `enableEdgeTapNavigation: false` and `enableSwipeNavigation: true`, a tap 22 dp inside either edge strip reaches `onTap`, with a centre tap first as the control. The config is sent before the reader mounts, so the case also covers the replay that carries it to a reader that did not exist yet. It pumps its own widget tree rather than the example app, because the app never calls `setNavigationConfig`. Android only, and reflowable only, for the same two reasons as `tap_test.dart` |
 
 ### Tags
 
@@ -43,6 +46,51 @@ audio-only readiness regression, went unrun on Android for months
 > **Always use `all_tests.dart` (mobile) or `all_tests_web.dart` (web) when running the full suite.** Running `flutter test integration_test/` without specifying a file compiles and installs each test file as a separate APK batch. On mobile this reinstalls the app mid-run, killing in-progress tests and causing "did not complete" failures for any tests that were running when the new APK landed.
 
 > **Web test coverage is limited.** `epub_test.dart` and `webpub_test.dart` are excluded from `all_tests_web.dart` because publication loading on web is not yet reliable (see [Web Platform](../platform-specific/web.md)). The web suite currently covers app launch only. These tests will be added back as web support matures.
+
+## What a synthesized tap can reach
+
+`tap_test.dart` proves the tap chain the plugin exposes as `onTap`: a real touch
+on the platform view, filtered by Readium so links and other interactive
+elements never surface, back into Dart. It runs on Android and on reflowable
+EPUB only. Both limits were measured while writing the suite, and neither is a
+preference — read this before writing a tap case for another platform or
+publication type, because the two dead ends below look identical from Dart.
+
+**Android reflowable works, and here is why.** The example app builds the reader
+through `PlatformViewLink` + `AndroidViewSurface`, whose render object is a
+`PlatformViewRenderBox`. With an empty `gestureRecognizers` set the platform
+view is the only arena member, so it wins the tap
+(`rendering/platform_view.dart:68-69`), and `AndroidViewController` converts the
+pointer into a real `MotionEvent` posted over the `platform_views` channel
+(`services/platform_views.dart:916-918`). From there it is an ordinary Android
+touch: it lands in the Readium WebView, the JavaScript gesture layer runs, and
+`InputListener.onTap` fires.
+
+**iOS cannot be driven at all.** `UiKitView` builds a `RenderUiKitView`, whose
+`handleEvent` adds the pointer to the gesture arena and, on winning, calls
+`controller.acceptGesture()` (`rendering/platform_view.dart:453-460`,
+`:548-550`). That releases the *real* `UITouch` sequence to the embedded view —
+there is no synthesized-pointer path, and `WidgetTester` never produces a
+`UITouch`. This is a Flutter injection-layer fact, not a hardware one, so the
+simulator does not help. An iOS tap case needs a separate XCUITest target.
+
+**Android fixed layout is not driven by a synthesized touch either.** This one
+is easy to mistake for a broken fixture, because the touch demonstrably arrives:
+`EdgeTapInterceptView.dispatchTouchEvent` logs the `ACTION_DOWN` with
+`claimed=false` for a fixed-layout publication exactly as it does for a
+reflowable one, so the event reached the native view and passed the edge
+overlay. It is then dropped above that, inside the fixed-layout script path.
+Five taps three seconds apart on `fixed_layout.epub` reported nothing, while
+`adb shell input tap` at the same point reported immediately — the fixture and
+the chain are both fine.
+
+What is left is handed over as the `user | tap` row in `validators.conf`: every
+iOS case, plus fixed layout and PDF on both platforms. `./validate list user`
+prints it, and the checklist itself lives in the phase 5 plan slice.
+
+A useful side effect of the measurement: `onTap`'s `Offset` is in **logical
+pixels, origin at the top-left of the platform view**. A tap at raw
+(540, 1200) on a 1080x2400 emulator at density 2.625 reported `205.7, 457.1`.
 
 ## Forcing a reader failure
 
@@ -222,6 +270,39 @@ Conventions:
   TTS, audio, `ended-seen`, and the audio-error latch in its `setState`, so a
   reopen gives each test a clean slate.
 
+### Every suite opens the publication it asserts about
+
+`app.main()` followed by a wait for the reader widget does not open anything.
+`main()` is `runApp(ExampleApp(...))`, and `runApp` with an unchanged widget
+type reuses the existing element, so `_ReaderPageState.initState` never runs a
+second time. `initState` holds the app's only automatic open. The reader that
+the wait finds is the one the previous suite left mounted, still carrying that
+publication's `reader-status` and locator latches.
+
+Run such a file on its own and it looks correct: nothing is on screen yet, so
+the boot is real and the fixture is the right one. Run it inside
+`all_tests.dart` and the same code asserts against whichever book ran before
+it. That is what happened to `epub_test.dart`'s long-press case on iOS. Its
+wait for `ready` was answered by the audiobook group's latched `ready`, the
+EPUB view's own `init` reported `loading` a moment later, and the assertion
+after the long press read `loading` (flureadium-5ki).
+
+So every case opens its own fixture, with `openAfterColdBoot: true` so the
+`Open …` tap happens on the cold-boot arm too:
+
+```dart
+await ensureAppShowing(
+  tester,
+  initialAsset: 'assets/pubs/moby_dick.epub',
+  reopenButton: 'Open EPUB',
+  openAfterColdBoot: true,
+);
+```
+
+The open runs `_resetPublicationLatches`, so `reader-status`, the locator and
+the saved locator all start empty. A test then measures the reader it opened
+rather than a value it inherited.
+
 ### Audiobooks: boot the audiobook directly
 
 On Android an audiobook mounts the reader widget as an audio-only host: no visual
@@ -257,8 +338,8 @@ run. In `all_tests.dart` the launch group boots first and the audiobook group
 takes the reuse path, and Android CI excludes the group by tag — so no CI leg
 exercises the audiobook boot (`flureadium-p1q`).
 
-This is applied to all four group test files (`audiobook`, `cbz`, `divina`,
-`epub_tts`) — each boots once per group and reuses the running app between tests.
+The same pattern covers `audiobook`, `cbz`, `divina`, `epub_tts`, `text_locator`
+and `epub` — each group boots once and reuses the running app between tests.
 
 ## Prerequisites
 
@@ -361,6 +442,8 @@ CI runs the full test matrix on every push and pull request to `main`:
 - **`build-android.yml` / `build-ios.yml` / `build-web.yml`** — compile-only build verification of the example app.
 
 Android CI drops the `native` and `network` tags because GitHub-hosted emulators have no audio or TTS engine and no route to the public internet. Those tests still run on the iOS leg and locally via `scripts/run_integration_tests.sh` — so a green Android CI run says nothing about them. The web bundle (`all_tests_web.dart`) runs the launch smoke test live and bundles `epub_tts_web_test.dart` with its tests skipped in-file until the web-reader TTS plumbing lands (tracked in [Web Platform](../platform-specific/web.md)).
+
+The three tags in use — `native`, `network` and `web` — are declared in `example/dart_test.yaml`. Declaring a tag selects nothing; it only tells the runner the tag is intentional. A tag used in a test but missing from that file makes every device run print `Tags were used that weren't specified in dart_test.yaml` followed by a line per tagged test, which is 28 lines of noise on top of the suite output. Add a new tag there in the same run that introduces it.
 
 ### When the iOS job stalls before any test runs
 

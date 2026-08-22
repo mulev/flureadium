@@ -113,10 +113,12 @@ void main() {
       final args = log.first.arguments as List;
       final decorationList = args[1] as List;
       final decoMap = decorationList[0] as Map;
+      final styleMap = decoMap['style'] as Map;
 
       expect(decoMap['id'], equals('highlight-xyz'));
-      expect(decoMap['locator'], isA<Map>());
-      expect(decoMap['style'], isA<Map>());
+      expect((decoMap['locator'] as Map)['href'], equals('chapter1.xhtml'));
+      expect(styleMap['style'], equals('highlight'));
+      expect(styleMap['tint'], equals('#ffff00'));
     });
   });
 
@@ -170,6 +172,55 @@ void main() {
       );
 
       expect(seen, 'https://example.com');
+    });
+
+    test('forwards tap position from native method call', () async {
+      Offset? seen;
+      channel = ReadiumReaderChannel(
+        channelName,
+        onPageChanged: (_) {},
+        onTap: (position) => seen = position,
+      );
+
+      await channel.onMethodCall(
+        const MethodCall('onTap', {'x': 12.5, 'y': 30.0}),
+      );
+
+      expect(seen, const Offset(12.5, 30.0));
+    });
+
+    test('decodes an integer tap payload', () async {
+      Offset? seen;
+      channel = ReadiumReaderChannel(
+        channelName,
+        onPageChanged: (_) {},
+        onTap: (position) => seen = position,
+      );
+
+      await channel.onMethodCall(const MethodCall('onTap', {'x': 10, 'y': 20}));
+
+      expect(seen, const Offset(10, 20));
+    });
+
+    test('swallows a malformed tap payload but keeps handling taps', () async {
+      Offset? seen;
+      channel = ReadiumReaderChannel(
+        channelName,
+        onPageChanged: (_) {},
+        onTap: (position) => seen = position,
+      );
+
+      await expectLater(
+        channel.onMethodCall(const MethodCall('onTap', {'x': 'left'})),
+        completes,
+      );
+      expect(seen, isNull);
+
+      // The second call is what makes this test mean something: without it,
+      // deleting the whole `case 'onTap'` branch still passes, because the
+      // `default:` arm's UnimplementedError lands in the same catch.
+      await channel.onMethodCall(const MethodCall('onTap', {'x': 1, 'y': 2}));
+      expect(seen, const Offset(1, 2));
     });
   });
 }

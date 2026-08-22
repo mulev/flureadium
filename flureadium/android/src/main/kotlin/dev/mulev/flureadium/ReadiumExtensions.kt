@@ -35,20 +35,16 @@ private fun readiumColorFromCSS(cssColor: String): ReadiumColor {
     return ReadiumColor(color)
 }
 
-fun decorationFromMap(decoMap: Map<String, Any>): Decoration? {
-    try {
-        val id = decoMap["decorationId"] as String
-        val locator = Locator.fromJSON(jsonDecode(decoMap["locator"] as String) as JSONObject)
-            ?: throw Exception("Failed to deserialize locator")
-
-        @Suppress("UNCHECKED_CAST")
-        val style = decorationStyleFromMap(decoMap["style"] as Map<String, String>)
-            ?: throw Exception("Failed to deserialize decoration")
-        return Decoration(id, locator, style)
-    } catch (ex: Exception) {
-        Log.e("ReadiumExtensions", "Error mapping JSONObject to Decoration.Style: $ex")
-        return null
-    }
+fun decorationFromMap(decoMap: Map<String, Any>): Decoration {
+    val id = decoMap["id"] as? String
+        ?: throw IllegalArgumentException("Decoration is missing a String `id`: $decoMap")
+    val locatorMap = decoMap["locator"] as? Map<*, *>
+        ?: throw IllegalArgumentException("Decoration `$id` is missing a Map `locator`")
+    val locator = Locator.fromJSON(JSONObject(locatorMap))
+        ?: throw IllegalArgumentException("Decoration `$id` has an unreadable `locator`")
+    val style = decorationStyleFromMap(decoMap["style"] as? Map<*, *>)
+        ?: throw IllegalArgumentException("Decoration `$id` has an unreadable `style`")
+    return Decoration(id, locator, style)
 }
 
 fun decorationStyleFromMap(decoMap: Map<*, *>?): Decoration.Style? {

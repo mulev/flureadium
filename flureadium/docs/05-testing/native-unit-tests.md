@@ -33,11 +33,26 @@ It runs both platforms in sequence, keeps going if one fails, and prints a pass/
 
 Gradle skips `:flureadium:testDebugUnitTest` when its inputs haven't changed, reporting the task as `UP-TO-DATE` and running no tests — so re-running on an unchanged tree looks like a pass without actually executing anything. Pass `--rerun` to force a real run; it re-executes the test task while still skipping unnecessary recompilation.
 
+The same caching applies to `:flureadium:compileDebugKotlin` and `:flureadium:compileDebugUnitTestKotlin`: an empty warning grep proves nothing unless the log shows those task lines without `UP-TO-DATE` next to them (see [Seeing compiler warnings](#seeing-compiler-warnings)).
+
+### Seeing compiler warnings
+
+`testDebugUnitTest` prints test results, not Kotlin compiler warnings, so a green suite says nothing about the warning census. Compile the module directly through the same wrapper, and force the task to re-execute — an `UP-TO-DATE` `compileDebugKotlin` emits zero warnings whether or not a fix landed:
+
+```sh
+cd example/android
+./gradlew :flureadium:compileDebugKotlin --rerun-tasks 2>&1 | grep '^w:' | sort -u
+```
+
+Warnings from `~/fvm/versions/*/packages/flutter_tools/` belong to the Flutter SDK, not this repo; filter on the repo path when you want only our own lines.
+
 ## What it detects
 
-**Java (Android).** Gradle 8.x needs JDK 17 or newer. The script looks in this order: `$JAVA_HOME`, the `--java-home` value, the macOS `java_home` helper, the JetBrains Runtime bundled with Android Studio, and `java` on `PATH`. If none of them is a JDK 17+, it asks you to type a path (or `skip`).
+**Java (Android).** The Android build needs JDK 21 or newer: it compiles to `JvmTarget.JVM_18`, and javac emits no target above its own release, so a JDK 17 cannot build it. JDK 18 itself is worse than useless here — it is the one release that carries [JDK-8287073](https://bugs.openjdk.org/browse/JDK-8287073) with no fix available, so it crashes on Linux hosts whose kernel leaves the `memory` row out of `/proc/cgroups`. The script looks in this order: `$JAVA_HOME`, the `--java-home` value, the macOS `java_home` helper, the JetBrains Runtime bundled with Android Studio, and `java` on `PATH`. If none of them is a JDK 21+, it asks you to type a path (or `skip`).
 
 **Gradle (Android).** Tests run through the example app's Gradle wrapper at `example/android/gradlew`, so no separate Gradle install is needed. The task is `:flureadium:testDebugUnitTest`. Robolectric runs on the JVM, so no device or emulator is involved.
+
+**`org.json` on the JVM is not the `org.json` on a device.** The Android unit tests link JSON-java (`org.json:json:20240303`), while a real device runs AOSP's own `org.json`, and the two disagree about JSON-null values. `optString(key, fallback)` returns the fallback on JSON-java but the literal string `"null"` on AOSP; `getString(key)` throws on JSON-java but returns `"null"` on AOSP. Read a nullable JSON field with `isNull(key)`, which answers the same way in both, and expect that a JSON-null parsing bug cannot be reproduced from the JVM suite — it only shows up on hardware.
 
 **Simulator (iOS, macOS only).** It uses a booted simulator if one is running, otherwise it lists the installed iPhone simulators and boots the one you pick. It builds the example app for the simulator first — `flutter build ios --simulator --debug` — because XCTest fails silently without a fresh build when test files or dependencies changed. iOS is skipped with a reason on non-macOS hosts. The script leaves your simulators as it found them: one it booted itself is shut down on exit, and one that was already running is left running. `xcodebuild test` tears down its own test destination and can shut down a simulator it did not boot, so if it closes an already-running simulator the script re-boots it on exit.
 
@@ -57,6 +72,8 @@ The terminal shows a trimmed view by default — build verdicts, test results, a
 Reach for the script for the common case: run all native tests, or all of one platform. For the fine-grained iOS work — a single test method, deployment-target errors, simulator-runtime selection, registering a new `.swift` file in the Xcode project — see [ios-unit-tests.md](ios-unit-tests.md), which documents the raw `xcodebuild` commands the script wraps.
 
 Android test sources live in `android/src/test/kotlin/`. The script runs the whole `testDebugUnitTest` task; there is no single-class flag on the Android side yet.
+
+`ReadiumExtensionsDecorationTest.kt` is the JVM guard for the decoration wire format — the happy path plus every malformed field. It pairs with the iOS `EpubReaderCommandTests` and `ReadiumExtensionsTests` decoration cases and with the format written down in [decorations.md](../api-reference/decorations.md); change one and the other two have to move with it.
 
 ## Continuous integration
 

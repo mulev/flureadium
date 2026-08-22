@@ -5,20 +5,18 @@ import android.util.Log
 import android.view.ViewGroup
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.commitNow
+import com.github.barteksc.pdfviewer.PDFView
+import dev.mulev.flureadium.EdgeTapInterceptView
 import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.FlutterPdfPreferences
 import dev.mulev.flureadium.ReadiumReaderWidget.Companion.NAVIGATOR_FRAGMENT_TAG
 import dev.mulev.flureadium.fragments.PdfReaderFragment
 import dev.mulev.flureadium.models.PdfReaderViewModel
-import dev.mulev.flureadium.throttleLatest
 import dev.mulev.flureadium.withScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,7 +27,6 @@ import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.AbsoluteUrl
-import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "PdfNavigator"
 private const val currentVisualCurrentLocatorKey = "currentVisualCurrentLocator"
@@ -78,6 +75,14 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
         fun onExternalLinkActivated(url: AbsoluteUrl)
 
         /**
+         * Called when the user tapped the content and Readium handled nothing
+         * internally — no internal link, no interactive element.
+         *
+         * Coordinates are logical pixels relative to the navigator view.
+         */
+        fun onTap(x: Double, y: Double)
+
+        /**
          * Called when the current locator has changed.
          */
         fun onVisualCurrentLocationChanged(locator: Locator)
@@ -96,9 +101,52 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
     private var pdfNavigator: PdfReaderFragment? = null
 
     /**
+     * Forwards content taps from whichever Readium navigator the fragment holds.
+     */
+    private val tapForwarder = NavigatorTapForwarder { x, y -> visualListener.onTap(x, y) }
+
+    /**
+     * Reports throttled locator changes. Subscribed once, when the first page
+     * load marks the navigator ready.
+     */
+    private val locatorSubscription = VisualLocatorSubscription()
+
+    /**
      * Engine provider for PDF rendering.
      */
     private var engineProvider: PdfiumEngineProvider? = null
+
+    /**
+     * Navigation config last received from Flutter.
+     *
+     * Read when the pdfium adapter builds its PDFView, not when it is stored:
+     * the plugin holds no reference to that view, so a flag that arrives while
+     * a PDF is on screen applies from the next rebuild (a pause/resume cycle
+     * or a reopen), never mid-document.
+     */
+    private var navigationConfig: FlutterNavigationConfig? = null
+
+    /**
+     * Applied to every PDFView the pdfium adapter builds.
+     *
+     * Readium runs this before it registers its own listeners — see the
+     * comment in PdfiumDocumentFragment.reset() — so switching drag paging off
+     * cannot disturb the `.onTap` callback this epic depends on. In
+     * AndroidPdfViewer the flag gates only drag and fling: DragPinchManager
+     * checks isSwipeEnabled() in onFling and onScroll, while
+     * onSingleTapConfirmed reports the tap unconditionally.
+     *
+     * This is the only format whose swipe navigation is reachable at all.
+     * EPUB pages through the internal R2WebView and CBZ through an androidx
+     * ViewPager; neither exposes a toggle in Readium 3.1.2.
+     */
+    private val pdfViewConfigurator = object : PdfiumEngineProvider.Listener {
+        override fun onConfigurePdfView(configurator: PDFView.Configurator) {
+            configurator.enableSwipe(
+                EdgeTapInterceptView.effectiveSwipeEnabled(navigationConfig, isScrollMode = false)
+            )
+        }
+    }
 
     /**
      * Current locator in the PDF navigator.
@@ -113,7 +161,7 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
         get() = pdfNavigator!!.started
 
     override suspend fun initNavigator() {
-        engineProvider = PdfiumEngineProvider()
+        engineProvider = PdfiumEngineProvider(listener = pdfViewConfigurator)
 
         pdfNavigator = PdfReaderFragment().apply {
             vm = PdfReaderViewModel().apply {
@@ -195,19 +243,17 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
             return
         }
 
-        val currentLocator = navigator.currentLocator
-        if (currentLocator != null) {
-            currentLocator.throttleLatest(100.milliseconds)
-                .distinctUntilChanged()
-                .onEach { locator ->
-                    onCurrentLocatorChanges(locator)
-                    state[currentVisualCurrentLocatorKey] = locator
-                }
-                .launchIn(mainScope)
-                .let { jobs.add(it) }
-        } else {
-            Log.d(TAG, "::setupNavigatorListeners - currentLocator is null - navigator not ready?")
+        val job = locatorSubscription.subscribe(navigator.currentLocator, mainScope) { locator ->
+            onCurrentLocatorChanges(locator)
+            state[currentVisualCurrentLocatorKey] = locator
         }
+
+        if (job == null) {
+            Log.d(TAG, "::setupNavigatorListeners - currentLocator is null - navigator not ready?")
+            return
+        }
+
+        jobs.add(job)
     }
 
     override fun storeState(): Bundle {
@@ -226,8 +272,18 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
         }
     }
 
+    override fun onNavigatorReleased() {
+        // Mirrors the bind in onPageLoaded: the fragment has let the navigator go,
+        // so nothing should still be registered on it.
+        tapForwarder.unbind()
+    }
+
     override fun onPageLoaded() {
         Log.d(TAG, "::onPageLoaded")
+        // The fragment drops its Readium navigator on pause and builds a new one
+        // on resume, and hasNotifiedIsReady stops setupNavigatorListeners from
+        // running again — so the tap registration follows the page load instead.
+        tapForwarder.bindTo(pdfNavigator?.visualNavigator)
         visualListener.onPageLoaded()
 
         notifyIsReady()
@@ -264,6 +320,7 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
     }
 
     override suspend fun release() {
+        tapForwarder.unbind()
         super.dispose()
 
         pdfNavigator?.let { fragment ->
@@ -276,6 +333,7 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
     }
 
     override fun dispose() {
+        tapForwarder.unbind()
         super.dispose()
 
         mainScope.launch {
@@ -291,6 +349,7 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
     }
 
     fun setNavigationConfig(config: FlutterNavigationConfig) {
+        navigationConfig = config
         pdfNavigator?.setNavigationConfig(config)
     }
 

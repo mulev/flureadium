@@ -24,26 +24,37 @@ mixin TocSkipNavigationMixin {
   }
 
   /// Navigates to the table-of-contents entry after [currentLocator].
+  ///
+  /// [whenReady] is the host view's first-locator future. It is awaited only
+  /// when [currentLocator] is null — the window between a reader mounting and
+  /// its first `onPageChanged`, in which a host can already hold a position
+  /// from the `text-locator` channel while this cache is still empty.
   Future<void> skipToNextChapter({
     required Publication publication,
     required Locator? currentLocator,
     required ReadiumReaderChannel? channel,
+    Future<Locator?>? whenReady,
   }) => _skip(
     publication: publication,
     currentLocator: currentLocator,
     channel: channel,
+    whenReady: whenReady,
     forward: true,
   );
 
   /// Navigates to the table-of-contents entry before [currentLocator].
+  ///
+  /// [whenReady] is awaited on a cold cache, exactly as in [skipToNextChapter].
   Future<void> skipToPreviousChapter({
     required Publication publication,
     required Locator? currentLocator,
     required ReadiumReaderChannel? channel,
+    Future<Locator?>? whenReady,
   }) => _skip(
     publication: publication,
     currentLocator: currentLocator,
     channel: channel,
+    whenReady: whenReady,
     forward: false,
   );
 
@@ -52,16 +63,33 @@ mixin TocSkipNavigationMixin {
     required Locator? currentLocator,
     required ReadiumReaderChannel? channel,
     required bool forward,
+    Future<Locator?>? whenReady,
   }) async {
     final label = forward ? 'skipToNext' : 'skipToPrevious';
     final toc = flattenToc(publication.toc);
-    if (toc.isEmpty || currentLocator == null) {
-      R2Log.d('$label: no TOC or no current locator');
+    if (toc.isEmpty) {
+      R2Log.d('$label: no TOC');
+      return;
+    }
+
+    var position = currentLocator;
+    if (position == null && whenReady != null) {
+      R2Log.d('$label: locator cache is cold, waiting for the reader');
+      try {
+        position = await whenReady;
+      } on ReadiumError {
+        // The view was released before it reported a locator — a publication
+        // swap. There is no position to skip from and no channel to skip on.
+        return;
+      }
+    }
+    if (position == null) {
+      R2Log.d('$label: no current locator');
       return;
     }
 
     final resolved = resolveCurrentTocIndex(
-      currentLocator: currentLocator,
+      currentLocator: position,
       toc: toc,
       lastNavigatedTocIndex: _lastNavigatedTocIndex,
       lastMatch: forward,
@@ -73,7 +101,7 @@ mixin TocSkipNavigationMixin {
 
     final decide = forward ? decideSkipToNext : decideSkipToPrevious;
     final decision = decide(
-      currentLocator: currentLocator,
+      currentLocator: position,
       toc: toc,
       readingOrder: publication.readingOrder,
       currentTocIndex: resolved.index,

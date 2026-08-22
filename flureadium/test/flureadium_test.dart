@@ -30,7 +30,6 @@ void main() {
         );
 
         expect(mockPlatform.wasCalled('loadPublication'), isTrue);
-        expect(publication, isNotNull);
         expect(publication.metadata.title, equals('Test Book'));
       });
 
@@ -44,7 +43,7 @@ void main() {
           mockPlatform.lastCallArgs('openPublication')?['pubUrl'],
           equals('https://example.com/book.epub'),
         );
-        expect(publication, isNotNull);
+        expect(publication.metadata.title, equals('Test Book'));
       });
 
       test('closePublication calls platform method', () async {
@@ -261,17 +260,41 @@ void main() {
       });
 
       test('ttsGetAvailableVoices calls platform method', () async {
+        mockPlatform.mockVoices = [
+          ReaderTTSVoice(
+            identifier: 'voice-1',
+            name: 'Samantha',
+            language: 'en-US',
+            networkRequired: false,
+            gender: TTSVoiceGender.female,
+            quality: TTSVoiceQuality.high,
+          ),
+        ];
+
         final voices = await flureadium.ttsGetAvailableVoices();
 
         expect(mockPlatform.wasCalled('ttsGetAvailableVoices'), isTrue);
-        expect(voices, isA<List<ReaderTTSVoice>>());
+        expect(voices.single.identifier, equals('voice-1'));
+        expect(voices.single.language, equals('en-US'));
       });
 
       test('ttsGetSystemVoices calls platform method', () async {
+        mockPlatform.mockVoices = [
+          ReaderTTSVoice(
+            identifier: 'system-voice-1',
+            name: 'Alex',
+            language: 'en-GB',
+            networkRequired: false,
+            gender: TTSVoiceGender.male,
+            quality: TTSVoiceQuality.normal,
+          ),
+        ];
+
         final voices = await flureadium.ttsGetSystemVoices();
 
         expect(mockPlatform.wasCalled('ttsGetSystemVoices'), isTrue);
-        expect(voices, isA<List<ReaderTTSVoice>>());
+        expect(voices.single.identifier, equals('system-voice-1'));
+        expect(voices.single.language, equals('en-GB'));
       });
 
       test('ttsSetVoice calls platform method', () async {
@@ -303,7 +326,7 @@ void main() {
         final result = await flureadium.ttsCanSpeak();
 
         expect(mockPlatform.wasCalled('ttsCanSpeak'), isTrue);
-        expect(result, isA<bool>());
+        expect(result, isTrue);
       });
 
       test('ttsRequestInstallVoice delegates to platform', () async {
