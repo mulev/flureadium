@@ -29,7 +29,6 @@ import org.robolectric.annotation.Config
 internal class OverlayConfigurationTest {
 
     private val overlay = EdgeTapInterceptView(RuntimeEnvironment.getApplication())
-    private val pages = mutableListOf<String>()
 
     private val edgeTapsOn = FlutterNavigationConfig(
         enableEdgeTapNavigation = true,
@@ -86,13 +85,14 @@ internal class OverlayConfigurationTest {
         assertEquals(false, seedScrollMode(hostScroll = null, preferenceScroll = null))
     }
 
+    /** Wires callbacks so the overlay has a page turn to claim a strip for. */
     private fun wire() {
         overlay.layout(0, 0, 400, 800)
         overlay.wireCallbacks(
-            onLeft = { pages.add("left") },
-            onRight = { pages.add("right") },
-            onSwipeLeft = { pages.add("swipeLeft") },
-            onSwipeRight = { pages.add("swipeRight") },
+            onLeft = {},
+            onRight = {},
+            onSwipeLeft = {},
+            onSwipeRight = {},
         )
     }
 

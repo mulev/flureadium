@@ -123,15 +123,15 @@ internal class NavigatorTapRegistrationTest {
     }
 
     @Test
-    fun `epub drops the registration when the fragment releases its navigator`() {
+    fun `epub unbinds when told its navigator was released`() {
         val readium = mock(VisualNavigator::class.java)
         val navigator = epubNavigator(epubFragment(readium))
         navigator.onPageLoaded()
 
-        // What EpubReaderFragment.onPause() now reports, after removing the
-        // Readium navigator fragment. Without it the registration survived the
-        // pause and kept that fragment and its WebViews alive until the next page
-        // load happened to rebind.
+        // The wrapper's half of the pause edge. The fragment's half — that
+        // EpubReaderFragment.onPause() actually reports this — needs a Robolectric
+        // fragment harness the JVM suite does not have yet (flureadium-ebln), so
+        // this case deliberately claims only the override.
         navigator.onNavigatorReleased()
 
         verify(readium).removeInputListener(navigator.tapForwarder())
@@ -188,7 +188,7 @@ internal class NavigatorTapRegistrationTest {
     }
 
     @Test
-    fun `pdf drops the registration when the fragment releases its navigator`() {
+    fun `pdf unbinds when told its navigator was released`() {
         val readium = mock(VisualNavigator::class.java)
         val navigator = pdfNavigator(pdfFragment(readium))
         navigator.onPageLoaded()
