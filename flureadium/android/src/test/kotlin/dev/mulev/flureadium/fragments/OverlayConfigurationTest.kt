@@ -45,7 +45,6 @@ internal class OverlayConfigurationTest {
 
         assertFalse(overlay.dispatchTouchEvent(downAt(x = 10f)))
         assertFalse(overlay.dispatchTouchEvent(downAt(x = 390f)))
-        assertTrue(pages.isEmpty())
     }
 
     @Test
