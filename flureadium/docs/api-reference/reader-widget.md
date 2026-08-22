@@ -181,6 +181,18 @@ ReadiumReaderWidget(
 )
 ```
 
+One open can deliver several locators for the same page. On Android the first
+one comes from Readium's initial position for the resource and carries no
+`position` or `totalProgression` — the example above reads `0` for progress on
+that delivery — and a second locator follows within roughly 200 ms with both
+fields filled in. Neither is a page turn: `href` and `progression` are the same
+in both.
+
+So treat this callback as "here is the current position", not "the reader
+moved". Compare `href` and `progression` if you need to know whether the reader
+actually went somewhere; counting callbacks will tell you it moved when it did
+not.
+
 ### onReady
 
 **Type:** `VoidCallback?`
