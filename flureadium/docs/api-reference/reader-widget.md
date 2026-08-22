@@ -106,13 +106,15 @@ Two exceptions to read before you rely on it:
   what the tap forwarder reports. That follows from the wiring rather than from a
   device run; the CBZ edge case is on the manual verification list. iOS CBZ does
   have the overlay and follows the rule above.
-- **Swipes are gated differently per platform.** On Android a fling only pages
-  through the overlay if the edge-tap gate already claimed that strip, so
-  `enableSwipeNavigation` never holds a strip open — but Readium's own
-  `R2WebView` still pages a paginated EPUB on a horizontal drag, whatever either
-  flag says. On iOS the swipe recognizers sit on the full-size container and test
-  direction only, so with `enableSwipeNavigation` on, a swipe anywhere in the
-  reader pages regardless of `enableEdgeTapNavigation`.
+- **Swipes are gated differently per platform, and neither platform can switch
+  EPUB swiping off.** On Android a fling only pages through the overlay if the
+  edge-tap gate already claimed that strip, so `enableSwipeNavigation` never
+  holds a strip open — and Readium's own `R2WebView` still pages a paginated
+  EPUB on a horizontal drag, whatever either flag says. On iOS the plugin's swipe
+  recognizers sit on the full-size container and test direction only, so with
+  `enableSwipeNavigation` on a swipe anywhere pages regardless of
+  `enableEdgeTapNavigation`; with it off their callbacks are cleared, but
+  Readium's `PaginationView` keeps paging on a drag.
 
 See
 [Edge Tap and Swipe Navigation](../platform-specific/ios.md#edge-tap-and-swipe-navigation)

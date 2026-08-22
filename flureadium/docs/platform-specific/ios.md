@@ -500,9 +500,16 @@ points the overlay's callbacks at the navigator or clears them:
   turns are animated.
 - **Image reader** — same gate as PDF. CBZ and DIVINA turn pages without animation.
 
-Swipes follow the same rule as taps except for the threshold: they are wired whenever
-the reader is paginated and the host left `enableSwipeNavigation` on. Swiping left
-advances, swiping right goes back.
+Swipes follow the same rule as taps except for the threshold: the plugin's two
+recognizers are wired whenever the reader is paginated and the host left
+`enableSwipeNavigation` on. Swiping left advances, swiping right goes back.
+
+What turning the flag off does **not** do is stop paging. It clears those two
+callbacks — the recognizers stay attached to the overlay container and fire into
+nothing — while Readium's `PaginationView`, a paging `UIScrollView` this plugin
+never disables, still turns the page on a horizontal drag. Android has the same
+gap for its own reason (`R2WebView` owns the drag there), so no platform can
+switch EPUB swiping off through this flag.
 
 **Files:**
 - `EdgeTapInterceptView.swift` - Shared edge tap and swipe detection view
