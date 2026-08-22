@@ -60,7 +60,7 @@ EXAMPLE_DIR="$PLUGIN_DIR/example"
 ANDROID_APP_DIR="$EXAMPLE_DIR/android"
 IOS_APP_DIR="$EXAMPLE_DIR/ios"
 LOG_BASE="$PLUGIN_DIR/test_logs"
-MIN_JAVA_MAJOR=17
+MIN_JAVA_MAJOR=21
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 VERBOSE=false
