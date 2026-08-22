@@ -44,6 +44,7 @@ int _tapCount = 0;
 Offset? _lastTap;
 bool _ready = false;
 int _locatorCount = 0;
+Locator? _lastLocator;
 
 /// Pumps until [condition] holds, failing with [reason] on timeout.
 ///
@@ -59,6 +60,42 @@ Future<void> _expectEventually(
   expect(satisfied, isTrue, reason: reason);
 }
 
+/// A resource plus how far into it the reader sits — the page, as far as these
+/// cases need to tell one from another.
+typedef _Page = ({String? href, double? progression});
+
+/// How much progression may drift before it counts as movement. Matches the
+/// tolerance `epub_test.dart` uses for "the position did not move".
+const _progressionEpsilon = 0.01;
+
+/// The page the reader last reported.
+///
+/// Deliberately not a count of locators. One Android open reports the same page
+/// twice: Readium seeds `currentLocator` from `Manifest.locatorFromLink`, which
+/// carries no `position`, then rebuilds it about 180 ms later once positions
+/// load. Both name page 1 of the same resource, so a count rises while the
+/// reader stands still — href and progression do not.
+_Page _page() => (
+  href: _lastLocator?.href,
+  progression: _lastLocator?.locations?.progression,
+);
+
+/// Whether the reader has left [from].
+///
+/// One predicate serves the no-turn assertion and the turn detector below: two
+/// that disagreed on what counts as movement would leave a gap for a real
+/// regression to sit in.
+bool _movedFrom(_Page from) {
+  final now = _page();
+  if (now.href != from.href) return true;
+
+  final before = from.progression;
+  final after = now.progression;
+  if (before == null || after == null) return before != after;
+
+  return (after - before).abs() >= _progressionEpsilon;
+}
+
 void _edgeStripTapTests() {
   group('edge strip tap', () {
     Finder reader() => find.byType(ReadiumReaderWidget);
@@ -68,6 +105,7 @@ void _edgeStripTapTests() {
       _lastTap = null;
       _ready = false;
       _locatorCount = 0;
+      _lastLocator = null;
     });
 
     tearDown(() async {
@@ -149,8 +187,16 @@ void _edgeStripTapTests() {
       final rect = tester.getRect(reader());
       // With edge taps off the strip has to do both: report the tap, and not
       // page. A regression that reported the tap while still turning the page
-      // would pass on the report alone, so the locator count is checked too.
-      final locatorsBefore = _locatorCount;
+      // would pass on the report alone, so the page is checked too — by
+      // identity, never by locator count, for the reason `_page` records.
+      //
+      // The other direction — a claimed strip that does page — is not testable
+      // from here: `GestureDetector.onSingleTapConfirmed` needs the double-tap
+      // timeout to expire on a real touch sequence, and a `WidgetTester` tap
+      // never gets that far. The overlay logs `claimed=true` and nothing
+      // follows. `EdgeTapInterceptViewDispatchTest` owns that case on the JVM,
+      // where `ShadowLooper` can run the delayed confirm.
+      final before = _page();
       await expectTapAt(
         tester,
         Offset(rect.left + _stripInset, rect.center.dy),
@@ -160,9 +206,11 @@ void _edgeStripTapTests() {
         Offset(rect.right - _stripInset, rect.center.dy),
       );
       expect(
-        _locatorCount,
-        locatorsBefore,
-        reason: 'a strip tap turned a page with edge-tap navigation off',
+        _movedFrom(before),
+        isFalse,
+        reason:
+            'a strip tap turned a page with edge-tap navigation off: '
+            '$before -> ${_page()}',
       );
     });
   });
@@ -192,7 +240,10 @@ class _EdgeStripHarnessState extends State<_EdgeStripHarness> {
             child: ReadiumReaderWidget(
               publication: widget.publication,
               onReady: () => setState(() => _ready = true),
-              onLocatorChanged: (_) => setState(() => _locatorCount++),
+              onLocatorChanged: (locator) => setState(() {
+                _locatorCount++;
+                _lastLocator = locator;
+              }),
               onTap: (position) => setState(() {
                 _tapCount++;
                 _lastTap = position;
