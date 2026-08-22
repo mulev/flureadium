@@ -48,7 +48,7 @@ Warnings from `~/fvm/versions/*/packages/flutter_tools/` belong to the Flutter S
 
 ## What it detects
 
-**Java (Android).** Gradle 8.x needs JDK 17 or newer. The script looks in this order: `$JAVA_HOME`, the `--java-home` value, the macOS `java_home` helper, the JetBrains Runtime bundled with Android Studio, and `java` on `PATH`. If none of them is a JDK 17+, it asks you to type a path (or `skip`).
+**Java (Android).** The Android build needs JDK 21 or newer: it compiles to `JvmTarget.JVM_18`, and javac emits no target above its own release, so a JDK 17 cannot build it. JDK 18 itself is worse than useless here — it is the one release that carries [JDK-8287073](https://bugs.openjdk.org/browse/JDK-8287073) with no fix available, so it crashes on Linux hosts whose kernel leaves the `memory` row out of `/proc/cgroups`. The script looks in this order: `$JAVA_HOME`, the `--java-home` value, the macOS `java_home` helper, the JetBrains Runtime bundled with Android Studio, and `java` on `PATH`. If none of them is a JDK 21+, it asks you to type a path (or `skip`).
 
 **Gradle (Android).** Tests run through the example app's Gradle wrapper at `example/android/gradlew`, so no separate Gradle install is needed. The task is `:flureadium:testDebugUnitTest`. Robolectric runs on the JVM, so no device or emulator is involved.
 
