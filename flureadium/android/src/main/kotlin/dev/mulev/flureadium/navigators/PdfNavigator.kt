@@ -272,6 +272,12 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
         }
     }
 
+    override fun onNavigatorReleased() {
+        // Mirrors the bind in onPageLoaded: the fragment has let the navigator go,
+        // so nothing should still be registered on it.
+        tapForwarder.unbind()
+    }
+
     override fun onPageLoaded() {
         Log.d(TAG, "::onPageLoaded")
         // The fragment drops its Readium navigator on pause and builds a new one

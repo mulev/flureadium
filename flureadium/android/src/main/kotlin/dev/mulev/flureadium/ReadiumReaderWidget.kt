@@ -47,7 +47,7 @@ class ReadiumReaderWidget(
     messenger: BinaryMessenger,
     attrs: AttributeSet? = null
 ) : PlatformView, MethodChannel.MethodCallHandler,
-    EpubReaderFragment.Listener, EpubNavigator.VisualListener, PdfNavigator.VisualListener {
+    EpubNavigator.VisualListener, PdfNavigator.VisualListener {
 
     private val channel: ReadiumReaderChannel
     private val layout: ViewGroup
@@ -680,8 +680,16 @@ class ReadiumReaderWidget(
                                 return@launch
                             } else {
                                 setPreferencesFromMap(prefsMap)
-                                val isScrollMode = prefsMap["verticalScroll"]?.toBoolean() == true
-                                ReadiumReader.epubSetScrollMode(isScrollMode)
+
+                                // Only when the host actually said something about
+                                // scrolling. setPreferencesFromMap treats an absent
+                                // key as "keep the current value", and reading it as
+                                // false here used to latch paginated onto the reader
+                                // fragment, which then rebuilt its overlay claiming
+                                // both edge strips over a scrolling WebView.
+                                prefsMap["verticalScroll"]?.toBoolean()?.let {
+                                    ReadiumReader.epubSetScrollMode(it)
+                                }
                             }
                             result.success(null)
                         } catch (ex: Exception) {

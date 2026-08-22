@@ -122,6 +122,21 @@ internal class NavigatorTapRegistrationTest {
         verify(readium).removeInputListener(navigator.tapForwarder())
     }
 
+    @Test
+    fun `epub drops the registration when the fragment releases its navigator`() {
+        val readium = mock(VisualNavigator::class.java)
+        val navigator = epubNavigator(epubFragment(readium))
+        navigator.onPageLoaded()
+
+        // What EpubReaderFragment.onPause() now reports, after removing the
+        // Readium navigator fragment. Without it the registration survived the
+        // pause and kept that fragment and its WebViews alive until the next page
+        // load happened to rebind.
+        navigator.onNavigatorReleased()
+
+        verify(readium).removeInputListener(navigator.tapForwarder())
+    }
+
     // MARK: - PDF
 
     @Test
@@ -168,6 +183,17 @@ internal class NavigatorTapRegistrationTest {
         navigator.setFragmentForTest("pdfNavigator", null)
 
         navigator.release()
+
+        verify(readium).removeInputListener(navigator.tapForwarder())
+    }
+
+    @Test
+    fun `pdf drops the registration when the fragment releases its navigator`() {
+        val readium = mock(VisualNavigator::class.java)
+        val navigator = pdfNavigator(pdfFragment(readium))
+        navigator.onPageLoaded()
+
+        navigator.onNavigatorReleased()
 
         verify(readium).removeInputListener(navigator.tapForwarder())
     }

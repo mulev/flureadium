@@ -40,6 +40,12 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
         fun onPageLoaded()
 
         /**
+         * Called when this fragment has let go of its Readium navigator, so
+         * anything registered on that navigator has to be released too.
+         */
+        fun onNavigatorReleased()
+
+        /**
          * Called when the current page has changed.
          */
         fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator)
@@ -218,6 +224,10 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
             edgeTapInterceptView?.let { (view as? FrameLayout)?.removeView(it) }
             edgeTapInterceptView = null
 
+            // After the navigator is gone: the listener releases what it
+            // registered on it rather than holding it across the pause.
+            listener?.onNavigatorReleased()
+
             super.onPause()
         } finally {
             Log.d(TAG, "::onPause - $instance - ended")
@@ -295,9 +305,12 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
                 onSwipeLeft = { goRight(animated = true) },
                 onSwipeRight = { goLeft(animated = true) },
             )
-            // PDF is always paginated, so scroll mode is never on here — passing it
-            // explicitly keeps both readers on one configuration path.
-            configureOverlay(overlay, storedNavigationConfig, isScrollMode = false)
+            // A PDF can be vertically scrolled — PDFPreferences.scrollMode reaches
+            // the navigator factory — and the rebuilt overlay starts paginated, so
+            // the preference has to be handed to it again. Readium takes PDF
+            // preferences only at navigator creation, so the view model holds the
+            // value this navigator was built with.
+            configureOverlay(overlay, storedNavigationConfig, pdfVm?.scroll == true)
             rootView.addView(overlay)
             edgeTapInterceptView = overlay
         }

@@ -253,6 +253,14 @@ class EpubNavigator : BaseNavigator, EpubReaderFragment.Listener {
     override fun storeState(): Bundle =
         EpubNavigatorState.toBundle(state[EpubNavigatorState.LOCATOR_KEY] as? Locator, preferences)
 
+    override fun onNavigatorReleased() {
+        // The fragment has removed its Readium navigator. Registering follows the
+        // page load, so releasing has to follow the teardown, or this forwarder
+        // holds a removed navigator fragment and its WebViews until the next
+        // resume rebinds — and removeInputListener never runs for that instance.
+        tapForwarder.unbind()
+    }
+
     override fun onPageLoaded() {
         val currentFragment = epubNavigator
         Log.d(TAG, "::onPageLoaded - href=${currentFragment?.currentLocator?.value?.href}")

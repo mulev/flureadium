@@ -44,6 +44,16 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
         fun onPageLoaded()
 
         /**
+         * Called when this fragment has let go of its Readium navigator, so
+         * anything registered on that navigator has to be released too.
+         *
+         * onPause removes the navigator fragment and its WebViews. Without this,
+         * a listener registered on it stays registered and keeps it alive until
+         * the next page load rebinds — a retention window nobody owned.
+         */
+        fun onNavigatorReleased()
+
+        /**
          * Called when the current page has changed.
          */
         fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator)
@@ -285,6 +295,11 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
 
             edgeTapInterceptView?.let { (view as? FrameLayout)?.removeView(it) }
             edgeTapInterceptView = null
+
+            // After the navigator is gone, not before: the listener releases what
+            // it registered on it, and holding that registration through a pause
+            // would keep the removed fragment and its WebViews alive.
+            listener?.onNavigatorReleased()
 
             super.onPause()
         } finally {
