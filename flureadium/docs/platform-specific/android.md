@@ -201,18 +201,23 @@ skips all of it.
 ### Saved-State Restore
 
 Android can destroy the Activity and rebuild it later, after a rotation or
-under "Don't keep activities" during development. `ReadiumReader` registers one
-saved-state provider per navigator, and each provider writes two things into
-the bundle: where the reader was, and how that navigator was configured. On
-restore the navigator is rebuilt from the bundle alone. Nothing asks Dart for
-the preferences a second time, so whatever the bundle loses stays lost.
+under "Don't keep activities" during development. `ReadiumReader` registers a
+single saved-state provider, and the bundle it hands back nests one child
+bundle per live navigator. A child bundle carries where that navigator was and,
+if the navigator has preferences, how it was configured — `ImageNavigator` has
+none, so it stores only the locator. On restore each navigator is rebuilt from
+its child bundle alone. Nothing asks Dart for the preferences a second time, so
+whatever the bundle loses stays lost.
 
 That makes the bundle a wire format with the same rules as the method channel.
 Enums crossing it are written and read in the Flutter spelling, `chapterTitle`
 rather than `CHAPTER_TITLE`, which is what makes a restored value equal the one
-the host set. Write the Kotlin constant name instead and the parser quietly
-falls back to its default. `ControlPanelInfoType` is the worked example: its
-`toString()` returns the wire spelling and `fromString` reads exactly that.
+the host set. `ControlPanelInfoType` is the worked example: its `toString()`
+returns the wire spelling and `fromString` reads exactly that. Write the Kotlin
+constant name into a hand-written codec like that one and the parser quietly
+falls back to its default. The EPUB bundle goes the other way: it encodes
+`EpubPreferences` with kotlinx, which keys enums by constant name and throws on
+a value it does not know rather than defaulting.
 
 ### Event Channels
 
