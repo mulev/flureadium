@@ -215,9 +215,10 @@ rather than `CHAPTER_TITLE`, which is what makes a restored value equal the one
 the host set. `ControlPanelInfoType` is the worked example: its `toString()`
 returns the wire spelling and `fromString` reads exactly that. Write the Kotlin
 constant name into a hand-written codec like that one and the parser quietly
-falls back to its default. The EPUB bundle goes the other way: it encodes
-`EpubPreferences` with kotlinx, which keys enums by constant name and throws on
-a value it does not know rather than defaulting.
+falls back to its default. The EPUB bundle differs only in what an unreadable
+value costs: it encodes `EpubPreferences` with kotlinx, and every enum in there
+carries a `@SerialName` of its own (`light`, `ltr`, `justify`), so the spelling
+rule is the same — but an unknown one throws instead of quietly defaulting.
 
 ### Event Channels
 
