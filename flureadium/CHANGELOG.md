@@ -1,3 +1,13 @@
+## 0.17.1
+
+### Bug Fixes
+
+- **An Android control-panel layout other than the default survives activity recreation now**: `ControlPanelInfoType` read the Flutter spelling (`chapterTitle`) but wrote the Kotlin constant name (`CHAPTER_TITLE`), because the only function producing the wire spelling sat on the companion where an instance `toString()` call could never reach it. Android saved state writes the value with `?.toString()`, so a saved `chapterTitle` came back unparseable and the reader's `else -> STANDARD` fallback turned it into the default. After a rotation, a low-memory kill or process death, the media notification and lockscreen quietly reverted to publication title plus authors. The wire spelling is now the enum's own `toString()`, which fixes the TTS and audiobook paths together, and the unreachable companion function is gone.
+
+### Documentation
+
+- `docs/platform-specific/android.md` has a "Saved-State Restore" section: one provider whose bundle nests a child bundle per live navigator, nothing re-asks Dart for preferences on restore, and enums crossing the bundle use the spelling the method channel uses. It also names the split between the hand-written codecs, which fall back to a default on a string they cannot read, and the EPUB bundle's kotlinx encoding, which throws.
+
 ## 0.17.0
 
 ### Breaking changes

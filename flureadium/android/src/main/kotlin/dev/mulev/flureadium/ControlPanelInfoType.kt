@@ -7,6 +7,18 @@ enum class ControlPanelInfoType {
     CHAPTER_TITLE,
     TITLE_CHAPTER;
 
+    /**
+     * The Flutter spelling of this value — the same string Dart sends over the
+     * method channel and the only form [Companion.fromString] can read back.
+     */
+    override fun toString(): String = when (this) {
+        STANDARD -> "standard"
+        STANDARD_WCH -> "standardWCh"
+        CHAPTER_TITLE_AUTHOR -> "chapterTitleAuthor"
+        CHAPTER_TITLE -> "chapterTitle"
+        TITLE_CHAPTER -> "titleChapter"
+    }
+
     companion object {
         fun fromString(value: String): ControlPanelInfoType = when (value) {
             "standard" -> STANDARD
@@ -16,14 +28,5 @@ enum class ControlPanelInfoType {
             "titleChapter" -> TITLE_CHAPTER
             else -> STANDARD
         }
-
-        fun toString(type: ControlPanelInfoType): String = when (type) {
-            STANDARD -> "standard"
-            STANDARD_WCH -> "standardWCh"
-            CHAPTER_TITLE_AUTHOR -> "chapterTitleAuthor"
-            CHAPTER_TITLE -> "chapterTitle"
-            TITLE_CHAPTER -> "titleChapter"
-        }
     }
-
 }

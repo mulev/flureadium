@@ -198,6 +198,28 @@ including the channels below.
 widget, saved-state restore, and the event channels below. A headless engine
 skips all of it.
 
+### Saved-State Restore
+
+Android can destroy the Activity and rebuild it later, after a rotation or
+under "Don't keep activities" during development. `ReadiumReader` registers a
+single saved-state provider, and the bundle it hands back nests one child
+bundle per live navigator. A child bundle carries where that navigator was and,
+if the navigator has preferences, how it was configured — `ImageNavigator` has
+none, so it stores only the locator. On restore each navigator is rebuilt from
+its child bundle alone. Nothing asks Dart for the preferences a second time, so
+whatever the bundle loses stays lost.
+
+That makes the bundle a wire format with the same rules as the method channel.
+Enums crossing it are written and read in the Flutter spelling, `chapterTitle`
+rather than `CHAPTER_TITLE`, which is what makes a restored value equal the one
+the host set. `ControlPanelInfoType` is the worked example: its `toString()`
+returns the wire spelling and `fromString` reads exactly that. Write the Kotlin
+constant name into a hand-written codec like that one and the parser quietly
+falls back to its default. The EPUB bundle differs only in what an unreadable
+value costs: it encodes `EpubPreferences` with kotlinx, and every enum in there
+carries a `@SerialName` of its own (`light`, `ltr`, `justify`), so the spelling
+rule is the same — but an unknown one throws instead of quietly defaulting.
+
 ### Event Channels
 
 All four Flutter EventChannels are registered in `ReadiumReader.attach()`, which
