@@ -209,6 +209,13 @@ Fragment identifiers for the position.
 locations.fragments  // ['heading-1', 'toc=Chapter%201']
 ```
 
+In an EPUB, the `toc=` fragment carries the id of the heading that names the
+reader's position. It either carries an id or is not there; it is never present
+with an empty value. So a host can treat its presence as proof that a heading
+resolved and look the id up in the table of contents without guarding against a
+blank one. When no heading, section or body around the position carries an id,
+no `toc=` fragment is emitted.
+
 #### progression
 
 **Type:** `double?`
