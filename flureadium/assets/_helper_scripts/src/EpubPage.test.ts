@@ -1,5 +1,5 @@
 import { EpubPage } from './EpubPage';
-import { Locations, Readium } from './types';
+import { Locations, Locator, Readium } from './types';
 
 // Mock the global readium object
 const mockScrollToPosition = jest.fn();
@@ -169,6 +169,61 @@ describe('EpubPage', () => {
         // 0 is a valid progression, should be used
         expect(mockScrollToPosition).toHaveBeenCalledWith(0);
       });
+    });
+  });
+  describe('isLocatorVisible', () => {
+    // jsdom lays nothing out, so every rect is zero and every range reads as
+    // off-screen — each case states the rect it wants. jsdom's Range carries no
+    // getBoundingClientRect at all, so this defines one rather than spying on it.
+    const withRect = (rect: Partial<DOMRect>) => {
+      (Range.prototype as any).getBoundingClientRect = () => ({
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        ...rect,
+      });
+    };
+
+    const locatorFor = (cssSelector: string): Locator => ({
+      href: 'front.xhtml',
+      locations: {
+        cssSelector,
+        progression: null,
+        totalProgression: null,
+        fragments: null,
+        domRange: null,
+      },
+    });
+
+    beforeEach(() => {
+      document.body.innerHTML = '<h1 id="a0">Title</h1><h2 id="a1">Byline</h2>';
+    });
+
+    afterEach(() => {
+      delete (Range.prototype as any).getBoundingClientRect;
+      document.body.innerHTML = '';
+    });
+
+    it('reports a range on the current page as visible', () => {
+      // No `activeLocation` marker anywhere: a table-of-contents entry the
+      // reader merely happens to be showing never carries one.
+      withRect({ top: 10, right: 100, bottom: 40, left: 0 });
+
+      expect(epubPage.isLocatorVisible(locatorFor('#a1'))).toBe(true);
+    });
+
+    it('reports a range past the viewport as not visible', () => {
+      const { innerWidth } = window;
+      withRect({ top: 10, right: innerWidth + 200, bottom: 40, left: innerWidth + 100 });
+
+      expect(epubPage.isLocatorVisible(locatorFor('#a1'))).toBe(false);
+    });
+
+    it('reports a selector that matches nothing as not visible', () => {
+      withRect({ top: 10, right: 100, bottom: 40, left: 0 });
+
+      expect(epubPage.isLocatorVisible(locatorFor('#nowhere'))).toBe(false);
     });
   });
 });

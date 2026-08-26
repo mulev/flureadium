@@ -130,9 +130,12 @@ export class EpubPage {
         this._debugLog(`isLocatorVisible: Unknown range`, locations);
         return false;
       }
-      // Checks also that the locator also contains `active` class.
-      // TODO: This doesn't do what we expect, if the range is visible but not active, this function will return false.
-      return this._isProcessedRangeVisible(range) && !!document.querySelector(`${selector} #${this._activeLocationId}`);
+      // Visibility of the range itself, which is what the name promises and
+      // what `_scrollToProcessedRange` acts on. It used to also require an
+      // `activeLocation` marker inside the range — a marker only `setLocation`
+      // plants — so every locator the reader was merely showing reported not
+      // visible.
+      return this._isProcessedRangeVisible(range);
     } catch (error) {
       this._errorLog(error);
 
