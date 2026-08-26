@@ -92,6 +92,35 @@ A useful side effect of the measurement: `onTap`'s `Offset` is in **logical
 pixels, origin at the top-left of the platform view**. A tap at raw
 (540, 1200) on a 1080x2400 emulator at density 2.625 reported `205.7, 457.1`.
 
+## The chrome has to stay reachable
+
+The example app's control bar grows with every button added to it. Its `Column`
+has no maximum height and no scroll view, so on a short screen it is taller than
+the viewport and reaches the top-left corner, where the `toggle-controls` button
+sits.
+
+`tap_test` takes the chrome down before every tap by tapping that button, the one
+route to the controls that does not depend on the native tap working. A `Stack`
+hit-tests its children in reverse paint order, so the toggle block is the last
+child of the page stack in `example/lib/main.dart`. Move it earlier, or put
+anything after it, and a tall bar swallows the tap: the chrome never goes down,
+and every tap case fails with "the control bar never became hidden".
+
+Only a short screen shows this. CI runs the `Nexus 6` profile, 1440x2560 at 560
+dpi, which leaves a 682 dp app area; a common local emulator has closer to 900
+dp, enough slack to hide the overlap for another handful of buttons. Shrink the
+emulator to reproduce it:
+
+```sh
+adb shell wm size 1440x2472 && adb shell wm density 560   # ~688 dp app area
+cd flureadium/example && flutter test integration_test/tap_test.dart -d <emulator>
+adb shell wm size reset && adb shell wm density reset
+```
+
+The screen-independent guard is in `example/test/widget_test.dart`: it pumps the
+app at 411x400, taps the toggle, and requires the bar to go. That one fails on
+any machine, so the ordering cannot be undone unnoticed.
+
 ## Forcing a reader failure
 
 `error_handling_test.dart`'s `Reader failure` group proves the app survives a
