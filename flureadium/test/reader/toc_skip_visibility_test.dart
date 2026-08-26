@@ -168,6 +168,32 @@ void main() {
       expect(_entryOf(channel.goCallLog.single.locator), 'c1');
     });
 
+    test('an entry with no resource of its own stops the walk', () async {
+      // `locatorFromLink` answers null when the entry's file is missing from
+      // the reading order, so there is nothing to probe and nothing to skip.
+      final publication = Publication(
+        metadata: Metadata(
+          localizedTitle: LocalizedString.fromString('Ghost Entry Book'),
+          identifier: 'ghost-entry-book',
+        ),
+        readingOrder: [Link(href: '/ch1.xhtml', type: 'application/xhtml+xml')],
+        tableOfContents: [
+          Link(href: '/ghost.xhtml#g0', type: 'application/xhtml+xml'),
+          Link(href: '/ghost.xhtml#g1', type: 'application/xhtml+xml'),
+        ],
+      );
+      channel.visible = (_) => true;
+
+      await navigator.skipToNextChapter(
+        publication: publication,
+        currentLocator: _atEntry('/ghost.xhtml', 'g0'),
+        channel: channel,
+      );
+
+      expect(channel.visibilityProbeLog, isEmpty);
+      expect(channel.goCallLog, isEmpty);
+    });
+
     test('skipToPreviousChapter walks symmetrically', () async {
       channel.visible = (locator) =>
           const ['a4', 'a3'].contains(_entryOf(locator));
