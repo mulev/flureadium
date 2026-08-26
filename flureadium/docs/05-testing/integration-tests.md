@@ -418,6 +418,38 @@ naming the cause instead of counting widgets. Revert the URL afterwards.
   a cold-booted or wiped emulator doesn't report an empty voice list. If voices
   are still empty, install the engine's voice data (Settings → System →
   Languages & input → Text-to-speech output).
+- Working name resolution **on the device**, for the `network`-tagged tests. The
+  runner opens a TCP connection to `readium.org:443` by name over `adb shell`
+  before the Android leg and refuses to start when that fails, because a dead
+  resolver turns every one of those tests red at once and the result reads like
+  a plugin defect. That has already happened once: a 100% WebPub open failure
+  was filed as a code bug on the strength of it (flureadium-9m3e).
+
+  The emulator copies the host's resolver list when it boots. An IPv6-first list
+  can leave it holding a server it has no route to, and then the guest resolves
+  nothing while raw IPv4 TCP keeps working: `nc 185.199.110.153 80` returns a
+  response from GitHub on a machine where no hostname resolves at all.
+
+  **`ping` settles nothing either way.** The virtual router forwards all
+  outbound TCP and UDP but ["might not support other protocols, such as ICMP,
+  which is used for `ping`"](https://developer.android.com/studio/run/emulator-networking-address),
+  so a failed ping is the documented normal state of a healthy emulator. Reading
+  one as evidence of a dead network is what produced the misdiagnosis above.
+
+  Give the AVD its own resolver:
+
+  ```sh
+  # The AVD directory name can differ from the AVD name:
+  # Medium_Phone_API_33 lives in Medium_Phone_2.avd
+  echo 'commandLineOptions=-dns-server 8.8.8.8,8.8.4.4' \
+    >> ~/.android/avd/<avd-dir>.avd/user-settings.ini
+
+  # or, per launch
+  emulator -avd <name> -dns-server 8.8.8.8,8.8.4.4
+
+  # then confirm
+  adb -s emulator-5554 shell dumpsys connectivity | grep -o 'DnsAddresses: \[[^]]*\]'
+  ```
 
 ### iOS
 - Flutter SDK (stable channel)
@@ -432,6 +464,8 @@ naming the cause instead of counting widgets. Revert the URL afterwards.
 ## Test Runner Script
 
 `scripts/run_integration_tests.sh` runs all three platforms sequentially from a single command. It continues after failures and writes logs to a gitignored `test_logs/` directory.
+
+One thing it does not continue past: a device prerequisite it can check up front. If the Android device cannot resolve `readium.org`, the run stops before anything is installed and prints the `-dns-server` fix, rather than spending twenty minutes producing a red suite whose cause is the machine. The check runs only when the Android leg runs. Pass `--skip-android`, or attach no Android device at all, and it never fires. iOS needs no equivalent: the simulator uses the host's networking stack directly instead of a copy of its resolver list.
 
 > To run this suite together with the Dart unit and native suites in one command, use the [God-Tier Test Runner](all-tests.md).
 
