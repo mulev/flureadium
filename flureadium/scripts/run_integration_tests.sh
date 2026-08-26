@@ -35,9 +35,10 @@
 #   default synthesizer, so the EPUB TTS tests query an unconfigured engine,
 #   get an empty voice list, and fail nondeterministically.
 #   It also checks that the device can reach readium.org by name, and refuses to
-#   start when it cannot: a dead resolver fails every network-tagged test at
-#   once, which reads like a plugin defect. Launch the emulator with
-#   -dns-server 8.8.8.8,8.8.4.4 to fix that.
+#   run the Android leg when it cannot: a dead resolver fails every
+#   network-tagged test at once, which reads like a plugin defect. That is a
+#   forced skip like any other — iOS and Web still run and the run fails at the
+#   end naming Android. Launch the emulator with -dns-server 8.8.8.8,8.8.4.4.
 #
 # Tags:
 #   native  — needs a real audio or TTS engine
@@ -289,8 +290,10 @@ ensure_android_tts() {
 # ping is the documented normal state of a healthy emulator.
 #
 # Unlike ensure_android_tts, this is not best-effort: it returns non-zero and
-# the caller aborts. A probe that could not run is a failure, not a pass — a
-# runner that skips its work and exits 0 is a lie no ledger can catch.
+# the caller marks the Android leg NOT RUN, which fails the run at the end. A
+# probe that could not run is a failure, not a pass — a runner that skips its
+# work and exits 0 is a lie no ledger can catch. It stops the Android leg only:
+# the iOS and Web legs still run, and the summary still names what did not.
 ensure_android_dns() {
   local device="$1"
   local host="readium.org"
@@ -391,6 +394,7 @@ try_start_chromedriver() {
 
 # ── Resolve devices ───────────────────────────────────────────────────────────
 ANDROID_SKIP_REASON=""
+ANDROID_SKIP_FIX=""
 IOS_SKIP_REASON=""
 WEB_SKIP_REASON=""
 
@@ -517,11 +521,20 @@ if [ "$SKIP_ANDROID" = false ]; then
   # A dead resolver on the device fails every network-tagged test in a way that
   # looks like a code defect. Refuse to start rather than produce that red.
   # Checked first: it is the cheapest fatal prerequisite, so nothing is
-  # installed and no logcat capture is running when it aborts.
+  # installed and no logcat capture is running when it trips.
+  #
+  # It fails the leg, not the process. Aborting here would drop the iOS and Web
+  # legs and the summary along with it, which is the coverage-deleting move this
+  # whole check exists to argue against — and it would report a broken resolver
+  # by printing nothing about the two suites that never ran.
   if ! ensure_android_dns "$ANDROID_DEVICE"; then
-    log "Aborted."
-    exit 1
+    SKIP_ANDROID=true
+    ANDROID_SKIP_REASON="$ANDROID_DEVICE failed the name-resolution pre-flight"
+    ANDROID_SKIP_FIX="Give the AVD its own resolver (see the DNS block above), then re-run — or pass --skip-android to run without it."
   fi
+fi
+
+if [ "$SKIP_ANDROID" = false ]; then
 
   # Pin the default TTS engine so the EPUB TTS tests have a configured
   # synthesizer (a cold/wiped emulator leaves it unset → empty voice list).
@@ -548,7 +561,7 @@ if [ "$SKIP_ANDROID" = false ]; then
   log "  Native logs: $LOG_DIR/android_native.log"
 else
   report_skip "Android" "$ANDROID_SKIP_REASON" \
-    "Start an emulator or attach a device, then re-run — or pass --skip-android to run without it."
+    "${ANDROID_SKIP_FIX:-Start an emulator or attach a device, then re-run — or pass --skip-android to run without it.}"
 fi
 
 # ── iOS ───────────────────────────────────────────────────────────────────────
