@@ -115,7 +115,7 @@ Future<void> goRight()
 
 ### skipToNext
 
-Skips to the next chapter or resource.
+Skips to the next chapter or resource. Entries already on the reader's current page are passed over, so every call moves the reader — see [`skipToNext` on the reader widget](reader-widget.md#skiptonext).
 
 ```dart
 Future<void> skipToNext()
