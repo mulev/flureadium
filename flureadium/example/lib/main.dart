@@ -3,10 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:collection/collection.dart';
+import 'package:flureadium/flureadium.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flureadium/flureadium.dart';
+
 import 'audio_stream_fixtures.dart';
 import 'car_stub.dart';
 
@@ -99,6 +100,12 @@ class _ReaderPageState extends State<ReaderPage> {
   // Latches the last error delivered on onErrorEvent so integration tests can
   // assert that a failed audio resource load surfaces instead of stalling.
   String _lastAudioError = '';
+  // Latches the last failure from an open path so integration tests can assert
+  // that an open succeeded, rather than that some reader widget is on screen.
+  // Cleared by _resetPublicationLatches, which every successful open reaches:
+  // an error left latched past the next good open would fail a later test for
+  // a fault that is already over.
+  String _lastOpenError = '';
   // Local server backing the 'Open AudioBook BadStream' action: serves a WAV
   // whose Content-Length promises the full clip but drops the socket after a
   // partial body, producing a mid-stream failure both audio engines observe.
@@ -191,75 +198,57 @@ class _ReaderPageState extends State<ReaderPage> {
     super.dispose();
   }
 
-  Future<void> _openEpub() async {
+  /// Runs one open path, recording any failure where a test can see it.
+  ///
+  /// Every opener used to carry its own `catch (e) { debugPrint(...) }`, which
+  /// meant a failed open left no trace in the widget tree — a test could only
+  /// observe it by noticing a reader that never appeared, and any reader
+  /// already on screen hid even that. Sixteen copies of that block is also how
+  /// the omission stayed invisible: there was no single place to fix.
+  Future<void> _runOpen(String label, Future<void> Function() body) async {
     try {
-      await _openPublicationAsset('assets/pubs/moby_dick.epub');
+      await body();
     } catch (e) {
-      debugPrint('openEpub error: $e');
-    }
-  }
-
-  Future<void> _openCbz() async {
-    try {
-      await _openPublicationAsset('assets/pubs/sample_comic.cbz');
-    } catch (e) {
-      debugPrint('openCbz error: $e');
-    }
-  }
-
-  Future<void> _openDivina() async {
-    try {
-      await _openPublicationAsset('assets/pubs/sample_visual.divina');
-    } catch (e) {
-      debugPrint('openDivina error: $e');
-    }
-  }
-
-  Future<void> _openTapTargets() async {
-    try {
-      await _openPublicationAsset('assets/pubs/tap_targets.epub');
-    } catch (e) {
-      debugPrint('openTapTargets error: $e');
-    }
-  }
-
-  Future<void> _openFixedLayout() async {
-    try {
-      await _openPublicationAsset('assets/pubs/fixed_layout.epub');
-    } catch (e) {
-      debugPrint('openFixedLayout error: $e');
-    }
-  }
-
-  Future<void> _openAudiobook() async {
-    try {
-      final path = await _extractAsset('assets/pubs/38533.audiobook');
-      final pub = await _flureadium.openPublication(path);
+      debugPrint('$label error: $e');
       if (!mounted) return;
-      setState(() {
-        _publication = pub;
-        _resetPublicationLatches();
-      });
-    } catch (e) {
-      debugPrint('openAudiobook error: $e');
+      setState(() => _lastOpenError = '$label: $e');
     }
   }
 
-  Future<void> _openAudiobookUntitledChapter() async {
-    try {
-      final path = await _extractAsset(
-        'assets/pubs/untitled_chapter.audiobook',
-      );
-      final pub = await _flureadium.openPublication(path);
-      if (!mounted) return;
-      setState(() {
-        _publication = pub;
-        _resetPublicationLatches();
-      });
-    } catch (e) {
-      debugPrint('openAudiobookUntitledChapter error: $e');
-    }
-  }
+  Future<void> _openEpub() => _runOpen(
+    'openEpub',
+    () => _openPublicationAsset('assets/pubs/moby_dick.epub'),
+  );
+
+  Future<void> _openCbz() => _runOpen(
+    'openCbz',
+    () => _openPublicationAsset('assets/pubs/sample_comic.cbz'),
+  );
+
+  Future<void> _openDivina() => _runOpen(
+    'openDivina',
+    () => _openPublicationAsset('assets/pubs/sample_visual.divina'),
+  );
+
+  Future<void> _openTapTargets() => _runOpen(
+    'openTapTargets',
+    () => _openPublicationAsset('assets/pubs/tap_targets.epub'),
+  );
+
+  Future<void> _openFixedLayout() => _runOpen(
+    'openFixedLayout',
+    () => _openPublicationAsset('assets/pubs/fixed_layout.epub'),
+  );
+
+  Future<void> _openAudiobook() => _runOpen(
+    'openAudiobook',
+    () => _openPublicationAsset('assets/pubs/38533.audiobook'),
+  );
+
+  Future<void> _openAudiobookUntitledChapter() => _runOpen(
+    'openAudiobookUntitledChapter',
+    () => _openPublicationAsset('assets/pubs/untitled_chapter.audiobook'),
+  );
 
   Future<void> _openUnreachableAudiobook() async {
     // A well-formed audiobook manifest whose only track points at an
@@ -283,21 +272,10 @@ class _ReaderPageState extends State<ReaderPage> {
   ]
 }
 ''';
-    try {
-      final tmp = File(
-        '${Directory.systemTemp.path}/'
-        '${DateTime.now().millisecondsSinceEpoch}_unreachable.json',
-      );
-      await tmp.writeAsString(manifest);
-      final pub = await _flureadium.openPublication(tmp.path);
-      if (!mounted) return;
-      setState(() {
-        _publication = pub;
-        _resetPublicationLatches();
-      });
-    } catch (e) {
-      debugPrint('openUnreachableAudiobook error: $e');
-    }
+    await _runOpen(
+      'openUnreachableAudiobook',
+      () => _openManifest(manifest, 'unreachable'),
+    );
   }
 
   // Opens an audiobook whose single track streams from a local server that
@@ -355,21 +333,10 @@ class _ReaderPageState extends State<ReaderPage> {
   ]
 }
 ''';
-    try {
-      final tmp = File(
-        '${Directory.systemTemp.path}/'
-        '${DateTime.now().millisecondsSinceEpoch}_truncated.json',
-      );
-      await tmp.writeAsString(manifest);
-      final pub = await _flureadium.openPublication(tmp.path);
-      if (!mounted) return;
-      setState(() {
-        _publication = pub;
-        _resetPublicationLatches();
-      });
-    } catch (e) {
-      debugPrint('openMidStreamFailAudiobook error: $e');
-    }
+    await _runOpen(
+      'openMidStreamFailAudiobook',
+      () => _openManifest(manifest, 'truncated'),
+    );
   }
 
   Future<void> _openStreamedAudiobook() async {
@@ -406,31 +373,36 @@ class _ReaderPageState extends State<ReaderPage> {
   ]
 }
 ''';
-    try {
-      final tmp = File(
-        '${Directory.systemTemp.path}/'
-        '${DateTime.now().millisecondsSinceEpoch}_streamed.json',
-      );
-      await tmp.writeAsString(manifest);
-      final pub = await _flureadium.openPublication(tmp.path);
-      if (!mounted) return;
-      setState(() {
-        _publication = pub;
-        _resetPublicationLatches();
-      });
-    } catch (e) {
-      debugPrint('openStreamedAudiobook error: $e');
-    }
+    await _runOpen(
+      'openStreamedAudiobook',
+      () => _openManifest(manifest, 'streamed'),
+    );
   }
 
-  Future<void> _openPublicationAsset(String assetPath) async {
-    final path = await _extractAsset(assetPath);
+  /// Opens [path] and swaps the result in as the current publication.
+  ///
+  /// The one place `_publication` is assigned by an open, so the latch reset
+  /// below cannot be forgotten on a new open path — every opener funnels here.
+  Future<void> _openPublicationPath(String path) async {
     final pub = await _flureadium.openPublication(path);
     if (!mounted) return;
     setState(() {
       _publication = pub;
       _resetPublicationLatches();
     });
+  }
+
+  Future<void> _openPublicationAsset(String assetPath) async {
+    await _openPublicationPath(await _extractAsset(assetPath));
+  }
+
+  /// Writes [manifest] to a temp file named `<millis>_[name].json` and opens
+  /// it. Backs the three audiobook fixtures whose manifest points at a local
+  /// server, so the URL is only known at runtime and cannot ship as an asset.
+  Future<void> _openManifest(String manifest, String name) async {
+    final tmp = _tempFile('$name.json');
+    await tmp.writeAsString(manifest);
+    await _openPublicationPath(tmp.path);
   }
 
   /// Clears every latch that describes the publication being replaced. Called
@@ -455,6 +427,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _savedLocator = null;
     _loadedTitle = '';
     _lastAudioError = '';
+    _lastOpenError = '';
     _cancelledStreamDisconnectSeen = false;
     _endedSeen = false;
     _ttsEnabled = false;
@@ -466,31 +439,26 @@ class _ReaderPageState extends State<ReaderPage> {
     _voiceIndex = 0;
   }
 
-  Future<void> _openWebPub() async {
-    try {
-      await _flureadium.setCustomHeaders({'X-Example': 'flureadium-demo'});
-      const url =
-          'https://readium.org/webpub-manifest/examples/MobyDick/manifest.json';
-      final pub = await _flureadium.openPublication(url);
-      if (!mounted) return;
-      setState(() {
-        _publication = pub;
-        _resetPublicationLatches();
-      });
-    } catch (e) {
-      debugPrint('openWebPub error: $e');
-    }
-  }
+  Future<void> _openWebPub() => _runOpen('openWebPub', () async {
+    await _flureadium.setCustomHeaders({'X-Example': 'flureadium-demo'});
+    await _openPublicationPath(
+      'https://readium.org/webpub-manifest/examples/MobyDick/manifest.json',
+    );
+  });
+
+  /// A temp file named `<millis>_[name]`. The timestamp keeps each open
+  /// distinct: reopening the same fixture must not hand the reader a path it
+  /// may still have cached from the previous open.
+  File _tempFile(String name) => File(
+    '${Directory.systemTemp.path}/${DateTime.now().millisecondsSinceEpoch}_$name',
+  );
 
   Future<String> _extractAsset(String assetPath) async {
     if (kIsWeb) {
       return Uri.base.resolve(assetPath).toString();
     }
     final bytes = await rootBundle.load(assetPath);
-    final filename = assetPath.split('/').last;
-    final tmp = File(
-      '${Directory.systemTemp.path}/${DateTime.now().millisecondsSinceEpoch}_$filename',
-    );
+    final tmp = _tempFile(assetPath.split('/').last);
     await tmp.writeAsBytes(bytes.buffer.asUint8List());
     return tmp.path;
   }
@@ -514,9 +482,7 @@ class _ReaderPageState extends State<ReaderPage> {
   /// mounted, so the next remount asks native to host a publication that is no
   /// longer open. Reproduces a host app mounting the reader after a close —
   /// the enable failure that used to kill the Android process.
-  Future<void> _closeNativeOnly() async {
-    await _flureadium.closePublication();
-  }
+  Future<void> _closeNativeOnly() => _flureadium.closePublication();
 
   /// Replaces the reader element so native `init` runs again over a
   /// publication Dart still holds. `_publication` is untouched, so
@@ -533,18 +499,16 @@ class _ReaderPageState extends State<ReaderPage> {
     _subscribeToChannels();
   }
 
-  Future<void> _setNightPreferences() async {
-    await _flureadium.setEPUBPreferences(
-      EPUBPreferences(
-        fontFamily: 'Georgia',
-        fontSize: 100,
-        fontWeight: null,
-        verticalScroll: false,
-        backgroundColor: const Color(0xFF1A1A1A),
-        textColor: const Color(0xFFE0E0E0),
-      ),
-    );
-  }
+  Future<void> _setNightPreferences() => _flureadium.setEPUBPreferences(
+    EPUBPreferences(
+      fontFamily: 'Georgia',
+      fontSize: 100,
+      fontWeight: null,
+      verticalScroll: false,
+      backgroundColor: const Color(0xFF1A1A1A),
+      textColor: const Color(0xFFE0E0E0),
+    ),
+  );
 
   Future<void> _toggleTts() async {
     if (_ttsEnabled) {
@@ -589,9 +553,7 @@ class _ReaderPageState extends State<ReaderPage> {
     // Set _ttsEnabled before play() so that the onTimebasedPlayerStateChanged
     // callback (which guards on _ttsEnabled) correctly captures the 'playing'
     // state when the native engine reports it.
-    setState(() {
-      _ttsEnabled = true;
-    });
+    setState(() => _ttsEnabled = true);
     await _flureadium.play(null);
     final voices = await _flureadium.ttsGetAvailableVoices();
     if (!mounted) return;
@@ -601,11 +563,11 @@ class _ReaderPageState extends State<ReaderPage> {
     });
   }
 
-  Future<void> _ttsPause() async => _flureadium.pause();
+  Future<void> _ttsPause() => _flureadium.pause();
 
-  Future<void> _ttsResume() async => _flureadium.resume();
+  Future<void> _ttsResume() => _flureadium.resume();
 
-  Future<void> _installVoice() async => _flureadium.ttsRequestInstallVoice();
+  Future<void> _installVoice() => _flureadium.ttsRequestInstallVoice();
 
   Future<void> _showSystemVoices() async {
     final voices = await _flureadium.ttsGetSystemVoices();
@@ -624,33 +586,43 @@ class _ReaderPageState extends State<ReaderPage> {
     setState(() => _voiceIndex = next);
   }
 
+  // Keeps its own try/catch rather than routing through _runOpen: a failed
+  // audioEnable is reported to the user as a SnackBar, not latched as text.
   Future<void> _toggleAudio() async {
     if (_audioEnabled && !_audioPaused) {
       await _flureadium.pause();
       if (!mounted) return;
       setState(() => _audioPaused = true);
-    } else if (_audioEnabled && _audioPaused) {
+      return;
+    }
+    if (_audioEnabled && _audioPaused) {
       await _flureadium.resume();
       if (!mounted) return;
       setState(() => _audioPaused = false);
-    } else {
-      try {
-        await _flureadium.audioEnable();
-        await _flureadium.play(null);
-        if (!mounted) return;
-        setState(() {
-          _audioEnabled = true;
-          _audioPaused = false;
-        });
-      } catch (e) {
-        debugPrint('audioEnable error: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Audio playback unavailable: $e')),
-          );
-        }
+      return;
+    }
+    try {
+      await _flureadium.audioEnable();
+      await _flureadium.play(null);
+      if (!mounted) return;
+      setState(() {
+        _audioEnabled = true;
+        _audioPaused = false;
+      });
+    } catch (e) {
+      debugPrint('audioEnable error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Audio playback unavailable: $e')),
+        );
       }
     }
+  }
+
+  String get _audioButtonLabel {
+    if (!_audioEnabled) return 'Audio Play';
+    if (_audioPaused) return 'Audio Resume';
+    return 'Audio Pause';
   }
 
   Future<void> _addHighlight() async {
@@ -690,29 +662,20 @@ class _ReaderPageState extends State<ReaderPage> {
     await _flureadium.goByLink(link, pub);
   }
 
-  Future<void> _openHierarchical() async {
-    try {
-      await _openPublicationAsset('assets/pubs/hierarchical_toc.epub');
-    } catch (e) {
-      debugPrint('openHierarchical error: $e');
-    }
-  }
+  Future<void> _openHierarchical() => _runOpen(
+    'openHierarchical',
+    () => _openPublicationAsset('assets/pubs/hierarchical_toc.epub'),
+  );
 
-  Future<void> _openFrontmatter() async {
-    try {
-      await _openPublicationAsset('assets/pubs/frontmatter_toc.epub');
-    } catch (e) {
-      debugPrint('openFrontmatter error: $e');
-    }
-  }
+  Future<void> _openFrontmatter() => _runOpen(
+    'openFrontmatter',
+    () => _openPublicationAsset('assets/pubs/frontmatter_toc.epub'),
+  );
 
-  Future<void> _openBacklinkChapter() async {
-    try {
-      await _openPublicationAsset('assets/pubs/backlink_chapter.epub');
-    } catch (e) {
-      debugPrint('openBacklinkChapter error: $e');
-    }
-  }
+  Future<void> _openBacklinkChapter() => _runOpen(
+    'openBacklinkChapter',
+    () => _openPublicationAsset('assets/pubs/backlink_chapter.epub'),
+  );
 
   Future<void> _dartSkipToNext() async =>
       FlureadiumPlatform.instance.currentReaderWidget?.skipToNext();
@@ -720,16 +683,22 @@ class _ReaderPageState extends State<ReaderPage> {
   Future<void> _dartSkipToPrevious() async =>
       FlureadiumPlatform.instance.currentReaderWidget?.skipToPrevious();
 
-  Future<void> _loadOnly() async {
-    try {
-      final path = await _extractAsset('assets/pubs/moby_dick.epub');
-      final pub = await _flureadium.loadPublication(path);
-      if (!mounted) return;
-      setState(() => _loadedTitle = pub.metadata.title);
-    } catch (e) {
-      debugPrint('loadOnly error: $e');
-    }
-  }
+  Future<void> _loadOnly() => _runOpen('loadOnly', () async {
+    final path = await _extractAsset('assets/pubs/moby_dick.epub');
+    final pub = await _flureadium.loadPublication(path);
+    if (!mounted) return;
+    setState(() => _loadedTitle = pub.metadata.title);
+  });
+
+  /// One line of the control bar's debug readout.
+  ///
+  /// Integration and widget tests read these by [key] and compare `Text.data`
+  /// verbatim, so [text] is spelled out at each call site rather than derived
+  /// from the key: the string a test asserts on stays greppable in the source.
+  Widget _latch(String key, String text) =>
+      Text(text, key: Key(key), style: _latchStyle);
+
+  static const _latchStyle = TextStyle(color: Colors.white70, fontSize: 10);
 
   String _fmtDuration(Duration? d) {
     if (d == null) return '--:--';
@@ -798,120 +767,50 @@ class _ReaderPageState extends State<ReaderPage> {
                           fontSize: 11,
                         ),
                       ),
-                    Text(
-                      key: const Key('open-generation'),
+                    _latch(
+                      'open-generation',
                       'open-generation: $_openGeneration',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
                     ),
-                    Text(
-                      key: const Key('locator-events'),
-                      'locator-events: $_locatorEvents',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
-                    ),
-                    Text(
-                      key: const Key('current-track'),
+                    _latch('locator-events', 'locator-events: $_locatorEvents'),
+                    _latch(
+                      'current-track',
                       'track: ${_timebasedState?.currentLocator?.locations?.position ?? '-'} '
-                      '${_timebasedState?.currentLocator?.href ?? ''}',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
+                          '${_timebasedState?.currentLocator?.href ?? ''}',
                     ),
-                    Text(
-                      key: const Key('timebased-state'),
+                    _latch(
+                      'timebased-state',
                       'state: ${_timebasedState?.state.name ?? '-'}',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
                     ),
-                    Text(
-                      key: const Key('timebased-position'),
+                    _latch(
+                      'timebased-position',
                       'pos: ${_timebasedState?.currentOffset?.inMilliseconds ?? -1} '
-                      'dur: ${_timebasedState?.currentDuration?.inMilliseconds ?? -1}',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
+                          'dur: ${_timebasedState?.currentDuration?.inMilliseconds ?? -1}',
                     ),
-                    Text(
-                      key: const Key('ended-seen'),
-                      'ended-seen: $_endedSeen',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
+                    _latch('ended-seen', 'ended-seen: $_endedSeen'),
+                    _latch('audio-error', 'audio-error: $_lastAudioError'),
+                    _latch('open-error', 'open-error: $_lastOpenError'),
+                    _latch(
+                      'publication-identifier',
+                      'publication-identifier: '
+                          '${_publication?.metadata.identifier ?? ''}',
                     ),
-                    Text(
-                      key: const Key('audio-error'),
-                      'audio-error: $_lastAudioError',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
+                    _latch('reader-status', 'reader-status: $_readerStatus'),
+                    _latch(
+                      'cancelled-stream-disconnect-seen',
+                      'cancelled-stream-disconnect-seen: '
+                          '$_cancelledStreamDisconnectSeen',
                     ),
-                    Text(
-                      key: const Key('reader-status'),
-                      'reader-status: $_readerStatus',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
-                    ),
-                    Text(
-                      key: const Key('cancelled-stream-disconnect-seen'),
-                      'cancelled-stream-disconnect-seen: $_cancelledStreamDisconnectSeen',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
-                    ),
-                    Text(
-                      key: const Key('locator_href'),
-                      _locator?.href ?? '',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
-                    ),
-                    Text(
-                      key: const Key('saved_locator_href'),
-                      _savedLocator?.href ?? '',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
-                    ),
-                    Text(
-                      key: const Key('locator_progression'),
+                    _latch('locator_href', _locator?.href ?? ''),
+                    _latch('saved_locator_href', _savedLocator?.href ?? ''),
+                    _latch(
+                      'locator_progression',
                       _locator?.locations?.progression?.toString() ?? '',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
                     ),
-                    Text(
-                      key: const Key('locator_toc_fragment'),
+                    _latch(
+                      'locator_toc_fragment',
                       _locator?.locations?.tocFragment ?? '',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
                     ),
-                    Text(
-                      key: const Key('loaded-title'),
-                      'loaded-title: $_loadedTitle',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
-                    ),
+                    _latch('loaded-title', 'loaded-title: $_loadedTitle'),
                     Wrap(
                       children: [
                         TextButton(
@@ -1002,16 +901,16 @@ class _ReaderPageState extends State<ReaderPage> {
                           onPressed: _dartSkipToNext,
                           child: const Text('DartSkip+'),
                         ),
-                        if (pub != null)
+                        if (pub != null) ...[
                           TextButton(
                             onPressed: _goToSaved,
                             child: const Text('Go To Saved'),
                           ),
-                        if (pub != null)
                           TextButton(
                             onPressed: _goToFirstChapter,
                             child: const Text('Ch.1'),
                           ),
+                        ],
                         TextButton(
                           onPressed: _setNightPreferences,
                           child: const Text('Night'),
@@ -1091,29 +990,22 @@ class _ReaderPageState extends State<ReaderPage> {
                           ),
                         TextButton(
                           onPressed: _toggleAudio,
-                          child: Text(
-                            !_audioEnabled
-                                ? 'Audio Play'
-                                : _audioPaused
-                                ? 'Audio Resume'
-                                : 'Audio Pause',
-                          ),
+                          child: Text(_audioButtonLabel),
                         ),
-                        if (_audioEnabled)
+                        if (_audioEnabled) ...[
                           TextButton(
                             onPressed: _seekForward,
                             child: const Text('+30s'),
                           ),
-                        if (_audioEnabled)
                           TextButton(
                             onPressed: _previousChapter,
                             child: const Text('Audio Prev Chapter'),
                           ),
-                        if (_audioEnabled)
                           TextButton(
                             onPressed: _nextChapter,
                             child: const Text('Audio Next Chapter'),
                           ),
+                        ],
                         TextButton(
                           onPressed: _closeNativeOnly,
                           child: const Text('Close Native Only'),

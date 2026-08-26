@@ -14,44 +14,43 @@ final _publicationJson = json.encode({
   'readingOrder': <Object>[],
 });
 
+TestDefaultBinaryMessenger get _messenger =>
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
 // The reader widget toggles the screen wakelock on mount/dispose via a
 // wakelock_plus pigeon channel. Stub it so mounting a real reader in a widget
 // test doesn't hit an unconnected platform channel. Pigeon replies are a
 // single-element list wrapping the return value.
 void _mockWakelock() {
   const codec = StandardMessageCodec();
-  final messenger =
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   const prefix =
       'dev.flutter.pigeon.wakelock_plus_platform_interface.WakelockPlusApi';
-  messenger.setMockMessageHandler(
+  _messenger.setMockMessageHandler(
     '$prefix.toggle',
     (message) async => codec.encodeMessage(<Object?>[null]),
   );
-  messenger.setMockMessageHandler(
+  _messenger.setMockMessageHandler(
     '$prefix.isEnabled',
     (message) async => codec.encodeMessage(<Object?>[false]),
   );
 }
 
 void _mockEventChannel(String channelName) {
-  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-      .setMockMethodCallHandler(
-        MethodChannel(channelName),
-        (call) async => null,
-      );
+  _messenger.setMockMethodCallHandler(
+    MethodChannel(channelName),
+    (call) async => null,
+  );
 }
 
 // Pushes a single event onto an EventChannel's broadcast stream, as if the
 // native side had emitted it. Used to drive the app into the `ended` timebased
 // state without a device.
 Future<void> _emitEvent(String channelName, Object? payload) async {
-  await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-      .handlePlatformMessage(
-        channelName,
-        const StandardMethodCodec().encodeSuccessEnvelope(payload),
-        (_) {},
-      );
+  await _messenger.handlePlatformMessage(
+    channelName,
+    const StandardMethodCodec().encodeSuccessEnvelope(payload),
+    (_) {},
+  );
 }
 
 // The plugin decodes text-locator events with `Locator.fromJson(json.decode(
@@ -77,25 +76,37 @@ void _reportReaderReady(WidgetTester tester) => tester
 void _mockMainChannel({
   bool ttsCanSpeak = true,
   bool audioEnableThrows = false,
+  bool openPublicationThrows = false,
 }) {
-  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-      .setMockMethodCallHandler(
-        const MethodChannel('dev.mulev.flureadium/main'),
-        (call) async {
-          if (call.method == 'ttsCanSpeak') return ttsCanSpeak;
-          if (call.method == 'openPublication' ||
-              call.method == 'loadPublication') {
-            return _publicationJson;
-          }
-          if (call.method == 'audioEnable' && audioEnableThrows) {
-            throw PlatformException(
-              code: 'AUDIO_ERROR',
-              message: 'Couldn\'t create AudioNavigatorFactory',
-            );
-          }
-          return null;
-        },
-      );
+  _messenger.setMockMethodCallHandler(
+    const MethodChannel('dev.mulev.flureadium/main'),
+    (call) async {
+      if (call.method == 'ttsCanSpeak') return ttsCanSpeak;
+      if (call.method == 'openPublication' ||
+          call.method == 'loadPublication') {
+        // Only openPublication fails: 'Load Only latches the title
+        // loadPublication returned' needs this branch to keep answering.
+        if (openPublicationThrows && call.method == 'openPublication') {
+          // `details`, not `message`: ReadiumException.fromPlatformException
+          // carries `details` and drops `message`, so a reason put only in
+          // `message` reaches the app as 'unknown'.
+          throw PlatformException(
+            code: 'READIUM_ERROR',
+            message: 'openPublication failed',
+            details: 'Unable to resolve host',
+          );
+        }
+        return _publicationJson;
+      }
+      if (call.method == 'audioEnable' && audioEnableThrows) {
+        throw PlatformException(
+          code: 'AUDIO_ERROR',
+          message: "Couldn't create AudioNavigatorFactory",
+        );
+      }
+      return null;
+    },
+  );
 }
 
 // Reads a keyed debug Text verbatim. The locator latches carry a raw value
@@ -121,6 +132,28 @@ Future<void> _pumpUntil(WidgetTester tester, bool Function() done) async {
 
 Future<void> _pumpUntilGeneration(WidgetTester tester, String target) =>
     _pumpUntil(tester, () => _keyedValue(tester, 'open-generation') == target);
+
+// Cold-boots the app and waits for the initState open to land. The
+// open-generation bump is the signal, because it moves only after
+// openPublication returns.
+Future<void> _bootApp(WidgetTester tester) async {
+  await tester.runAsync(() async {
+    await tester.pumpWidget(const ExampleApp());
+    await _pumpUntilGeneration(tester, '1');
+  });
+}
+
+// Taps an 'Open ...' button and waits for open-generation to reach [generation].
+Future<void> _tapOpen(
+  WidgetTester tester,
+  String button,
+  String generation,
+) async {
+  await tester.runAsync(() async {
+    await tester.tap(find.text(button));
+    await _pumpUntilGeneration(tester, generation);
+  });
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -153,10 +186,7 @@ void main() {
 
     final controlBar = find.byKey(const Key('control-bar'));
 
-    await tester.runAsync(() async {
-      await tester.pumpWidget(const ExampleApp());
-      await _pumpUntilGeneration(tester, '1');
-    });
+    await _bootApp(tester);
 
     expect(controlBar, findsOneWidget);
 
@@ -199,28 +229,19 @@ void main() {
   testWidgets('generic open bumps open-generation on every open', (
     tester,
   ) async {
-    await tester.runAsync(() async {
-      await tester.pumpWidget(const ExampleApp());
-      await _pumpUntilGeneration(tester, '1');
-    });
+    await _bootApp(tester);
 
     // Cold boot goes through _openPublicationAsset, so the counter is 1.
     expect(_keyedValue(tester, 'open-generation'), '1');
     expect(_keyedValue(tester, 'ended-seen'), 'false');
 
-    await tester.runAsync(() async {
-      await tester.tap(find.text('Open EPUB'));
-      await _pumpUntilGeneration(tester, '2');
-    });
+    await _tapOpen(tester, 'Open EPUB', '2');
 
     expect(_keyedValue(tester, 'open-generation'), '2');
   });
 
   testWidgets('generic open resets ended-seen', (tester) async {
-    await tester.runAsync(() async {
-      await tester.pumpWidget(const ExampleApp());
-      await _pumpUntilGeneration(tester, '1');
-    });
+    await _bootApp(tester);
 
     await _emitEvent(
       'dev.mulev.flureadium/timebased-state',
@@ -229,10 +250,7 @@ void main() {
     await tester.pump();
     expect(_keyedValue(tester, 'ended-seen'), 'true');
 
-    await tester.runAsync(() async {
-      await tester.tap(find.text('Open EPUB'));
-      await _pumpUntilGeneration(tester, '2');
-    });
+    await _tapOpen(tester, 'Open EPUB', '2');
 
     expect(_keyedValue(tester, 'ended-seen'), 'false');
   });
@@ -240,10 +258,7 @@ void main() {
   testWidgets('saved locator latches the first position, not the latest', (
     tester,
   ) async {
-    await tester.runAsync(() async {
-      await tester.pumpWidget(const ExampleApp());
-      await _pumpUntilGeneration(tester, '1');
-    });
+    await _bootApp(tester);
     _reportReaderReady(tester);
 
     await _emitTextLocator('chapter1.xhtml');
@@ -256,10 +271,7 @@ void main() {
   });
 
   testWidgets('the progression latch follows the last locator', (tester) async {
-    await tester.runAsync(() async {
-      await tester.pumpWidget(const ExampleApp());
-      await _pumpUntilGeneration(tester, '1');
-    });
+    await _bootApp(tester);
     _reportReaderReady(tester);
 
     // Empty before any delivery, like the two href latches beside it.
@@ -276,20 +288,14 @@ void main() {
   });
 
   testWidgets('opening a publication clears the saved locator', (tester) async {
-    await tester.runAsync(() async {
-      await tester.pumpWidget(const ExampleApp());
-      await _pumpUntilGeneration(tester, '1');
-    });
+    await _bootApp(tester);
     _reportReaderReady(tester);
 
     await _emitTextLocator('chapter1.xhtml');
     await tester.pump();
     expect(_latchText(tester, 'saved_locator_href'), 'chapter1.xhtml');
 
-    await tester.runAsync(() async {
-      await tester.tap(find.text('Open EPUB'));
-      await _pumpUntilGeneration(tester, '2');
-    });
+    await _tapOpen(tester, 'Open EPUB', '2');
 
     expect(_latchText(tester, 'saved_locator_href'), '');
   });
@@ -297,10 +303,7 @@ void main() {
   testWidgets('locator-events counts every delivery and resets on open', (
     tester,
   ) async {
-    await tester.runAsync(() async {
-      await tester.pumpWidget(const ExampleApp());
-      await _pumpUntilGeneration(tester, '1');
-    });
+    await _bootApp(tester);
     _reportReaderReady(tester);
 
     expect(_keyedValue(tester, 'locator-events'), '0');
@@ -314,10 +317,7 @@ void main() {
     // overwrites the latch the first one wrote.
     expect(_keyedValue(tester, 'locator-events'), '2');
 
-    await tester.runAsync(() async {
-      await tester.tap(find.text('Open EPUB'));
-      await _pumpUntilGeneration(tester, '2');
-    });
+    await _tapOpen(tester, 'Open EPUB', '2');
 
     // The count is a fact about one publication, like every other latch
     // _resetPublicationLatches clears.
@@ -325,10 +325,7 @@ void main() {
   });
 
   testWidgets('Resubscribe Locator clears the latched locator', (tester) async {
-    await tester.runAsync(() async {
-      await tester.pumpWidget(const ExampleApp());
-      await _pumpUntilGeneration(tester, '1');
-    });
+    await _bootApp(tester);
     _reportReaderReady(tester);
 
     await _emitTextLocator('chapter1.xhtml');
@@ -349,9 +346,8 @@ void main() {
   testWidgets('Load Only latches the title loadPublication returned', (
     tester,
   ) async {
+    await _bootApp(tester);
     await tester.runAsync(() async {
-      await tester.pumpWidget(const ExampleApp());
-      await _pumpUntilGeneration(tester, '1');
       await tester.tap(find.text('Load Only'));
       await _pumpUntil(
         tester,
@@ -360,6 +356,47 @@ void main() {
     });
 
     expect(_keyedValue(tester, 'loaded-title'), 'Test Book');
+  });
+
+  testWidgets('a failed open latches into open-error, and a good one clears it', (
+    tester,
+  ) async {
+    // Boot clean. The cold-boot open in initState has no catch of any kind, so
+    // a channel that throws at pumpWidget time raises an unhandled async error
+    // and the test fails on the wrong thing.
+    await _bootApp(tester);
+
+    expect(_keyedValue(tester, 'open-error'), '');
+
+    _mockMainChannel(openPublicationThrows: true);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Open EPUB'));
+      await _pumpUntil(
+        tester,
+        () => _keyedValue(tester, 'open-error').isNotEmpty,
+      );
+    });
+
+    // The label says which opener failed and the message says why. Both
+    // matter: "something failed" is what the sixteen debugPrints already said,
+    // and it is not enough to act on.
+    expect(_keyedValue(tester, 'open-error'), startsWith('openEpub: '));
+    expect(
+      _keyedValue(tester, 'open-error'),
+      contains('Unable to resolve host'),
+    );
+    // A failed open never reaches _resetPublicationLatches, so the counter must
+    // not have moved.
+    expect(_keyedValue(tester, 'open-generation'), '1');
+
+    // _resetPublicationLatches is what wipes the latch, so a later good open
+    // must leave it empty. Without that, the latch would strand a stale error
+    // and any "open-error is empty" assertion would fail on a fault that was
+    // already over.
+    _mockMainChannel();
+    await _tapOpen(tester, 'Open EPUB', '2');
+
+    expect(_keyedValue(tester, 'open-error'), '');
   });
 
   testWidgets('audio_enable_error_shows_snackbar', (tester) async {
