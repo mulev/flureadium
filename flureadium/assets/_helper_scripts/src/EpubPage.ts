@@ -619,8 +619,12 @@ export class EpubPage {
   private _getTocFragments(selector: string): string[] {
     try {
       const headings = this._findPrecedingAncestorSiblingHeadings(selector);
-      const id = headings[0]?.id;
-      if (id == null) {
+      // An empty id is not an id: `Element.id` is `''` when the attribute is
+      // absent, so a `== null` guard emits `toc=` with no value — a fragment
+      // no TOC entry can ever match. The optional chain matters too: the
+      // search legitimately returns nothing now.
+      const id = headings?.[0]?.id;
+      if (!id) {
         return [];
       }
 
@@ -733,9 +737,29 @@ export class EpubPage {
       return arr;
     }
 
+    // `arr` is undefined only when no heading passed the position filter at
+    // all, which means the reader sits above every heading in this resource.
+    // A chapter document that opens with a back-to-contents link is exactly
+    // that shape, and the heading it sits above is its own. `_allHeadings` is
+    // built by `querySelectorAll`, so its first entry carrying an id is the
+    // nearest following one.
+    //
+    // The guard is `!arr`, not `!arr.length`: when headings do precede but
+    // none carries an id, `arr` is `[]`, and falling forward there would move
+    // identity into a chapter the reader has not reached.
+    if (!arr) {
+      const following = this._allHeadings.find((heading) => heading.id);
+      if (following) {
+        return [{ id: following.id, level: following.level, text: following.text }];
+      }
+    }
+
     // No heading found try with closes section or body
     const closetSectionOrBody = selectorElement.closest('section') ?? selectorElement.closest('body');
-    if (closetSectionOrBody) {
+    // `.id` is `''`, never null, when the attribute is absent. Returning that
+    // hands `_getTocFragments` a heading-shaped result with nothing to name,
+    // which is how every ebookmaker chapter came to report `toc=`.
+    if (closetSectionOrBody?.id) {
       return [
         {
           id: closetSectionOrBody.id,
