@@ -16,7 +16,7 @@ Integration tests run the example app on a real device or simulator and assert w
 | `audiobook_test.dart` | Android, iOS (`native`) | Audiobook opens, play changes button label, seek doesn't crash, pause/resume button labels cycle correctly, playing the last track to its end surfaces `TimebasedState.ended` |
 | `cbz_test.dart` | Android, iOS | CBZ auto-opens, navigation works, `goToLocator` reaches an image page, `extractPageThumbnail` returns JPEG bytes/null as appropriate |
 | `divina_test.dart` | Android, iOS | DIVINA auto-opens, `ReadiumReaderWidget` present, left/right navigation works |
-| `webpub_test.dart` | Android, iOS (`network`) | Remote WebPub manifest opens, `ReadiumReaderWidget` present |
+| `webpub_test.dart` | Android, iOS (`network`) | A remote WebPub manifest opens: the open-generation counter moves past its pre-tap value, `open-error` is empty, and the publication on screen is the manifest's own — `urn:isbn:9780000000001`, checked by identifier because the manifest and the bundled EPUB fixture are both titled "Moby-Dick". See [An assertion that cannot fail proves nothing](#an-assertion-that-cannot-fail-proves-nothing) |
 | `error_handling_test.dart` | Android, iOS | A corrupted file and a missing file both raise `ReadiumException`, and (Android only) a failed native enable reports `error` instead of killing the app — see [Forcing a reader failure](#forcing-a-reader-failure) |
 | `tap_test.dart` | Android | A content tap is reported once through `onTap` with a position, a hyperlink tap navigates and reports nothing, a plain page in the same book does report, and a publication swap rebinds the listener. Android only, and reflowable only — see [What a synthesized tap can reach](#what-a-synthesized-tap-can-reach) |
 | `edge_strip_tap_test.dart` | Android | With `enableEdgeTapNavigation: false` and `enableSwipeNavigation: true`, a tap 22 dp inside either edge strip reaches `onTap`, with a centre tap first as the control. The config is sent before the reader mounts, so the case also covers the replay that carries it to a reader that did not exist yet. It pumps its own widget tree rather than the example app, because the app never calls `setNavigationConfig`. Android only, and reflowable only, for the same two reasons as `tap_test.dart` |
@@ -369,6 +369,44 @@ exercises the audiobook boot (`flureadium-p1q`).
 
 The same pattern covers `audiobook`, `cbz`, `divina`, `epub_tts`, `text_locator`
 and `epub` — each group boots once and reuses the running app between tests.
+
+## An assertion that cannot fail proves nothing
+
+The example app opens a publication from `initState`, so a `ReadiumReaderWidget`
+is mounted before the first pump of any test. `webpub_test.dart` waited for one
+to exist and then asserted that one existed. Both were true before the test
+touched anything, and stayed true whether the WebPub opened, failed, or was
+never requested. The remote open failed on three consecutive runs and the suite
+reported a pass each time (flureadium-9m3e).
+
+Assert something only the open you asked for can produce. Three latches do that,
+and each covers a hole the other two leave:
+
+| Latch | Proves | Rules out |
+|---|---|---|
+| `open-generation` past a pre-tap sample | an open finished after the tap | a reader mounted before the test started |
+| `publication-identifier` | *which* publication finished | any other open, including a reopen of the fixture |
+| `open-error` empty | the open reported nothing | a failure surfacing as "found 0 widgets" |
+
+The identifier is what the WebPub case turns on. The remote manifest and
+`moby_dick.epub` are both titled "Moby-Dick", so no assertion about the title
+can separate them. `urn:isbn:9780000000001` against
+`http://www.gutenberg.org/2701` can. That value lives in a third-party manifest
+this repo does not control, so if readium.org edits it the test fails with both
+values in the message. Re-fetch the manifest before concluding the plugin
+regressed.
+
+[Every suite opens the publication it asserts about](#every-suite-opens-the-publication-it-asserts-about)
+is the same lesson from the other side: there, a wait is answered by the
+previous suite's leftover reader; here, by the current app's launch-time open. A
+test that opens its own publication and then checks the identifier is covered
+against both.
+
+None of this counts until someone has watched the assertion fail. Point
+`_openWebPub` at a host under `.invalid` — reserved by RFC 2606, so it never
+resolves and the arm cannot go green by accident — and run the file on both
+platforms. Each reports `openWebPub: ReadiumException{…}` through `open-error`,
+naming the cause instead of counting widgets. Revert the URL afterwards.
 
 ## Prerequisites
 
