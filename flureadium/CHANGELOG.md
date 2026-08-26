@@ -18,6 +18,14 @@
 - The EPUB navigation groups moved from `integration_test/epub_test.dart` to `epub_navigation_test.dart`, with their shared wait helper in `integration_test/helpers/expect_eventually.dart`. The new case asserts href *and* progression after every skip, because a TOC index alone cannot show whether the reader moved.
 - The `toggle-controls` block is the last child of the example's page `Stack`. The control bar has no height cap, and on a 682 dp screen it had grown tall enough to take the tap aimed at the toggle, so the tap suite could not put the chrome down.
 
+### Testing
+
+- The helper-script jest suite runs now. `assets/_helper_scripts/src/EpubPage.test.ts` held eleven cases and nothing invoked them: not `run_all_tests.sh`, not `validators.conf`, not any of the six workflows. `scripts/run_helper_script_tests.sh` runs the suite, then rebuilds the bundle and diffs it against the committed `assets/helpers/`, so a TypeScript edit that was never built fails a check instead of shipping the old bundle in silence. The check covers all four built files, since a stale `comics.js` is the same defect as a stale `epub.js`, and it reads `git status --porcelain` rather than `git diff` so that a newly emitted file, which arrives untracked, cannot slip through as a clean diff. `run_all_tests.sh` calls the script as its `Unit — helper scripts` row, and `--skip-helpers` drops it. A missing `node` or `npm` fails that row rather than skipping it: a runner that exits 0 without doing its work reports a check nobody ran.
+
+### Continuous integration
+
+- `test.yml` gains a `Test Helper Scripts` job: Node 22, `npm ci`, `npx jest --ci`, then the same bundle-freshness check the local runner does. The Node major is pinned because the bundle is only byte-reproducible within one. A pull request that edits the injected page script without rebuilding the bundle goes red now.
+
 ## 0.17.1
 
 ### Bug Fixes

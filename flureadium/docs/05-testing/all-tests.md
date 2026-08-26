@@ -1,14 +1,15 @@
 # God-Tier Test Runner
 
-`scripts/run_all_tests.sh` runs every Flureadium test suite in one pass and prints a single consolidated summary. It ties the three test toolchains together so you don't invoke them one at a time:
+`scripts/run_all_tests.sh` runs every Flureadium test suite in one pass and prints a single consolidated summary. It ties the four test toolchains together so you don't invoke them one at a time:
 
 1. **Unit / widget tests** — the Dart suites: `flutter test` in the plugin (`flureadium/`), the platform interface (`flureadium_platform_interface/`), and the example app (`example/`), plus `dart test` in the analyzer-plugin package (`flureadium_lints/`). Headless and fastest, so they run first.
-2. **Native unit tests** — delegates to [`run_native_unit_tests.sh`](native-unit-tests.md): Android Kotlin/Robolectric on the JVM and iOS Swift/XCTest on a simulator.
-3. **Integration tests** — delegates to [`run_integration_tests.sh`](integration-tests.md): the example app's full flows on Android, iOS, and Web.
+2. **Helper scripts** — delegates to `run_helper_script_tests.sh`: the jest suite for the TypeScript injected into the EPUB webview (`assets/_helper_scripts/src/`), then a check that the committed bundle in `assets/helpers/` still matches that source. Runs on Node, not the Flutter toolchain, and takes a few seconds.
+3. **Native unit tests** — delegates to [`run_native_unit_tests.sh`](native-unit-tests.md): Android Kotlin/Robolectric on the JVM and iOS Swift/XCTest on a simulator.
+4. **Integration tests** — delegates to [`run_integration_tests.sh`](integration-tests.md): the example app's full flows on Android, iOS, and Web.
 
-Suites run fastest-first (unit → native → integration). By default every suite runs even if an earlier one fails, so one command shows the whole picture; the exit code is non-zero if any suite that ran failed.
+Suites run fastest-first (unit → helpers → native → integration). By default every suite runs even if an earlier one fails, so one command shows the whole picture; the exit code is non-zero if any suite that ran failed.
 
-The unit step is four separate rows in the summary — one per package — so a failure points at the exact package rather than a single lumped "unit" result.
+The unit step is five separate rows in the summary — one per Dart package, plus the helper scripts — so a failure points at the exact package rather than a single lumped "unit" result.
 
 ## Usage
 
@@ -28,9 +29,10 @@ Suite selection:
 | Option | Effect |
 |--------|--------|
 | `--skip-unit` | Skip the Dart unit/widget suites |
+| `--skip-helpers` | Skip the helper-script suite (jest + bundle freshness check) |
 | `--skip-native` | Skip the native (Android + iOS) unit tests |
 | `--skip-integration` | Skip the integration tests |
-| `--unit-only` | Run only the Dart unit/widget suites |
+| `--unit-only` | Run only the headless suites: the Dart unit/widget rows and the helper scripts |
 | `--native-only` | Run only the native unit tests |
 | `--integration-only` | Run only the integration tests |
 
@@ -56,7 +58,7 @@ Behaviour:
 
 ## What needs a device
 
-The four Dart unit suites are headless, so `--unit-only` runs with no device. Native Android (Robolectric) runs on the JVM with no emulator. Everything else needs hardware:
+The four Dart unit suites are headless, so `--unit-only` runs with no device. The helper-script suite is headless too, but it needs a different toolchain: Node 22 and npm, no simulator. A missing `node` or `npm` fails that row rather than skipping it — a runner that quietly exits 0 without doing its work tells you the bundle was checked when it wasn't. Native Android (Robolectric) runs on the JVM with no emulator. Everything else needs hardware:
 
 - Native iOS and the iOS integration leg need macOS with a booted simulator (auto-booted if none is running).
 - The Android integration leg needs an emulator or connected device.
@@ -82,6 +84,23 @@ A full run reports a handful of skips. These five are the only ones that belong 
 
 Skipping is also not an escape from [Assertions must be able to fail](#assertions-must-be-able-to-fail): the wakelock group hid three of the banned forms behind a `skip:` for as long as it existed.
 
+## The shipped bundle is gated
+
+`assets/helpers/epub.js` is committed to the repo, and it is the file the EPUB webview actually loads. The TypeScript in `assets/_helper_scripts/src/` is only its source. So a change to `EpubPage.ts` is not real until `npm run build:flutter` has run and the rebuilt bundle is committed with it. Skip that step and the reader keeps running the old code while every Dart suite stays green, which is exactly how a fixed bug can ship unfixed.
+
+The helper-script runner closes that hole. It runs jest, then rebuilds and checks the whole `assets/helpers/` directory — `epub.js`, `epub.css`, `comics.js`, `comics.css`. Any drift fails the row and names the files. The rebuilt files are left on disk on purpose: committing them is the fix, so reverting the rebuild would throw away the thing you need.
+
+The check reads `git status --porcelain`, not `git diff`. `git diff` reports modifications to tracked files only, so if the build ever starts emitting a *new* file into `assets/helpers/`, that file arrives untracked and a diff-based check waves it through — the same silent drift the suite exists to catch, in a new file instead of an old one. Porcelain reports modified, untracked and deleted alike, and the failure prints the status codes so you can tell which happened.
+
+Run it on its own while iterating on the TypeScript:
+
+```bash
+cd flureadium/flureadium
+./scripts/run_helper_script_tests.sh
+```
+
+The first run in a fresh checkout does `npm ci`; after that it reuses `node_modules`. The bundle is byte-reproducible for a given Node major version, which is why CI pins Node 22 — the `Test Helper Scripts` job in `.github/workflows/test.yml` runs the same two checks on every push and pull request.
+
 ## Lockfile safety
 
 The runner never lets `flutter test` silently rewrite a `pubspec.lock`. Left to itself, `flutter test` runs an implicit `pub get` that downgrades a committed lock whenever the resolving SDK differs — for example, an unmaterialized FVM pin falling back to the global SDK. For each Dart package the runner instead:
@@ -104,6 +123,7 @@ Each run writes to `test_logs/all_tests/run_<timestamp>/` (gitignored):
 | `unit_platform_interface.log` | `flutter test` output for the platform interface package |
 | `unit_example.log` | `flutter test` output for the example app |
 | `unit_lints.log` | `dart test` output for the analyzer-plugin package (`flureadium_lints/`) |
+| `unit_helper_scripts.log` | jest and bundle-freshness output for the injected page scripts |
 | `native.log` | Output from the delegated native runner |
 | `integration.log` | Output from the delegated integration runner |
 
