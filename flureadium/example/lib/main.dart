@@ -768,60 +768,6 @@ class _ReaderPageState extends State<ReaderPage> {
                 ),
               ),
             ),
-          // Always visible: a tap flips _controlsVisible, so a tap latch inside
-          // the control bar below would unmount at the moment it finally has
-          // something to report. The latches are wrapped in IgnorePointer — a
-          // latch that swallowed the taps it exists to observe would report zero
-          // forever — but the toggle beside them is deliberately hit-testable:
-          // it is the only way back to the controls that does not depend on the
-          // native tap working, which is exactly what the tests are proving.
-          Positioned(
-            top: 0,
-            left: 0,
-            child: ColoredBox(
-              color: Colors.white70,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  IgnorePointer(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          key: const Key('tap-events'),
-                          'tap-events: $_tapEvents',
-                          style: const TextStyle(fontSize: 10),
-                        ),
-                        Text(
-                          key: const Key('last-tap'),
-                          _lastTap == null
-                              ? ''
-                              : '${_lastTap!.dx.toStringAsFixed(1)},${_lastTap!.dy.toStringAsFixed(1)}',
-                          style: const TextStyle(fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton(
-                    key: const Key('toggle-controls'),
-                    onPressed: () =>
-                        setState(() => _controlsVisible = !_controlsVisible),
-                    style: TextButton.styleFrom(
-                      minimumSize: Size.zero,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: const Text(
-                      'controls',
-                      style: TextStyle(fontSize: 10),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
           if (pub == null || _controlsVisible)
             Positioned(
               // Keyed so an integration test can tell whether the chrome is up:
@@ -1166,6 +1112,67 @@ class _ReaderPageState extends State<ReaderPage> {
                 ),
               ),
             ),
+          // Always visible: a tap flips _controlsVisible, so a tap latch inside
+          // the control bar would unmount at the moment it finally has something
+          // to report. The latches are wrapped in IgnorePointer — a latch that
+          // swallowed the taps it exists to observe would report zero forever —
+          // but the toggle beside them is deliberately hit-testable: it is the
+          // only way back to the controls that does not depend on the native tap
+          // working, which is exactly what the tests are proving.
+          //
+          // Last child of the stack is what delivers that. A Stack hit-tests in
+          // reverse paint order, and the control bar above has no height cap: on
+          // a short screen its Column is taller than the viewport, so as an
+          // earlier sibling this block lost the tap aimed at it and the chrome
+          // could never be taken down. That is what broke the tap suite on CI's
+          // 682 dp emulator. Keep this block last.
+          Positioned(
+            top: 0,
+            left: 0,
+            child: ColoredBox(
+              color: Colors.white70,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IgnorePointer(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          key: const Key('tap-events'),
+                          'tap-events: $_tapEvents',
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                        Text(
+                          key: const Key('last-tap'),
+                          _lastTap == null
+                              ? ''
+                              : '${_lastTap!.dx.toStringAsFixed(1)},${_lastTap!.dy.toStringAsFixed(1)}',
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    key: const Key('toggle-controls'),
+                    onPressed: () =>
+                        setState(() => _controlsVisible = !_controlsVisible),
+                    style: TextButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      'controls',
+                      style: TextStyle(fontSize: 10),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

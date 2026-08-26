@@ -140,6 +140,36 @@ void main() {
     expect(find.byType(ReaderPage), findsOneWidget);
   });
 
+  testWidgets('the controls toggle stays tappable under a tall control bar', (
+    tester,
+  ) async {
+    // The control bar has no height cap, so on a short screen its Column is
+    // taller than the viewport and overlaps the toggle at the top-left. A
+    // 411x400 logical screen forces that overlap on any machine, rather than
+    // copying CI's 682 dp screen, which only overlaps at today's button count.
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(411, 400);
+    addTearDown(tester.view.reset);
+
+    final controlBar = find.byKey(const Key('control-bar'));
+
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const ExampleApp());
+      await _pumpUntilGeneration(tester, '1');
+    });
+
+    expect(controlBar, findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('toggle-controls')));
+    await tester.pump();
+
+    expect(
+      controlBar,
+      findsNothing,
+      reason: 'the control bar took the tap aimed at its own toggle',
+    );
+  });
+
   testWidgets('tts_can_speak_false_shows_not_supported_snackbar', (
     tester,
   ) async {
