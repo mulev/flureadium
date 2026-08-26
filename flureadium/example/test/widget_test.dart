@@ -399,6 +399,42 @@ void main() {
     expect(_keyedValue(tester, 'open-error'), '');
   });
 
+  testWidgets('a successful load-only clears a latched open error', (
+    tester,
+  ) async {
+    // Load Only is the one wrapped path that never reaches
+    // _resetPublicationLatches: it loads a publication without opening one, so
+    // it sets loaded-title and nothing else. If the latch were cleared only by
+    // that reset, a failed open followed by a good load would strand the error
+    // and any later "open-error is empty" assertion would fail for a fault
+    // that was already over.
+    await _bootApp(tester);
+
+    _mockMainChannel(openPublicationThrows: true);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Open EPUB'));
+      await _pumpUntil(
+        tester,
+        () => _keyedValue(tester, 'open-error').isNotEmpty,
+      );
+    });
+    expect(_keyedValue(tester, 'open-error'), startsWith('openEpub: '));
+
+    _mockMainChannel();
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Load Only'));
+      await _pumpUntil(
+        tester,
+        () => _keyedValue(tester, 'loaded-title').isNotEmpty,
+      );
+    });
+
+    // The load succeeded, so the record of the previous failure is gone — and
+    // the publication counter did not move, because a load is not an open.
+    expect(_keyedValue(tester, 'open-error'), '');
+    expect(_keyedValue(tester, 'open-generation'), '1');
+  });
+
   testWidgets('audio_enable_error_shows_snackbar', (tester) async {
     _mockMainChannel(audioEnableThrows: true);
     await tester.pumpWidget(const ExampleApp());

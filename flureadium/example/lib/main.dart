@@ -102,9 +102,10 @@ class _ReaderPageState extends State<ReaderPage> {
   String _lastAudioError = '';
   // Latches the last failure from an open path so integration tests can assert
   // that an open succeeded, rather than that some reader widget is on screen.
-  // Cleared by _resetPublicationLatches, which every successful open reaches:
+  // Cleared by _runOpen on any success and again by _resetPublicationLatches:
   // an error left latched past the next good open would fail a later test for
-  // a fault that is already over.
+  // a fault that is already over. _runOpen is the one that makes that true for
+  // _loadOnly, which latches failures but never reaches the reset.
   String _lastOpenError = '';
   // Local server backing the 'Open AudioBook BadStream' action: serves a WAV
   // whose Content-Length promises the full clip but drops the socket after a
@@ -198,16 +199,25 @@ class _ReaderPageState extends State<ReaderPage> {
     super.dispose();
   }
 
-  /// Runs one open path, recording any failure where a test can see it.
+  /// Runs one open path, recording any failure where a test can see it and
+  /// clearing that record when one succeeds.
   ///
   /// Every opener used to carry its own `catch (e) { debugPrint(...) }`, which
   /// meant a failed open left no trace in the widget tree — a test could only
   /// observe it by noticing a reader that never appeared, and any reader
   /// already on screen hid even that. Sixteen copies of that block is also how
   /// the omission stayed invisible: there was no single place to fix.
+  ///
+  /// Clearing on success here rather than relying on `_resetPublicationLatches`
+  /// is what makes "empty means the last attempt succeeded" true for every
+  /// wrapped path. `_loadOnly` loads without opening, so it never reaches that
+  /// reset — leaving it out would let a failed open stay latched across a
+  /// successful load and fail a later test for a fault that was already over.
   Future<void> _runOpen(String label, Future<void> Function() body) async {
     try {
       await body();
+      if (!mounted || _lastOpenError.isEmpty) return;
+      setState(() => _lastOpenError = '');
     } catch (e) {
       debugPrint('$label error: $e');
       if (!mounted) return;

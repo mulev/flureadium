@@ -38,7 +38,8 @@ String publicationIdentifier(WidgetTester tester) =>
 /// Reads the example app's `open-error` latch — the last failure an open path
 /// recorded, or `''` when the last open succeeded.
 ///
-/// Cleared on every successful open, so a non-empty value always describes the
-/// most recent attempt. Asserting it is empty turns a silent failure into a
+/// Cleared by `_runOpen` whenever an open path succeeds — including the
+/// load-only path, which latches failures but never resets the publication
+/// latches — so a non-empty value always describes the most recent attempt. Asserting it is empty turns a silent failure into a
 /// message that names its cause, instead of "found 0 widgets".
 String openError(WidgetTester tester) => _latch(tester, 'open-error');
