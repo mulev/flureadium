@@ -143,6 +143,49 @@ jobs:
       - name: Run tests
         run: dart test
 
+  # Nothing ran the helper-script suite before this job existed, and nothing
+  # checked that the committed bundle matches its TypeScript. A source edit
+  # without `npm run build:flutter` used to ship silently: the webview kept
+  # loading the old bundle and every other suite stayed green.
+  test-helper-scripts:
+    name: Test Helper Scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: flureadium/assets/_helper_scripts
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22 is the pin the freshness check depends on: the bundle is
+      # byte-reproducible for a given Node major, not across majors.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: flureadium/assets/_helper_scripts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # npx jest, not `npm test`: the test script is `jest --watchAll` and
+      # would never exit.
+      - name: Run jest
+        run: npx jest --ci
+
+      # The bundle is the artifact that actually ships to the webview.
+      # `git status --porcelain`, not `git diff`: diff sees tracked modifications
+      # only, so a newly emitted file would land untracked and pass.
+      - name: Check the shipped bundle matches its source
+        run: |
+          npm run build:flutter
+          if [ -n "$(git status --porcelain -- ../helpers)" ]; then
+            git --no-pager diff --stat -- ../helpers
+            git status --porcelain -- ../helpers
+            echo "::error file=flureadium/assets/helpers/epub.js::Stale bundle. Run 'npm run build:flutter' in flureadium/assets/_helper_scripts and commit the result."
+            exit 1
+          fi
+
   test-android-native:
     name: Test Android Native (Robolectric)
     runs-on: ubuntu-latest
