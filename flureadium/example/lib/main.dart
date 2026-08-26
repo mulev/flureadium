@@ -706,6 +706,14 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
+  Future<void> _openBacklinkChapter() async {
+    try {
+      await _openPublicationAsset('assets/pubs/backlink_chapter.epub');
+    } catch (e) {
+      debugPrint('openBacklinkChapter error: $e');
+    }
+  }
+
   Future<void> _dartSkipToNext() async =>
       FlureadiumPlatform.instance.currentReaderWidget?.skipToNext();
 
@@ -889,6 +897,14 @@ class _ReaderPageState extends State<ReaderPage> {
                       ),
                     ),
                     Text(
+                      key: const Key('locator_toc_fragment'),
+                      _locator?.locations?.tocFragment ?? '',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
                       key: const Key('loaded-title'),
                       'loaded-title: $_loadedTitle',
                       style: const TextStyle(
@@ -909,6 +925,10 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _openFrontmatter,
                           child: const Text('Open Frontmatter'),
+                        ),
+                        TextButton(
+                          onPressed: _openBacklinkChapter,
+                          child: const Text('Open Backlink Chapter'),
                         ),
                         TextButton(
                           onPressed: _openAudiobook,

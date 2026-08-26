@@ -10,6 +10,7 @@ import 'package:integration_test/integration_test.dart';
 import 'helpers/ensure_app_showing.dart';
 import 'helpers/expect_eventually.dart';
 import 'helpers/locator_latch.dart';
+import 'helpers/pump_until.dart';
 import 'helpers/reader_status.dart';
 
 void _navigationTests(String assetLabel, String asset, String reopenButton) {
@@ -190,4 +191,62 @@ void main() {
     'assets/pubs/frontmatter_toc.epub',
     'Open Frontmatter',
   );
+  // The back-link fixture reproduces the ebookmaker shape: every chapter opens
+  // with a back-to-contents link above its own heading, and the nav document
+  // points at an id carried on the div wrapping that heading.
+  _navigationTests(
+    'backlink_chapter',
+    'assets/pubs/backlink_chapter.epub',
+    'Open Backlink Chapter',
+  );
+  _backlinkFragmentTests();
+}
+
+/// The one case that belongs to `backlink_chapter.epub` alone: the fixture is
+/// the only one whose chapters put content above their own heading, so it is
+/// the only one whose `toc=` fragment can come back empty. Kept out of
+/// [_navigationTests] because the other three fixtures have no heading id to
+/// assert on.
+void _backlinkFragmentTests() {
+  group('navigation (backlink_chapter) toc fragment', () {
+    Future<void> showFixture(WidgetTester tester) => ensureAppShowing(
+      tester,
+      initialAsset: 'assets/pubs/backlink_chapter.epub',
+      reopenButton: 'Open Backlink Chapter',
+      openAfterColdBoot: true,
+    );
+
+    tearDown(() async {
+      await Flureadium().closePublication();
+    });
+
+    testWidgets('a chapter landing names the chapter heading', (tester) async {
+      await showFixture(tester);
+
+      // The reader opens on the cover, which has no TOC entry, so the first
+      // skip resolves from "no current entry" — the state the reported book
+      // was in. One skip lands on chapter one.
+      await expectEventually(
+        tester,
+        () => locatorHref(tester).isNotEmpty,
+        reason: 'no starting locator to skip from',
+      );
+
+      await tester.tap(find.text('DartSkip+'));
+
+      // `pumpUntil` rather than `expectEventually`: the latter builds its
+      // reason eagerly, so it would report the fragment as it stood before the
+      // skip. Asserting the settled value afterwards puts the id the reader
+      // actually named into the failure message.
+      await pumpUntil(tester, () => locatorTocFragment(tester) == 'h1');
+      expect(
+        locatorTocFragment(tester),
+        'h1',
+        reason:
+            'the locator must name the id the nav document points at, carried '
+            'on the div wrapping the chapter heading; an empty value means the '
+            'page script fell through to the body fallback',
+      );
+    });
+  });
 }
