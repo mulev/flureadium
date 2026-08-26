@@ -72,21 +72,22 @@ mixin TocSkipNavigationMixin {
       return;
     }
 
-    var position = currentLocator;
-    if (position == null && whenReady != null) {
+    var resolvedLocator = currentLocator;
+    if (resolvedLocator == null && whenReady != null) {
       R2Log.d('$label: locator cache is cold, waiting for the reader');
       try {
-        position = await whenReady;
+        resolvedLocator = await whenReady;
       } on ReadiumError {
         // The view was released before it reported a locator — a publication
         // swap. There is no position to skip from and no channel to skip on.
         return;
       }
     }
-    if (position == null) {
+    if (resolvedLocator == null) {
       R2Log.d('$label: no current locator');
       return;
     }
+    final position = resolvedLocator;
 
     final resolved = resolveCurrentTocIndex(
       currentLocator: position,
@@ -100,13 +101,40 @@ mixin TocSkipNavigationMixin {
     R2Log.d('$label: curIndex=${resolved.index}, tocLength=${toc.length}');
 
     final decide = forward ? decideSkipToNext : decideSkipToPrevious;
-    final decision = decide(
+    NavigationDecision decideFrom(int tocIndex) => decide(
       currentLocator: position,
       toc: toc,
       readingOrder: publication.readingOrder,
-      currentTocIndex: resolved.index,
+      currentTocIndex: tocIndex,
       publication: publication,
     );
+
+    var decision = decideFrom(resolved.index);
+
+    // An entry on the page the reader is already showing cannot move it:
+    // `EpubPage._scrollToProcessedRange` declines to scroll a visible range,
+    // and in paginated mode the page is the unit of display. Walk past those,
+    // so a tap always lands somewhere new. Bounded by construction — the walk
+    // stops at the first entry in another resource, and a resource holds
+    // finitely many entries.
+    if (channel != null && !isPdfToc(toc)) {
+      final currentPath = normalizePath(position.hrefPath);
+
+      while (decision.canNavigate) {
+        final link = decision.targetLink!;
+        // Another resource always re-renders, so it always moves.
+        if (normalizePath(link.hrefPart) != currentPath) break;
+        final candidate = publication.locatorFromLink(link);
+        if (candidate == null) break;
+        if (!await channel.isLocatorVisible(candidate)) break;
+        final nextIndex = decision.targetTocIndex;
+        // A decision with no index targets a non-TOC page; there is nothing to
+        // advance past.
+        if (nextIndex == null) break;
+        R2Log.d('$label: entry $nextIndex is already on screen, advancing');
+        decision = decideFrom(nextIndex);
+      }
+    }
 
     if (!decision.canNavigate) {
       R2Log.d('$label: ${decision.reason}');

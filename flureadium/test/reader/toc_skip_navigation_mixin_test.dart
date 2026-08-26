@@ -1,40 +1,13 @@
 import 'dart:async';
 
-import 'package:flureadium/reader_channel.dart';
 import 'package:flureadium/src/reader/toc_skip_navigation_mixin.dart';
 import 'package:flureadium_platform_interface/flureadium_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'mock_reader_channel.dart';
+
 // Test class that uses the mixin.
 class TestTocSkipNavigator with TocSkipNavigationMixin {}
-
-/// One `go` call recorded by [MockReaderChannel].
-typedef GoCall = ({Locator locator, bool animated, bool isAudioBookWithText});
-
-// Mock ReadiumReaderChannel that records every navigation request.
-class MockReaderChannel extends ReadiumReaderChannel {
-  MockReaderChannel() : super('test-channel', onPageChanged: (_) {});
-
-  final goCallLog = <GoCall>[];
-
-  /// Runs inside `go`, standing in for anything the host does while the
-  /// native navigation round-trip is still in flight.
-  void Function()? duringGo;
-
-  @override
-  Future<void> go(
-    Locator locator, {
-    bool animated = false,
-    required bool isAudioBookWithText,
-  }) async {
-    goCallLog.add((
-      locator: locator,
-      animated: animated,
-      isAudioBookWithText: isAudioBookWithText,
-    ));
-    duringGo?.call();
-  }
-}
 
 /// A publication whose TOC nests Ch1..Ch3 under a single part, matching the
 /// hierarchical shape Readium iOS produces for EPUB3 nav documents.
