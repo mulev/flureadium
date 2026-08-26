@@ -698,6 +698,14 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
+  Future<void> _openFrontmatter() async {
+    try {
+      await _openPublicationAsset('assets/pubs/frontmatter_toc.epub');
+    } catch (e) {
+      debugPrint('openFrontmatter error: $e');
+    }
+  }
+
   Future<void> _dartSkipToNext() async =>
       FlureadiumPlatform.instance.currentReaderWidget?.skipToNext();
 
@@ -951,6 +959,10 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _openHierarchical,
                           child: const Text('Open Hierarchical'),
+                        ),
+                        TextButton(
+                          onPressed: _openFrontmatter,
+                          child: const Text('Open Frontmatter'),
                         ),
                         TextButton(
                           onPressed: _openAudiobook,

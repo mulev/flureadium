@@ -5,156 +5,15 @@ import 'package:integration_test/integration_test.dart';
 
 import 'helpers/ensure_app_showing.dart';
 import 'helpers/locator_latch.dart';
+import 'helpers/expect_eventually.dart';
 import 'helpers/pump_until.dart';
 import 'helpers/reader_status.dart';
-
-/// Pumps until [condition] holds, failing with [reason] when it never does.
-///
-/// [pumpUntil] reports a timeout in its return value, so every wait has to
-/// assert that value or a never-satisfied condition passes silently.
-Future<void> _expectEventually(
-  WidgetTester tester,
-  bool Function() condition, {
-  required String reason,
-  Duration timeout = const Duration(seconds: 15),
-}) async {
-  final satisfied = await pumpUntil(tester, condition, timeout: timeout);
-  expect(satisfied, isTrue, reason: reason);
-}
-
-void _navigationTests(String assetLabel, String asset, String reopenButton) {
-  group('navigation ($assetLabel)', () {
-    // Every test opens this group's own book: `openAfterColdBoot` taps the
-    // reopen button on the cold-boot arm too, so the first test to run gets
-    // this fixture instead of whatever a previous suite left mounted.
-    Future<void> showFixture(WidgetTester tester) => ensureAppShowing(
-      tester,
-      initialAsset: asset,
-      reopenButton: reopenButton,
-      openAfterColdBoot: true,
-    );
-
-    tearDown(() async {
-      await Flureadium().closePublication();
-    });
-
-    testWidgets('opens and shows reader widget', (tester) async {
-      await showFixture(tester);
-      expect(find.byType(ReadiumReaderWidget), findsOneWidget);
-    });
-
-    testWidgets('the load cover tracks reader status', (tester) async {
-      await showFixture(tester);
-
-      final cover = find.byKey(const Key('reader-loading-cover'));
-
-      // ensureAppShowing returns on the open-generation bump, which lands in
-      // the same setState that clears _readerStatus — so this wait is a guard,
-      // not a delay: were a 'ready' still latched, the sampling loop below
-      // would return on it and never watch the load it exists to watch.
-      await _expectEventually(
-        tester,
-        () => readerStatus(tester) != 'ready',
-        reason: 'the open never reset the reader status',
-      );
-
-      // Sampled on every pump: covered exactly while the reader is loading.
-      // 'error' and 'closed' are terminal, so the cover is gone there too.
-      await _expectEventually(
-        tester,
-        () {
-          final status = readerStatus(tester);
-          expect(
-            cover.evaluate().isNotEmpty,
-            status.isEmpty || status == 'loading',
-            reason: 'reader status was "$status"',
-          );
-          return status == 'ready';
-        },
-        reason: 'reader never reported ready',
-        timeout: const Duration(seconds: 30),
-      );
-    });
-
-    testWidgets('navigate left and right', (tester) async {
-      await showFixture(tester);
-
-      await _expectEventually(
-        tester,
-        () => locatorHref(tester).isNotEmpty,
-        reason: 'no starting locator to navigate from',
-      );
-      final start = locatorHref(tester);
-
-      // Forward first: on the opening resource a back-tap may legitimately
-      // have nowhere to go, so only forward-then-back has a provable trip.
-      await tester.tap(find.text('→'));
-      await _expectEventually(
-        tester,
-        () => locatorHref(tester) != start,
-        reason: 'the locator never left "$start" after →',
-      );
-
-      await tester.tap(find.text('←'));
-      await _expectEventually(
-        tester,
-        () => locatorHref(tester) == start,
-        reason: 'the locator never returned to "$start"',
-      );
-    });
-
-    testWidgets('DartSkip+ advances the reader', (tester) async {
-      await showFixture(tester);
-
-      await _expectEventually(
-        tester,
-        () => locatorHref(tester).isNotEmpty,
-        reason: 'no starting locator to skip from',
-      );
-      final before = locatorHref(tester);
-
-      await tester.tap(find.text('DartSkip+'));
-      await _expectEventually(
-        tester,
-        () => locatorHref(tester) != before,
-        reason: 'DartSkip+ did not move the reader from "$before"',
-      );
-    });
-
-    testWidgets('DartSkip- returns the reader', (tester) async {
-      await showFixture(tester);
-
-      await _expectEventually(
-        tester,
-        () => locatorHref(tester).isNotEmpty,
-        reason: 'no starting locator to skip from',
-      );
-      final start = locatorHref(tester);
-
-      // Both fixtures open on their first TOC entry, so a backward skip has
-      // nowhere to land until a forward skip puts something behind us.
-      await tester.tap(find.text('DartSkip+'));
-      await _expectEventually(
-        tester,
-        () => locatorHref(tester) != start,
-        reason: 'nothing to skip back from',
-      );
-
-      await tester.tap(find.text('DartSkip-'));
-      await _expectEventually(
-        tester,
-        () => locatorHref(tester) == start,
-        reason: 'DartSkip- did not return the reader to "$start"',
-      );
-    });
-  });
-}
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('EPUB', () {
-    // As in _navigationTests: every test opens its own EPUB, so no case
+    // As in epub_navigation_test.dart: every test opens its own EPUB, so no case
     // asserts against a publication another suite left mounted.
     Future<void> showEpub(WidgetTester tester) => ensureAppShowing(
       tester,
@@ -177,7 +36,7 @@ void main() {
     ) async {
       await showEpub(tester);
 
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => readerStatus(tester) == 'ready',
         reason: 'reader never reported ready',
@@ -200,7 +59,7 @@ void main() {
     testWidgets('Go To Saved returns to the saved position', (tester) async {
       await showEpub(tester);
 
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => savedLocatorHref(tester).isNotEmpty,
         reason: 'nothing was ever saved',
@@ -208,14 +67,14 @@ void main() {
       final saved = savedLocatorHref(tester);
 
       await tester.tap(find.text('→'));
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => locatorHref(tester) != saved,
         reason: 'could not navigate away from "$saved"',
       );
 
       await tester.tap(find.text('Go To Saved'));
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => locatorHref(tester) == saved,
         reason: 'Go To Saved did not return to "$saved"',
@@ -232,7 +91,7 @@ void main() {
     ) async {
       await showEpub(tester);
 
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => savedLocatorHref(tester).isNotEmpty,
         reason: 'nothing was ever saved',
@@ -240,7 +99,7 @@ void main() {
       final saved = savedLocatorHref(tester);
 
       await tester.tap(find.text('Go To Saved'));
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => locatorHref(tester) == saved,
         reason: 'Go To Saved did not reach "$saved"',
@@ -285,7 +144,7 @@ void main() {
     ) async {
       await showEpub(tester);
 
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => locatorHref(tester).isNotEmpty,
         reason: 'no locator before applying preferences',
@@ -365,7 +224,7 @@ void main() {
       }
 
       await tester.tap(find.text('Load Only'));
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => loadedTitle().isNotEmpty,
         reason: 'loadPublication never reported a title',
@@ -373,15 +232,4 @@ void main() {
       expect(find.byType(ReadiumReaderWidget), findsNothing);
     });
   });
-
-  // Navigation smoke tests run with both fixtures to catch regressions.
-  // The hierarchical fixture has Part I → [Ch1, Ch2, Ch3] and
-  // Part II → Section 1 → [Ch4, Ch5], verifying that flattenToc-based skip
-  // navigation works with multi-level TOC structures.
-  _navigationTests('moby_dick', 'assets/pubs/moby_dick.epub', 'Open EPUB');
-  _navigationTests(
-    'hierarchical_toc',
-    'assets/pubs/hierarchical_toc.epub',
-    'Open Hierarchical',
-  );
 }
