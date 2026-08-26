@@ -1,3 +1,21 @@
+## 0.17.2
+
+### Bug Fixes
+
+- **A chapter skip moves the reader now, on a book whose nav document anchors typographic lines**: `flattenToc` treats every nav point at every nesting depth as a chapter, which is what makes nested chapters reachable — but a title page that anchors its byline and its imprint line as separate entries puts several of them on one rendered page, and the reader declines to scroll to something already visible. On Gutenberg 25946 six such entries precede the first chapter, so four of the six taps it took to reach it changed nothing at all. `skipToNext` and `skipToPrevious` now walk forward while the next entry is both in the resource on screen and reported visible, and navigate to the first entry that fails either test. The walk stops at the resource boundary, because another resource always re-renders; PDF outlines are left alone, since their entries all share one href; and a failed visibility probe answers `true`, so a broken probe lands on the first entry of the next resource rather than stalling. `_lastNavigatedTocIndex` records the entry actually navigated to.
+- **`isLocatorVisible` reports a visible range as visible**: it also required an `activeLocation` marker inside the target range, a marker only `setLocation` plants, so every locator the reader was merely showing answered `false`. The TODO above that line had said as much since the file was written. The conjunct is gone, leaving the range check the method's name and its own doc comment promise. A host that read the old answer was reading "is this the active TTS location and on screen", not "is this on screen".
+
+### Documentation
+
+- `docs/api-reference/reader-widget.md`, `flureadium-class.md` and `publication.md` state that a skip passes over entries already on the reader's page, so a tap always moves it.
+- `docs/05-testing/integration-tests.md` has a "The chrome has to stay reachable" section: the example app's control bar grows with every button added to it, the toggle block is the last `Stack` child so it keeps winning the pointer, and a short-screen overlap reproduces by shrinking the emulator to CI's 682 dp app area.
+
+### Example App
+
+- `assets/pubs/frontmatter_toc.epub` is a new fixture in the reported book's shape: a cover carrying no TOC entry, six front-matter entries anchored inside one rendered page, then three chapters. An **Open Frontmatter** button opens it.
+- The EPUB navigation groups moved from `integration_test/epub_test.dart` to `epub_navigation_test.dart`, with their shared wait helper in `integration_test/helpers/expect_eventually.dart`. The new case asserts href *and* progression after every skip, because a TOC index alone cannot show whether the reader moved.
+- The `toggle-controls` block is the last child of the example's page `Stack`. The control bar has no height cap, and on a 682 dp screen it had grown tall enough to take the tap aimed at the toggle, so the tap suite could not put the chrome down.
+
 ## 0.17.1
 
 ### Bug Fixes
