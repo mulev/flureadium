@@ -6,21 +6,25 @@
 # summary:
 #   1. Unit / widget tests  — flutter test / dart test in each Dart package
 #                             (plugin, platform interface, example, lints)
-#   2. Native unit tests    — scripts/run_native_unit_tests.sh
+#   2. Helper scripts       — scripts/run_helper_script_tests.sh
+#                             (jest suite for the injected page scripts, then a
+#                             check that assets/helpers/ matches its TypeScript)
+#   3. Native unit tests    — scripts/run_native_unit_tests.sh
 #                             (Android Kotlin/Robolectric JVM + iOS Swift/XCTest)
-#   3. Integration tests    — scripts/run_integration_tests.sh
+#   4. Integration tests    — scripts/run_integration_tests.sh
 #                             (full example-app flows on Android + iOS + Web)
 #
-# Suites run fastest-first (unit -> native -> integration) and, by default,
-# every suite runs even if an earlier one fails; the final table shows each
-# suite's status, duration, and log file. The exit code is non-zero if any
-# suite that ran failed.
+# Suites run fastest-first (unit -> helpers -> native -> integration) and, by
+# default, every suite runs even if an earlier one fails; the final table
+# shows each suite's status, duration, and log file. The exit code is
+# non-zero if any suite that ran failed.
 #
 # Usage:
 #   ./scripts/run_all_tests.sh [options]
 #
 # Suite selection:
 #   --skip-unit             Skip the Dart unit/widget tests
+#   --skip-helpers          Skip the helper-script suite (jest + bundle check)
 #   --skip-native           Skip the native (Android + iOS) unit tests
 #   --skip-integration      Skip the integration tests
 #   --unit-only             Run only the unit/widget tests
@@ -73,9 +77,11 @@ LINTS_DIR="$REPO_ROOT/flureadium_lints"
 LOG_BASE="$PLUGIN_DIR/test_logs/all_tests"
 NATIVE_RUNNER="$SCRIPT_DIR/run_native_unit_tests.sh"
 INTEGRATION_RUNNER="$SCRIPT_DIR/run_integration_tests.sh"
+HELPER_RUNNER="$SCRIPT_DIR/run_helper_script_tests.sh"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 SKIP_UNIT=false
+SKIP_HELPERS=false
 SKIP_NATIVE=false
 SKIP_INTEGRATION=false
 SKIP_ANDROID=false
@@ -90,18 +96,20 @@ VERBOSE=false
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 usage() {
-  sed -n '3,50p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,54p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --skip-unit)        SKIP_UNIT=true;         shift ;;
+    --skip-helpers)     SKIP_HELPERS=true;      shift ;;
     --skip-native)      SKIP_NATIVE=true;       shift ;;
     --skip-integration) SKIP_INTEGRATION=true;  shift ;;
+    # The helper-script suite is unit-class, so --unit-only keeps it.
     --unit-only)        SKIP_NATIVE=true; SKIP_INTEGRATION=true; shift ;;
-    --native-only)      SKIP_UNIT=true; SKIP_INTEGRATION=true;   shift ;;
-    --integration-only) SKIP_UNIT=true; SKIP_NATIVE=true;        shift ;;
+    --native-only)      SKIP_UNIT=true; SKIP_HELPERS=true; SKIP_INTEGRATION=true; shift ;;
+    --integration-only) SKIP_UNIT=true; SKIP_HELPERS=true; SKIP_NATIVE=true;      shift ;;
     --skip-android)     SKIP_ANDROID=true;      shift ;;
     --skip-ios)         SKIP_IOS=true;          shift ;;
     --skip-web)         SKIP_WEB=true;          shift ;;
@@ -287,7 +295,7 @@ log "${YELLOW}  Flureadium — God-Tier Test Runner (unit + native + integration
 log "${YELLOW}══════════════════════════════════════════════════════════════════${NC}"
 log "Plugin:    $PLUGIN_DIR"
 log "Logs:      $LOG_DIR"
-log "Suites:    unit=$([ "$SKIP_UNIT" = true ] && echo skip || echo run)  native=$([ "$SKIP_NATIVE" = true ] && echo skip || echo run)  integration=$([ "$SKIP_INTEGRATION" = true ] && echo skip || echo run)"
+log "Suites:    unit=$([ "$SKIP_UNIT" = true ] && echo skip || echo run)  helpers=$([ "$SKIP_HELPERS" = true ] && echo skip || echo run)  native=$([ "$SKIP_NATIVE" = true ] && echo skip || echo run)  integration=$([ "$SKIP_INTEGRATION" = true ] && echo skip || echo run)"
 [ "$SKIP_ANDROID" = true ] && log "Android:   skipped"
 [ "$SKIP_IOS" = true ]     && log "iOS:       skipped"
 [ "$SKIP_WEB" = true ]     && log "Web:       skipped"
@@ -299,6 +307,11 @@ WALL_START=$(date +%s)
 cd "$PLUGIN_DIR" || exit 1
 
 # Guard: the delegated runners must exist before we claim to run their suites.
+if [ "$SKIP_HELPERS" = false ] && [ ! -x "$HELPER_RUNNER" ]; then
+  log "${RED}Helper-script runner not found or not executable: $HELPER_RUNNER${NC}"
+  SKIP_HELPERS=true
+  OVERALL_EXIT=1
+fi
 if [ "$SKIP_NATIVE" = false ] && [ ! -x "$NATIVE_RUNNER" ]; then
   log "${RED}Native runner not found or not executable: $NATIVE_RUNNER${NC}"
   SKIP_NATIVE=true
@@ -324,6 +337,12 @@ run_or_skip "Unit — example" "$LOG_DIR/unit_example.log" "$SKIP_UNIT" "$NOISE_
 
 run_or_skip "Unit — lints" "$LOG_DIR/unit_lints.log" "$SKIP_UNIT" "$NOISE_RE" \
   pkg_dart_test "$LINTS_DIR"
+
+# Helper scripts — the jest suite for the injected page scripts, plus a check
+# that the committed assets/helpers/ bundle still matches the TypeScript it was
+# built from. Its own skip gate: it needs Node, not the Flutter toolchain.
+run_or_skip "Unit — helper scripts" "$LOG_DIR/unit_helper_scripts.log" "$SKIP_HELPERS" "" \
+  "$HELPER_RUNNER"
 
 run_or_skip "Native unit tests" "$LOG_DIR/native.log" "$SKIP_NATIVE" "" \
   "$NATIVE_RUNNER" "${NATIVE_ARGS[@]}"
