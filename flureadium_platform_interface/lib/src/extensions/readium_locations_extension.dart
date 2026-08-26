@@ -69,10 +69,19 @@ extension LocationExtension on Locations {
         '',
   );
 
-  String? get tocFragment => fragments
-      .firstWhereOrNull((final f) => f.startsWith('toc='))
-      ?.split('=')
-      .last;
+  /// The `toc=` fragment's heading id, or null when no fragment carries one.
+  ///
+  /// An empty value counts as absent: an id of `''` matches no table of
+  /// contents entry, so a producer that cannot resolve a heading should omit
+  /// the fragment entirely.
+  String? get tocFragment {
+    final id = fragments
+        .firstWhereOrNull((final f) => f.startsWith('toc='))
+        ?.split('=')
+        .last;
+
+    return id == null || id.isEmpty ? null : id;
+  }
 
   int? get durationFragment => int.tryParse(
     fragments
