@@ -13,7 +13,7 @@ declare const isAndroid: boolean;
 declare const webkit: any;
 declare const readium: Readium;
 declare const comicBookPage: ComicBookPage;
-declare const Android: any | null;
+declare const Android: any | null;
 
 export class EpubPage {
   constructor() {
