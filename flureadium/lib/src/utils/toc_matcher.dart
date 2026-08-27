@@ -1,4 +1,3 @@
-import 'package:collection/collection.dart';
 import 'package:flureadium_platform_interface/flureadium_platform_interface.dart';
 
 /// Strips leading '/' from a path for consistent comparison.
@@ -187,23 +186,40 @@ List<Link> flattenToc(List<Link> toc) {
   return result;
 }
 
-/// The href of [locator]'s text locator with its `toc=` fragment appended as
-/// an identifier, or null when the locator carries no `toc=` fragment.
-String? tocHrefWithFragment(Locator? locator) {
-  if (locator == null) {
-    return null;
-  }
+/// The table-of-contents entry [fragment] names, and where it was found.
+///
+/// Looks inside [path]'s own resource first, then across the whole [toc].
+/// `ownFile` reports which pass matched; `index` is -1 when neither did.
+///
+/// The two passes exist because a heading id is not unique across a
+/// publication. A book whose every chapter opens with `id="top"` would map all
+/// of them to the first entry if the whole contents were searched first. The
+/// second pass is still worth having: during a navigation the locator's href
+/// and its `toc=` fragment disagree for one frame, naming the chapter being
+/// left and the chapter being entered at the same time.
+///
+/// Callers rule on `ownFile` themselves — a cross-resource match is weaker
+/// evidence than one found where the reader actually is, and how much weaker
+/// depends on what the caller does with it. See [resolveCurrentTocIndex] for
+/// the ruling chapter skipping makes.
+({int index, bool ownFile}) findTocIndexByFragment(
+  List<Link> toc,
+  String fragment,
+  String path,
+) {
+  if (fragment.isEmpty) return (index: -1, ownFile: false);
 
-  const prefix = 'toc=';
-  final tocFragment = locator.locations?.fragments.firstWhereOrNull(
-    (f) => f.startsWith(prefix),
+  final ownPath = normalizePath(path);
+  final own = toc.indexWhere(
+    (link) =>
+        link.elementId == fragment && normalizePath(link.hrefPart) == ownPath,
   );
-  if (tocFragment == null) {
-    return null;
-  }
+  if (own != -1) return (index: own, ownFile: true);
 
-  final identifier = tocFragment.substring(prefix.length);
-  return '${locator.toTextLocator().hrefPath}#$identifier';
+  return (
+    index: toc.indexWhere((link) => link.elementId == fragment),
+    ownFile: false,
+  );
 }
 
 /// Resolves [currentLocator]'s index in a flattened [toc].
@@ -243,13 +259,17 @@ String? tocHrefWithFragment(Locator? locator) {
 }
 
 int _matchTocIndex(Locator currentLocator, List<Link> toc, bool lastMatch) {
-  final currentHref = tocHrefWithFragment(currentLocator);
-  if (currentHref != null) {
-    final index = toc.indexWhere((l) => l.href == currentHref);
-    if (index != -1) {
-      return index;
-    }
-  }
+  final match = findTocIndexByFragment(
+    toc,
+    currentLocator.locations?.tocFragment ?? '',
+    currentLocator.hrefPath,
+  );
+  // Only a match in the resource on screen counts. A fragment found elsewhere
+  // in the contents is as likely to be a reused heading id as a real position,
+  // and a skip that acts on the wrong guess sends the reader out of the
+  // chapter they are reading. Path matching is the better answer when in
+  // doubt.
+  if (match.ownFile) return match.index;
 
   if (isPdfToc(toc)) {
     return findTocIndexByPage(currentLocator, toc);

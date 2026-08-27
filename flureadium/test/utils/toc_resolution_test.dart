@@ -5,62 +5,58 @@ import 'package:flureadium/src/utils/toc_matcher.dart';
 Locator _locator(String href) =>
     Locator(href: href, type: 'application/xhtml+xml');
 
-Locator _pdfLocator(String href, {int? position}) => Locator(
-  href: href,
-  type: 'application/pdf',
-  locations: Locations(position: position),
-);
-
 void main() {
-  group('tocHrefWithFragment', () {
-    test('returns null for a null locator', () {
-      expect(tocHrefWithFragment(null), isNull);
+  group('findTocIndexByFragment', () {
+    final toc = [
+      Link(href: '/ch1.xhtml#top'),
+      Link(href: '/ch2.xhtml#top'),
+      Link(href: '/ch2.xhtml#middle'),
+      Link(href: '/ch3.xhtml'),
+    ];
+
+    test('finds an id in the reader\'s own resource', () {
+      final match = findTocIndexByFragment(toc, 'middle', '/ch2.xhtml');
+
+      expect(match, (index: 2, ownFile: true));
     });
 
-    test('returns null when the locator carries no toc= fragment', () {
-      final locator = Locator(
-        href: '/ch1.xhtml',
-        type: 'application/xhtml+xml',
-        locations: Locations(fragments: ['page=3']),
-      );
+    test('own resource wins over the same id earlier in the contents', () {
+      final match = findTocIndexByFragment(toc, 'top', '/ch2.xhtml');
 
-      expect(tocHrefWithFragment(locator), isNull);
+      expect(match, (index: 1, ownFile: true));
     });
 
-    test('appends the fragment value to the text locator href path', () {
-      final locator = Locator(
-        href: '/ch1.xhtml',
-        type: 'application/xhtml+xml',
-        locations: Locations(fragments: ['toc=intro']),
-      );
+    test('falls back to the whole contents, reporting ownFile false', () {
+      final match = findTocIndexByFragment(toc, 'middle', '/ch3.xhtml');
 
-      // `hrefPath` normalises through `String.path`, which guarantees a
-      // leading slash — TOC hrefs carry one too, so the two compare equal.
-      expect(tocHrefWithFragment(locator), '/ch1.xhtml#intro');
+      expect(match, (index: 2, ownFile: false));
     });
 
-    test('is unchanged by a redundant second toTextLocator pass', () {
-      final locator = Locator(
-        href: '/ch1.xhtml',
-        type: 'application/xhtml+xml',
-        locations: Locations(fragments: ['toc=intro']),
-      );
+    test('returns -1 when the id is nowhere in the contents', () {
+      final match = findTocIndexByFragment(toc, 'nowhere', '/ch1.xhtml');
 
-      // Pins the behaviour the collapsed double call used to produce.
-      expect(
-        tocHrefWithFragment(locator),
-        '${locator.toTextLocator().toTextLocator().hrefPath}#intro',
-      );
+      expect(match, (index: -1, ownFile: false));
     });
 
-    test('drops a query string and picks the toc= fragment among others', () {
-      final locator = Locator(
-        href: '/OEBPS/ch2.xhtml?v=2',
-        type: 'application/xhtml+xml',
-        locations: Locations(fragments: ['t=12.5', 'toc=part-two']),
-      );
+    test('returns -1 for an empty fragment without scanning', () {
+      final match = findTocIndexByFragment(toc, '', '/ch1.xhtml');
 
-      expect(tocHrefWithFragment(locator), '/OEBPS/ch2.xhtml#part-two');
+      expect(match, (index: -1, ownFile: false));
+    });
+
+    test('matches when the contents carry a leading slash and the path '
+        'does not', () {
+      final match = findTocIndexByFragment(toc, 'middle', 'ch2.xhtml');
+
+      expect(match, (index: 2, ownFile: true));
+    });
+
+    test('matches when the path carries a leading slash and the contents '
+        'do not', () {
+      final unslashed = [Link(href: 'ch1.xhtml#a'), Link(href: 'ch1.xhtml#b')];
+      final match = findTocIndexByFragment(unslashed, 'b', '/ch1.xhtml');
+
+      expect(match, (index: 1, ownFile: true));
     });
   });
 
@@ -69,6 +65,14 @@ void main() {
       Link(href: 'ch1.xhtml'),
       Link(href: 'ch2.xhtml'),
       Link(href: 'ch3.xhtml'),
+    ];
+    // Three entries share ch1.xhtml, so first- and last-match path fallbacks
+    // land on different indices.
+    final sharedFileToc = [
+      Link(href: 'ch1.xhtml'),
+      Link(href: 'ch1.xhtml#a'),
+      Link(href: 'ch1.xhtml#b'),
+      Link(href: 'ch2.xhtml'),
     ];
 
     test('keeps a stored index that still points at the locator file', () {
@@ -157,13 +161,6 @@ void main() {
     );
 
     test('falls back to the last path match when lastMatch is true', () {
-      final sharedFileToc = [
-        Link(href: 'ch1.xhtml'),
-        Link(href: 'ch1.xhtml#a'),
-        Link(href: 'ch1.xhtml#b'),
-        Link(href: 'ch2.xhtml'),
-      ];
-
       final resolved = resolveCurrentTocIndex(
         currentLocator: _locator('/ch1.xhtml'),
         toc: sharedFileToc,
@@ -175,13 +172,6 @@ void main() {
     });
 
     test('falls back to the first path match when lastMatch is false', () {
-      final sharedFileToc = [
-        Link(href: 'ch1.xhtml'),
-        Link(href: 'ch1.xhtml#a'),
-        Link(href: 'ch1.xhtml#b'),
-        Link(href: 'ch2.xhtml'),
-      ];
-
       final resolved = resolveCurrentTocIndex(
         currentLocator: _locator('/ch1.xhtml'),
         toc: sharedFileToc,
@@ -192,6 +182,48 @@ void main() {
       expect(resolved.index, 0);
     });
 
+    test('a cross-resource fragment does not beat path matching', () {
+      // The id-collision book: `chapter` names an entry in ch1 while the
+      // reader is in ch2. Path matching is the better answer.
+      final collidingToc = [
+        Link(href: '/ch1.xhtml#chapter'),
+        Link(href: '/ch2.xhtml'),
+      ];
+
+      final resolved = resolveCurrentTocIndex(
+        currentLocator: Locator(
+          href: '/ch2.xhtml',
+          type: 'application/xhtml+xml',
+          locations: Locations(fragments: ['toc=chapter']),
+        ),
+        toc: collidingToc,
+        lastNavigatedTocIndex: null,
+        lastMatch: false,
+      );
+
+      expect(resolved.index, 1);
+    });
+
+    test('a nav document with no leading slashes resolves by fragment', () {
+      final unslashedToc = [
+        Link(href: 'ch1.xhtml#a'),
+        Link(href: 'ch1.xhtml#b'),
+      ];
+
+      final resolved = resolveCurrentTocIndex(
+        currentLocator: Locator(
+          href: 'ch1.xhtml',
+          type: 'application/xhtml+xml',
+          locations: Locations(fragments: ['toc=b']),
+        ),
+        toc: unslashedToc,
+        lastNavigatedTocIndex: null,
+        lastMatch: false,
+      );
+
+      expect(resolved.index, 1);
+    });
+
     test('uses page matching for a PDF-shaped TOC', () {
       final pdfToc = [
         Link(href: 'doc.pdf#page=1'),
@@ -200,7 +232,11 @@ void main() {
       ];
 
       final resolved = resolveCurrentTocIndex(
-        currentLocator: _pdfLocator('doc.pdf', position: 12),
+        currentLocator: Locator(
+          href: 'doc.pdf',
+          type: 'application/pdf',
+          locations: Locations(position: 12),
+        ),
         toc: pdfToc,
         lastNavigatedTocIndex: null,
         lastMatch: true,
