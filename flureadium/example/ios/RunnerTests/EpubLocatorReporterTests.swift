@@ -10,6 +10,10 @@
 //  turning pages or closing the reader": a page change still in flight when the
 //  reader tears down must publish nothing, on either side of the WebView hop.
 //
+//  Also pins what happens when resolution yields nothing usable: a nil answer
+//  publishes the locator Readium reported, and an answer a newer report has
+//  already superseded publishes nothing.
+//
 
 import XCTest
 import Flutter
@@ -197,7 +201,13 @@ final class EpubLocatorReporterTests: XCTestCase {
     XCTAssertEqual(collaborators.textLocators.count, 1)
   }
 
-  func testUnresolvableLocatorPublishesNothing() async {
+  // MARK: - Resolution failure and supersession
+
+  /// Resolution fails whenever a spread is mid-swap, which is whenever a page
+  /// turn is in flight. Dropping the report leaves Dart believing the reader
+  /// never moved, so the reported locator is published instead — what Android
+  /// has always done (`ReadiumReaderWidget.kt:401-411`).
+  func testUnresolvedLocatorPublishesTheReportedLocator() async {
     let collaborators = Collaborators()
     let messenger = MockBinaryMessenger()
     collaborators.resolverReply = nil
@@ -206,16 +216,55 @@ final class EpubLocatorReporterTests: XCTestCase {
     let reporter = makeReporter(collaborators, owner: owner, messenger: messenger)
 
     reporter.report(locator("unresolvable.xhtml"), isScrollMode: false)
-    await poll { !collaborators.resolverCalls.isEmpty }
-
-    // Control: with a reply available the same reporter publishes.
-    collaborators.resolverReply = locator("resolved.xhtml")
-    reporter.report(locator("control.xhtml"), isScrollMode: false)
     await poll { !messenger.sentMessages.isEmpty }
 
-    XCTAssertEqual(messenger.sentMessages.count, 1)
+    // Control: with a reply available the same reporter still publishes the
+    // resolved locator, so the assertion below is about the nil branch only.
+    collaborators.resolverReply = locator("resolved.xhtml")
+    reporter.report(locator("control.xhtml"), isScrollMode: false)
+    await poll { messenger.sentMessages.count >= 2 }
+
+    let published = invocations(messenger).compactMap { $0.arguments as? String }
+    XCTAssertEqual(published.count, 2)
+    XCTAssertEqual(published.first?.contains("unresolvable.xhtml"), true)
+    XCTAssertEqual(published.last?.contains("resolved.xhtml"), true)
+    XCTAssertEqual(collaborators.textLocators.count, 2)
+    XCTAssertEqual(collaborators.textLocators.first??.contains("unresolvable.xhtml"), true)
+  }
+
+  /// Two reports overlap: the second arrives while the first is still resolving.
+  /// The first resolution is stale by the time it lands and must publish
+  /// nothing; the newest one publishes.
+  func testResolutionSupersededByANewerReportPublishesNothing() async {
+    let collaborators = Collaborators()
+    let messenger = MockBinaryMessenger()
+    collaborators.resolverReply = locator("first-resolved.xhtml")
+
+    let owner = ReaderOwner()
+    let reporter = makeReporter(collaborators, owner: owner, messenger: messenger)
+    let second = locator("second.xhtml")
+    let secondResolved = locator("second-resolved.xhtml")
+
+    // Runs inside the first resolution, on the main actor, before it returns —
+    // so the newer report's sequence bump is already visible to the check.
+    collaborators.onResolve = {
+      collaborators.onResolve = nil  // the newer report must not recurse
+      collaborators.resolverReply = secondResolved
+      reporter.report(second, isScrollMode: false)
+    }
+
+    reporter.report(locator("first.xhtml"), isScrollMode: false)
+    await poll { collaborators.resolverCalls.count >= 2 }
+    await poll { !messenger.sentMessages.isEmpty }
+
+    let published = invocations(messenger).compactMap { $0.arguments as? String }
+    XCTAssertEqual(published.count, 1)
+    XCTAssertEqual(published.first?.contains("second-resolved.xhtml"), true)
+    XCTAssertFalse(published.contains { $0.contains("first-resolved.xhtml") })
     XCTAssertEqual(collaborators.textLocators.count, 1)
   }
+
+  // MARK: - Reader lifetime
 
   /// The `isDisposed` closure is the only back-reference to the view, and it
   /// reports disposed once the view is gone (`?? true`).

@@ -12,6 +12,11 @@ private let TAG = "EpubLocatorReporter"
 /// see `docs/troubleshooting.md`, "Reader crash while turning pages or closing
 /// the reader". Passing the flag as a closure keeps the view its single owner,
 /// the same arrangement `observeTaps(on:reportingTo:isDisposed:)` uses.
+///
+/// Fragment resolution fails while a spread is being swapped, which is while a
+/// page turn is in flight. Such a page change publishes the locator Readium
+/// reported rather than nothing, matching Android. Disposal is the separate
+/// case and still drops.
 @MainActor
 final class EpubLocatorReporter {
 
@@ -19,6 +24,11 @@ final class EpubLocatorReporter {
   private let resolveFragments: @MainActor (String, Bool) async -> Locator?
   private let sendTextLocator: @MainActor (String?) -> Void
   private let isDisposed: @MainActor () -> Bool
+
+  /// Increments on every `report`. A resolution publishes only if its stamp is
+  /// still the latest one, so a page change the reader has already left cannot
+  /// overwrite the one it moved to.
+  private var latestReportSequence: UInt64 = 0
 
   init(
     channel: ReadiumReaderChannel,
@@ -36,8 +46,12 @@ final class EpubLocatorReporter {
     let json = locator.jsonString ?? "null"
     readerLog(TAG, "report: locator=\(String(describing: locator))")
 
+    latestReportSequence &+= 1
+    let sequence = latestReportSequence
+
     Task.detached(priority: .high) { [weak self] in
-      await self?.resolveAndPublish(json, isScrollMode: isScrollMode)
+      await self?.resolveAndPublish(
+        json, reported: locator, isScrollMode: isScrollMode, sequence: sequence)
     }
   }
 
@@ -52,16 +66,28 @@ final class EpubLocatorReporter {
     channel.onExternalLinkActivated(url: url)
   }
 
-  private func resolveAndPublish(_ json: String, isScrollMode: Bool) async {
+  private func resolveAndPublish(
+    _ json: String, reported: Locator, isScrollMode: Bool, sequence: UInt64
+  ) async {
     guard !isDisposed() else { return }
-    guard let resolved = await resolveFragments(json, isScrollMode) else {
-      readerLog(TAG, "resolveAndPublish: fragment resolution failed")
-      readerLog(TAG, "resolveAndPublish: dropped page change json=\(json)")
-      return
-    }
+    let resolved = await resolveFragments(json, isScrollMode)
     guard !isDisposed() else { return }
 
-    channel.onPageChanged(locator: resolved)
-    sendTextLocator(resolved.jsonString)
+    guard sequence == latestReportSequence else {
+      readerLog(TAG, "resolveAndPublish: superseded by a newer report, dropping")
+      return
+    }
+
+    let published: Locator
+    if let resolved {
+      published = resolved
+    } else {
+      readerLog(
+        TAG, "resolveAndPublish: fragment resolution failed, publishing the reported locator")
+      published = reported
+    }
+
+    channel.onPageChanged(locator: published)
+    sendTextLocator(published.jsonString)
   }
 }
