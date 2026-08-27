@@ -21,6 +21,7 @@ import 'cbz_test.dart' as cbz;
 import 'decoration_contract_test.dart' as decoration_contract;
 import 'divina_test.dart' as divina;
 import 'epub_test.dart' as epub;
+import 'epub_navigation_test.dart' as epub_navigation;
 import 'epub_tts_test.dart' as epub_tts;
 import 'error_handling_test.dart' as error_handling;
 import 'webpub_test.dart' as webpub;
@@ -38,6 +39,7 @@ void main() {
   audiobook_host.main();
   audiobook.main();
   epub.main();
+  epub_navigation.main();
   decoration_contract.main();
   epub_tts.main();
   error_handling.main();

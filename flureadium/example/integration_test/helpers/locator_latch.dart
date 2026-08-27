@@ -41,3 +41,16 @@ int locatorEvents(WidgetTester tester) => int.parse(
   (tester.widget<Text>(find.byKey(const Key('locator-events'))).data ?? '')
       .replaceFirst('locator-events: ', ''),
 );
+
+/// Reads the example app's `locator_toc_fragment` latch — the `toc=` heading id
+/// of the last locator delivered, or `''` when none arrived and when the
+/// locator that did arrive carried no fragment.
+///
+/// The two empty cases are deliberately not distinguished: the point of this
+/// latch is that a resolved heading produces a *name*, so a test asserts on the
+/// name it expects rather than on the absence of one. An assertion that only
+/// checks "not empty" would pass on any fragment, including the valueless
+/// `toc=` this latch exists to catch.
+String locatorTocFragment(WidgetTester tester) =>
+    tester.widget<Text>(find.byKey(const Key('locator_toc_fragment'))).data ??
+    '';

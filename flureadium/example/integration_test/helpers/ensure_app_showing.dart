@@ -1,16 +1,9 @@
 import 'package:flureadium/flureadium.dart';
 import 'package:flureadium_example/main.dart' as app;
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'publication_latch.dart';
 import 'pump_until.dart';
-
-int _openGeneration(WidgetTester tester) =>
-    int.tryParse(
-      (tester.widget<Text>(find.byKey(const Key('open-generation'))).data ?? '')
-          .replaceFirst('open-generation: ', ''),
-    ) ??
-    0;
 
 bool _readerMounted(WidgetTester tester) =>
     find.byType(ReadiumReaderWidget).evaluate().isNotEmpty;
@@ -50,11 +43,11 @@ Future<void> ensureAppShowing(
     );
     if (!openAfterColdBoot) return;
   }
-  final gen = _openGeneration(tester);
+  final gen = openGeneration(tester);
   await tester.tap(find.text(reopenButton));
   await pumpUntil(
     tester,
-    () => _openGeneration(tester) > gen,
+    () => openGeneration(tester) > gen,
     timeout: const Duration(seconds: 15),
   );
 }

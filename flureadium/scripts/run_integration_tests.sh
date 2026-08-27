@@ -34,6 +34,11 @@
 #   (secure setting tts_default_synth). A cold-booted or wiped emulator has no
 #   default synthesizer, so the EPUB TTS tests query an unconfigured engine,
 #   get an empty voice list, and fail nondeterministically.
+#   It also checks that the device can reach readium.org by name, and refuses to
+#   run the Android leg when it cannot: a dead resolver fails every
+#   network-tagged test at once, which reads like a plugin defect. That is a
+#   forced skip like any other — iOS and Web still run and the run fails at the
+#   end naming Android. Launch the emulator with -dns-server 8.8.8.8,8.8.4.4.
 #
 # Tags:
 #   native  — needs a real audio or TTS engine
@@ -83,8 +88,13 @@ LOGCAT_PID=""          # set when capturing Android native logs
 ALL_DEVICES_STRIPPED="" # set once by the device scan; reused by both select_device calls
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
+# Prints the header comment block above: everything from line 3 down to the
+# blank line that ends it. Reading to the delimiter rather than to a hard-coded
+# last line matters — the range used to be '3,38p', which stopped on the bare
+# "Tags:" heading and dropped the two tag descriptions under it. A header that
+# grows silently truncates --help when the number has to be moved by hand.
 usage() {
-  sed -n '3,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
@@ -266,6 +276,54 @@ ensure_android_tts() {
   fi
 }
 
+# ── Android DNS pre-flight ────────────────────────────────────────────────────
+# The network-tagged tests fetch https://readium.org/webpub-manifest/examples/
+# MobyDick/manifest.json from the device. An emulator that inherited a dead
+# resolver from the host fails every one of them, which reads exactly like a
+# plugin defect — that is how a 100% WebPub open failure was filed as a code
+# bug. So probe the capability those tests need and nothing else: resolve the
+# manifest host by name, complete a TCP handshake to it.
+#
+# Not ping. The virtual router forwards all outbound TCP and UDP but "might not
+# support other protocols, such as ICMP, which is used for 'ping'"
+# (developer.android.com/studio/run/emulator-networking-address), so a failed
+# ping is the documented normal state of a healthy emulator.
+#
+# Unlike ensure_android_tts, this is not best-effort: it returns non-zero and
+# the caller marks the Android leg NOT RUN, which fails the run at the end. A
+# probe that could not run is a failure, not a pass — a runner that skips its
+# work and exits 0 is a lie no ledger can catch. It stops the Android leg only:
+# the iOS and Web legs still run, and the summary still names what did not.
+ensure_android_dns() {
+  local device="$1"
+  local host="readium.org"
+  local port=443
+
+  # Both "device unreachable" and "no nc on the image" land here, because a
+  # failed `adb -s` is indistinguishable from a failed remote command. Name both
+  # rather than assert the wrong one at someone who mistyped a device id.
+  if ! "$ADB" -s "$device" shell 'command -v nc' > /dev/null 2>&1; then
+    log "  ${RED}DNS: the name-resolution pre-flight could not run on $device.${NC}"
+    log "  Either the device is unreachable (check the id against 'adb devices'), or its image has no 'nc'."
+    log "  The check is not optional. Use a standard system image (toybox provides nc), or pass --skip-android."
+    return 1
+  fi
+
+  if "$ADB" -s "$device" shell "nc -w 5 $host $port < /dev/null" > /dev/null 2>&1; then
+    log "  DNS: $device resolved $host and connected on $port."
+    return 0
+  fi
+
+  log "  ${RED}DNS: $device cannot reach $host:$port by name — every network-tagged test would fail.${NC}"
+  log "  The emulator copies the host's resolver list at startup, so an IPv6-first host list can leave it"
+  log "  with a server it has no route to. Give the AVD its own resolver (the AVD directory name can differ"
+  log "  from the AVD name — Medium_Phone_API_33 lives in Medium_Phone_2.avd):"
+  log "    echo 'commandLineOptions=-dns-server 8.8.8.8,8.8.4.4' >> ~/.android/avd/<avd-dir>.avd/user-settings.ini"
+  log "  or launch it with: emulator -avd <name> -dns-server 8.8.8.8,8.8.4.4"
+  log "  Then confirm: adb -s $device shell dumpsys connectivity | grep -o 'DnsAddresses: \[[^]]*\]'"
+  return 1
+}
+
 # ── ChromeDriver helpers ──────────────────────────────────────────────────────
 
 # Returns the Chrome major version number, or empty string if Chrome not found.
@@ -336,6 +394,7 @@ try_start_chromedriver() {
 
 # ── Resolve devices ───────────────────────────────────────────────────────────
 ANDROID_SKIP_REASON=""
+ANDROID_SKIP_FIX=""
 IOS_SKIP_REASON=""
 WEB_SKIP_REASON=""
 
@@ -459,6 +518,24 @@ report_skip() {
 # ── Android ───────────────────────────────────────────────────────────────────
 log "${CYAN}── Android ──────────────────────────────────────────────────────────${NC}"
 if [ "$SKIP_ANDROID" = false ]; then
+  # A dead resolver on the device fails every network-tagged test in a way that
+  # looks like a code defect. Refuse to start rather than produce that red.
+  # Checked first: it is the cheapest fatal prerequisite, so nothing is
+  # installed and no logcat capture is running when it trips.
+  #
+  # It fails the leg, not the process. Aborting here would drop the iOS and Web
+  # legs and the summary along with it, which is the coverage-deleting move this
+  # whole check exists to argue against — and it would report a broken resolver
+  # by printing nothing about the two suites that never ran.
+  if ! ensure_android_dns "$ANDROID_DEVICE"; then
+    SKIP_ANDROID=true
+    ANDROID_SKIP_REASON="$ANDROID_DEVICE failed the name-resolution pre-flight"
+    ANDROID_SKIP_FIX="Give the AVD its own resolver (see the DNS block above), then re-run — or pass --skip-android to run without it."
+  fi
+fi
+
+if [ "$SKIP_ANDROID" = false ]; then
+
   # Pin the default TTS engine so the EPUB TTS tests have a configured
   # synthesizer (a cold/wiped emulator leaves it unset → empty voice list).
   ensure_android_tts "$ANDROID_DEVICE"
@@ -484,7 +561,7 @@ if [ "$SKIP_ANDROID" = false ]; then
   log "  Native logs: $LOG_DIR/android_native.log"
 else
   report_skip "Android" "$ANDROID_SKIP_REASON" \
-    "Start an emulator or attach a device, then re-run — or pass --skip-android to run without it."
+    "${ANDROID_SKIP_FIX:-Start an emulator or attach a device, then re-run — or pass --skip-android to run without it.}"
 fi
 
 # ── iOS ───────────────────────────────────────────────────────────────────────

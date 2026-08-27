@@ -116,7 +116,7 @@ final chapters = flattenToc(pub.tableOfContents);
 // [Part I, Chapter 1, Chapter 2, Part II, Chapter 3, ...]
 ```
 
-`skipToNext` and `skipToPrevious` flatten the TOC internally, so skip buttons work at any nesting depth without extra setup.
+`skipToNext` and `skipToPrevious` flatten the TOC internally, so skip buttons work at any nesting depth without extra setup. Flattening also surfaces entries that are not chapters at all — a byline or an imprint line anchored inside a title page — so the skip additionally passes over any entry that is already on the reader's current page.
 
 ### toc
 

@@ -9,7 +9,8 @@ import 'epub_tts_web_test.dart' as epub_tts_web;
 // lands — so the web suite still references every web integration test.
 //
 // Not bundled here (they run on mobile via all_tests.dart, not on web):
-// - epub_test: packed EPUB files cannot be served via HTTP URL on web
+// - epub_test, epub_navigation_test: packed EPUB files cannot be served via
+//   HTTP URL on web
 // - webpub_test: requires container div init inside ReadiumWebView on web
 
 void main() {

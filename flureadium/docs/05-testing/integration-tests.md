@@ -16,7 +16,7 @@ Integration tests run the example app on a real device or simulator and assert w
 | `audiobook_test.dart` | Android, iOS (`native`) | Audiobook opens, play changes button label, seek doesn't crash, pause/resume button labels cycle correctly, playing the last track to its end surfaces `TimebasedState.ended` |
 | `cbz_test.dart` | Android, iOS | CBZ auto-opens, navigation works, `goToLocator` reaches an image page, `extractPageThumbnail` returns JPEG bytes/null as appropriate |
 | `divina_test.dart` | Android, iOS | DIVINA auto-opens, `ReadiumReaderWidget` present, left/right navigation works |
-| `webpub_test.dart` | Android, iOS (`network`) | Remote WebPub manifest opens, `ReadiumReaderWidget` present |
+| `webpub_test.dart` | Android, iOS (`network`) | A remote WebPub manifest opens: the open-generation counter moves past its pre-tap value, `open-error` is empty, and the publication on screen is the manifest's own — `urn:isbn:9780000000001`, checked by identifier because the manifest and the bundled EPUB fixture are both titled "Moby-Dick". See [An assertion that cannot fail proves nothing](#an-assertion-that-cannot-fail-proves-nothing) |
 | `error_handling_test.dart` | Android, iOS | A corrupted file and a missing file both raise `ReadiumException`, and (Android only) a failed native enable reports `error` instead of killing the app — see [Forcing a reader failure](#forcing-a-reader-failure) |
 | `tap_test.dart` | Android | A content tap is reported once through `onTap` with a position, a hyperlink tap navigates and reports nothing, a plain page in the same book does report, and a publication swap rebinds the listener. Android only, and reflowable only — see [What a synthesized tap can reach](#what-a-synthesized-tap-can-reach) |
 | `edge_strip_tap_test.dart` | Android | With `enableEdgeTapNavigation: false` and `enableSwipeNavigation: true`, a tap 22 dp inside either edge strip reaches `onTap`, with a centre tap first as the control. The config is sent before the reader mounts, so the case also covers the replay that carries it to a reader that did not exist yet. It pumps its own widget tree rather than the example app, because the app never calls `setNavigationConfig`. Android only, and reflowable only, for the same two reasons as `tap_test.dart` |
@@ -91,6 +91,35 @@ prints it, and the checklist itself lives in the phase 5 plan slice.
 A useful side effect of the measurement: `onTap`'s `Offset` is in **logical
 pixels, origin at the top-left of the platform view**. A tap at raw
 (540, 1200) on a 1080x2400 emulator at density 2.625 reported `205.7, 457.1`.
+
+## The chrome has to stay reachable
+
+The example app's control bar grows with every button added to it. Its `Column`
+has no maximum height and no scroll view, so on a short screen it is taller than
+the viewport and reaches the top-left corner, where the `toggle-controls` button
+sits.
+
+`tap_test` takes the chrome down before every tap by tapping that button, the one
+route to the controls that does not depend on the native tap working. A `Stack`
+hit-tests its children in reverse paint order, so the toggle block is the last
+child of the page stack in `example/lib/main.dart`. Move it earlier, or put
+anything after it, and a tall bar swallows the tap: the chrome never goes down,
+and every tap case fails with "the control bar never became hidden".
+
+Only a short screen shows this. CI runs the `Nexus 6` profile, 1440x2560 at 560
+dpi, which leaves a 682 dp app area; a common local emulator has closer to 900
+dp, enough slack to hide the overlap for another handful of buttons. Shrink the
+emulator to reproduce it:
+
+```sh
+adb shell wm size 1440x2472 && adb shell wm density 560   # ~688 dp app area
+cd flureadium/example && flutter test integration_test/tap_test.dart -d <emulator>
+adb shell wm size reset && adb shell wm density reset
+```
+
+The screen-independent guard is in `example/test/widget_test.dart`: it pumps the
+app at 411x400, taps the toggle, and requires the bar to go. That one fails on
+any machine, so the ordering cannot be undone unnoticed.
 
 ## Forcing a reader failure
 
@@ -341,6 +370,44 @@ exercises the audiobook boot (`flureadium-p1q`).
 The same pattern covers `audiobook`, `cbz`, `divina`, `epub_tts`, `text_locator`
 and `epub` — each group boots once and reuses the running app between tests.
 
+## An assertion that cannot fail proves nothing
+
+The example app opens a publication from `initState`, so a `ReadiumReaderWidget`
+is mounted before the first pump of any test. `webpub_test.dart` waited for one
+to exist and then asserted that one existed. Both were true before the test
+touched anything, and stayed true whether the WebPub opened, failed, or was
+never requested. The remote open failed on three consecutive runs and the suite
+reported a pass each time (flureadium-9m3e).
+
+Assert something only the open you asked for can produce. Three latches do that,
+and each covers a hole the other two leave:
+
+| Latch | Proves | Rules out |
+|---|---|---|
+| `open-generation` past a pre-tap sample | an open finished after the tap | a reader mounted before the test started |
+| `publication-identifier` | *which* publication finished | any other open, including a reopen of the fixture |
+| `open-error` empty | the open reported nothing | a failure surfacing as "found 0 widgets" |
+
+The identifier is what the WebPub case turns on. The remote manifest and
+`moby_dick.epub` are both titled "Moby-Dick", so no assertion about the title
+can separate them. `urn:isbn:9780000000001` against
+`http://www.gutenberg.org/2701` can. That value lives in a third-party manifest
+this repo does not control, so if readium.org edits it the test fails with both
+values in the message. Re-fetch the manifest before concluding the plugin
+regressed.
+
+[Every suite opens the publication it asserts about](#every-suite-opens-the-publication-it-asserts-about)
+is the same lesson from the other side: there, a wait is answered by the
+previous suite's leftover reader; here, by the current app's launch-time open. A
+test that opens its own publication and then checks the identifier is covered
+against both.
+
+None of this counts until someone has watched the assertion fail. Point
+`_openWebPub` at a host under `.invalid` — reserved by RFC 2606, so it never
+resolves and the arm cannot go green by accident — and run the file on both
+platforms. Each reports `openWebPub: ReadiumException{…}` through `open-error`,
+naming the cause instead of counting widgets. Revert the URL afterwards.
+
 ## Prerequisites
 
 ### Android
@@ -351,6 +418,38 @@ and `epub` — each group boots once and reuses the running app between tests.
   a cold-booted or wiped emulator doesn't report an empty voice list. If voices
   are still empty, install the engine's voice data (Settings → System →
   Languages & input → Text-to-speech output).
+- Working name resolution **on the device**, for the `network`-tagged tests. The
+  runner opens a TCP connection to `readium.org:443` by name over `adb shell`
+  before the Android leg and refuses to start when that fails, because a dead
+  resolver turns every one of those tests red at once and the result reads like
+  a plugin defect. That has already happened once: a 100% WebPub open failure
+  was filed as a code bug on the strength of it (flureadium-9m3e).
+
+  The emulator copies the host's resolver list when it boots. An IPv6-first list
+  can leave it holding a server it has no route to, and then the guest resolves
+  nothing while raw IPv4 TCP keeps working: `nc 185.199.110.153 80` returns a
+  response from GitHub on a machine where no hostname resolves at all.
+
+  **`ping` settles nothing either way.** The virtual router forwards all
+  outbound TCP and UDP but ["might not support other protocols, such as ICMP,
+  which is used for `ping`"](https://developer.android.com/studio/run/emulator-networking-address),
+  so a failed ping is the documented normal state of a healthy emulator. Reading
+  one as evidence of a dead network is what produced the misdiagnosis above.
+
+  Give the AVD its own resolver:
+
+  ```sh
+  # The AVD directory name can differ from the AVD name:
+  # Medium_Phone_API_33 lives in Medium_Phone_2.avd
+  echo 'commandLineOptions=-dns-server 8.8.8.8,8.8.4.4' \
+    >> ~/.android/avd/<avd-dir>.avd/user-settings.ini
+
+  # or, per launch
+  emulator -avd <name> -dns-server 8.8.8.8,8.8.4.4
+
+  # then confirm
+  adb -s emulator-5554 shell dumpsys connectivity | grep -o 'DnsAddresses: \[[^]]*\]'
+  ```
 
 ### iOS
 - Flutter SDK (stable channel)
@@ -365,6 +464,8 @@ and `epub` — each group boots once and reuses the running app between tests.
 ## Test Runner Script
 
 `scripts/run_integration_tests.sh` runs all three platforms sequentially from a single command. It continues after failures and writes logs to a gitignored `test_logs/` directory.
+
+One thing it does not continue past: a device prerequisite it can check up front. If the Android device cannot resolve `readium.org`, the run stops before anything is installed and prints the `-dns-server` fix, rather than spending twenty minutes producing a red suite whose cause is the machine. The check runs only when the Android leg runs. Pass `--skip-android`, or attach no Android device at all, and it never fires. iOS needs no equivalent: the simulator uses the host's networking stack directly instead of a copy of its resolver list.
 
 > To run this suite together with the Dart unit and native suites in one command, use the [God-Tier Test Runner](all-tests.md).
 

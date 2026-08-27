@@ -1,3 +1,16 @@
+## 0.10.3
+
+### Bug Fixes
+
+- `Locations.tocFragment` returned an empty string when the fragment list carried a bare `toc=`. The value was present but named no heading, so two locators from unrelated chapters compared equal and a host had no way to tell them apart. An empty value now reads as absent and the getter returns `null`.
+
+### Testing
+
+- `LocationExtension` and `TimeFragment` had no tests. They have them now: every getter, every `copyWith*` method including the path that clears a fragment, and a parse-and-render round trip for `TimeFragment`.
+- Two defects the new tests turned up are asserted as they behave today rather than fixed. A `copyWith*` call cannot clear the last remaining fragment (flureadium-vea4), and `TimeFragment.fromFragment('t=')` throws when the begin value is missing (flureadium-p2s7).
+
+---
+
 ## 0.10.2
 
 No API change. `lib/` is byte-identical to `0.10.1`; this release exists because the
