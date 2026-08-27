@@ -17,6 +17,11 @@
 
 - `docs/api-reference/publication.md` gains a **Table of Contents Helpers** section covering `findTocIndexByFragment`, what `ownFile` means, the trade-off you take by accepting a cross-resource match, and the policy `resolveCurrentTocIndex` applies.
 - `docs/api-reference/locator.md` points from the `toc=` contract at that section, and says to look the id up in the position's own resource first.
+- `docs/05-testing/integration-tests.md` lists both native logs in its Logs table and says what the iOS subsystem filter leaves out.
+
+### Testing
+
+- iOS reader diagnostics are captured by the integration runner now. Swift `print()` reaches neither `flutter test`'s stream nor the unified log, so `ios.log` had never carried a native line while Android's `android_native.log` had carried logcat all along. `EpubLocatorReporter` emits through a new `readerLog` on the `dev.mulev.flureadium` subsystem, and `scripts/run_integration_tests.sh` streams that into `test_logs/<run>/ios_native.log` next to the Android capture. A failed fragment resolution also names the page change it dropped, which it did not before.
 
 ## 0.17.2
 
