@@ -34,7 +34,7 @@ final class EpubLocatorReporter {
 
   func report(_ locator: Locator, isScrollMode: Bool) {
     let json = locator.jsonString ?? "null"
-    print(TAG, "report: locator=\(String(describing: locator))")
+    readerLog(TAG, "report: locator=\(String(describing: locator))")
 
     Task.detached(priority: .high) { [weak self] in
       await self?.resolveAndPublish(json, isScrollMode: isScrollMode)
@@ -42,7 +42,7 @@ final class EpubLocatorReporter {
   }
 
   func reportExternalLink(_ url: URL) {
-    print(TAG, "reportExternalLink: \(url)")
+    readerLog(TAG, "reportExternalLink: \(url)")
     Task.detached(priority: .high) { [weak self] in
       await self?.publishExternalLink(url)
     }
@@ -55,7 +55,8 @@ final class EpubLocatorReporter {
   private func resolveAndPublish(_ json: String, isScrollMode: Bool) async {
     guard !isDisposed() else { return }
     guard let resolved = await resolveFragments(json, isScrollMode) else {
-      print(TAG, "report: fragment resolution failed")
+      readerLog(TAG, "resolveAndPublish: fragment resolution failed")
+      readerLog(TAG, "resolveAndPublish: dropped page change json=\(json)")
       return
     }
     guard !isDisposed() else { return }
