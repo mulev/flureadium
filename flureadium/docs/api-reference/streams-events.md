@@ -63,6 +63,21 @@ that just closed does not resolve in the one replacing it, and you no longer
 need it to: the incoming reader answers with its own position when you
 resubscribe.
 
+### A page change whose fragments cannot be read
+
+A locator's `toc=`, `page=`, `totalPages=` and `cssSelector` are read out of the
+live document, and on iOS that read fails while the reader is swapping to the
+next spread — which is exactly when a page turn happens. Such a page change is
+delivered anyway, carrying what Readium reported: `href` and `progression` are
+correct, the DOM-derived fragments are absent. It is not silence, and it is not
+a locator built from the wrong resource.
+
+So do not treat a missing `toc=` as an error. `tocFragment` and `totalPages` are
+nullable for this reason among others, and the right reading of an absent
+fragment is "not known here", not "no chapter". If you are identifying a chapter
+from the stream, keep the last id you resolved until a locator carries a new
+one.
+
 ### Debouncing
 
 For performance, consider debouncing frequent updates. `rxdart` is not a

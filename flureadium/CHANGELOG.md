@@ -4,6 +4,12 @@
 
 - **`tocHrefWithFragment` is removed.** It built the string `'<hrefPath>#<toc= id>'` for one caller, `_matchTocIndex`, which compared it to `link.href` for equality. That comparison is gone and the function has no other purpose. A host that called it wanted to know which table-of-contents entry a position's heading id names; `findTocIndexByFragment` answers that directly.
 
+### Behaviour Changes
+
+- **iOS delivers a page change whose fragments could not be read, instead of nothing.** The WebView call that reads a position's fragments fails while a spread is being swapped — which is while a page turn is happening — and iOS used to answer that by publishing nothing at all. A host watching `onTextLocatorChanged` or `onPageChanged` saw silence and had no way to tell it apart from a reader that had not moved. Such a page change now publishes the locator Readium reported: correct `href` and `progression`, no `toc=`, `page=`, `totalPages=` or `cssSelector`. You will see events on this stream that earlier versions swallowed, and some will carry fewer fragments than usual. Both fields were already nullable, so nothing new can be null. Android has behaved this way since before 0.17.
+
+- A resolution that a newer page change has superseded no longer publishes. No out-of-order delivery was ever observed; nothing sequenced the reports, so the ordering was unenforced rather than wrong. Now it is enforced.
+
 ### Bug Fixes
 
 - **A locator's fragments come from the resource its `href` names, on iOS and on Android**: the webview merged the locator it was handed with `page=`, `totalPages=`, `toc=`, `physicalPage=` and a CSS selector, all of them read from whatever document was on screen when the JavaScript hop finished. `href` came from whenever the page change was reported. A navigation landing between the two left the halves naming different resources, and the wrong fragments were present rather than missing, so a host looking a `toc=` id up in the table of contents found another chapter's entry. One integration run delivered 78 locators, 16 of them carrying another resource's fragments. The merge now runs only when the document has not been shown to be a different resource from the one `href` names. When it has, the locator is published as it arrived: `href`, `progression` and `totalProgression` kept, nothing read from the DOM attached. A page that cannot report a document URL merges as before. The merge point is shared JavaScript, so both platforms are fixed by the same change.
