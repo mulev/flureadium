@@ -1,3 +1,23 @@
+## 0.18.0
+
+### Breaking Changes
+
+- **`tocHrefWithFragment` is removed.** It built the string `'<hrefPath>#<toc= id>'` for one caller, `_matchTocIndex`, which compared it to `link.href` for equality. That comparison is gone and the function has no other purpose. A host that called it wanted to know which table-of-contents entry a position's heading id names; `findTocIndexByFragment` answers that directly.
+
+### Bug Fixes
+
+- **A `toc=` fragment resolves against a nav document whose hrefs carry no leading slash**: the old lookup compared a rebuilt href string to `link.href`. `Locator.hrefPath` always produces a leading slash, a nav document's hrefs need not, so on such a book every fragment match silently failed. Chapter skipping fell through to path matching, which in a spine file holding several entries resolves the wrong one. The comparison now runs on the parsed parts, `Link.elementId` against the fragment and `normalizePath` on both paths, so the two agree however the publication wrote its hrefs.
+
+### New
+
+- **`findTocIndexByFragment(toc, fragment, path)`** is public. It returns `({int index, bool ownFile})`: the entry the heading id names, and whether it was found in the resource `path` names or somewhere else in the contents. A heading id is not unique across a publication, so a match in another resource is weaker evidence than one found where the reader actually is. How much weaker depends on what you do with it, so the lookup reports which pass matched instead of choosing for you.
+- Chapter skipping accepts own-resource matches only. That is what `resolveCurrentTocIndex` already did in 0.17.2, as a side effect of the string comparison it no longer uses; it is now the explicit rule, with a test that pins it. No navigation behaviour changes in this release.
+
+### Documentation
+
+- `docs/api-reference/publication.md` gains a **Table of Contents Helpers** section covering `findTocIndexByFragment`, what `ownFile` means, the trade-off you take by accepting a cross-resource match, and the policy `resolveCurrentTocIndex` applies.
+- `docs/api-reference/locator.md` points from the `toc=` contract at that section, and says to look the id up in the position's own resource first.
+
 ## 0.17.2
 
 ### Bug Fixes
