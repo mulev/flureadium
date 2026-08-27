@@ -2,6 +2,7 @@
 
 import { ComicBookPage } from 'ComicBookPage';
 import { getCssSelector } from 'css-selector-generator';
+import { isSameResource } from './documentIdentity';
 import { initResponsiveTables } from './Tables';
 
 import { DomRange, ICurrentHeading, IHeadingElement, Locations, Locator, Readium, Rect } from 'types';
@@ -147,6 +148,17 @@ export class EpubPage {
   // Returns fragments for current location.
   public getLocatorFragments(locator: Locator, isVerticalScroll: boolean): Locator {
     try {
+      // Every fragment below is read from the live DOM, while `href` came from
+      // whenever the page change was reported. A navigation landing between the
+      // two makes the halves describe different resources, so decline the merge
+      // when the document provably is not the one the locator names. An
+      // indeterminate answer merges as before — see documentIdentity.ts.
+      if (isSameResource(locator?.href, document.location?.href) === false) {
+        this._debugLog('getLocatorFragments: locator names another resource, returning locator from args');
+
+        return locator;
+      }
+
       const cssSelector = locator?.locations?.cssSelector ?? this._findFirstVisibleCssSelector();
       if (cssSelector == null || !cssSelector?.length) {
         this._debugLog('getLocatorFragments: selector not found, returning locator from args');

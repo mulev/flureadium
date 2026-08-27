@@ -83,3 +83,62 @@ describe('EpubPage toc= fragments', () => {
     expect(fragments).toContain('toc=pgepubid00003');
   });
 });
+
+describe('EpubPage fragment guard', () => {
+  // The jsdom document URL is per file, not per case, so an unreset case would
+  // leak into the next one.
+  afterEach(() => window.history.replaceState({}, '', '/'));
+
+  // Returns the argument alongside the result, because two of the assertions
+  // below are about what the result does *not* carry.
+  function resolveLocator(cssSelector: string | null, href: string, documentPath?: string): { locator: Locator; result: Locator } {
+    document.body.innerHTML = '<h2 id="c1">One</h2><p id="p1">text</p>';
+
+    if (documentPath != null) {
+      // jsdom's document URL is settable only through history; the default is
+      // `http://localhost/`, whose path carries no segments at all.
+      window.history.replaceState({}, '', documentPath);
+    }
+
+    const locator: Locator = {
+      href,
+      locations: {
+        cssSelector,
+        progression: null,
+        totalProgression: null,
+        fragments: null,
+        domRange: null,
+      },
+    };
+
+    return { locator, result: new EpubPage().getLocatorFragments(locator, false) };
+  }
+
+  it('merges fragments when the document is the one the locator names', () => {
+    const { result } = resolveLocator('#p1', 'EPUB/ch1.xhtml', '/EPUB/ch1.xhtml');
+
+    expect(result.locations?.fragments).toContain('toc=c1');
+  });
+
+  it('returns the locator unmerged when the document is another resource', () => {
+    const { locator, result } = resolveLocator('#p1', 'EPUB/ch1.xhtml', '/EPUB/ch2.xhtml');
+
+    expect(result).toBe(locator);
+    expect(result.locations?.fragments).toBeNull();
+    expect(result.locations?.cssSelector).toBe('#p1');
+  });
+
+  it('resolves no selector against another resource when the locator carries none', () => {
+    const { locator, result } = resolveLocator(null, 'EPUB/ch1.xhtml', '/EPUB/ch2.xhtml');
+
+    expect(result).toBe(locator);
+    expect(result.locations?.fragments).toBeNull();
+    expect(result.locations?.cssSelector).toBeNull();
+  });
+
+  it('merges fragments when the document identity is indeterminate', () => {
+    const { result } = resolveLocator('#p1', 'chapter.xhtml');
+
+    expect(result.locations?.fragments).toContain('toc=c1');
+  });
+});
