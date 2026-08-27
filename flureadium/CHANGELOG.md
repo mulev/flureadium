@@ -1,3 +1,11 @@
+## 0.18.1
+
+### Bug Fixes
+
+- **The platform interface constraint now requires 0.10.3.** 0.18.0 shipped with `flureadium_platform_interface: ^0.10.2`, which also allows 0.10.2 itself. Under 0.10.2 a bare `toc=` makes `Locations.tocFragment` return an empty string rather than `null`, so the null check this package's own documentation shows — `if (fragment != null)` before calling `findTocIndexByFragment` — passes on a fragment that names no heading, and two positions in unrelated chapters compare equal. A fresh `pub get` on 0.18.0 resolved 0.10.3 anyway; a lockfile already pinned to 0.10.2 did not, and got the broken pairing with no warning. The constraint says what the code needs now.
+
+---
+
 ## 0.18.0
 
 ### Breaking Changes
