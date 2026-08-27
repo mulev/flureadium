@@ -50,6 +50,10 @@
 # iOS note:
 #   Runs everything too, including the audio suites. Requires a connected
 #   device or booted simulator (iOS >= 16).
+#   Native reader diagnostics are captured to ios_native.log, the way logcat is
+#   on Android. That capture goes through `simctl`, which only knows simulators,
+#   so a run against a physical device leaves the file unwritten and warns; the
+#   leg still runs.
 #
 # Skips, and which ones are allowed:
 #   A suite skipped because you asked for it (--skip-android, --skip-ios,
@@ -85,6 +89,8 @@ IOS_DEVICE=""
 SELECTED_DEVICE=""      # written by select_device()
 CHROMEDRIVER_PID=""     # set when this script starts ChromeDriver
 LOGCAT_PID=""          # set when capturing Android native logs
+IOS_LOG_PID=""          # set when capturing iOS native logs
+IOS_SIM_UDID=""         # simulator the iOS native log stream attaches to
 ALL_DEVICES_STRIPPED="" # set once by the device scan; reused by both select_device calls
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
@@ -125,17 +131,24 @@ SUMMARY_LOG="$LOG_DIR/summary.log"
 # Kill stale chromedriver/Chrome from previous interrupted runs.
 pkill -f chromedriver 2>/dev/null || true
 
+# Stops a background process this script started. No-op on an empty PID, so
+# callers can pass a capture that never started. Callers clear their own PID
+# variable afterwards, so cleanup() does not kill it a second time.
+stop_process() {
+  local pid="$1"
+  [ -n "$pid" ] || return 0
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
+
 cleanup() {
-  if [ -n "$LOGCAT_PID" ]; then
-    kill "$LOGCAT_PID" 2>/dev/null || true
-    wait "$LOGCAT_PID" 2>/dev/null || true
-  fi
+  stop_process "$LOGCAT_PID"
+  stop_process "$IOS_LOG_PID"
   if [ -n "$CHROMEDRIVER_PID" ]; then
     # Kill Chrome instances spawned by ChromeDriver (child processes) first,
     # then kill ChromeDriver itself. Without this, Chrome stays orphaned.
     pkill -P "$CHROMEDRIVER_PID" 2>/dev/null || true
-    kill "$CHROMEDRIVER_PID" 2>/dev/null || true
-    wait "$CHROMEDRIVER_PID" 2>/dev/null || true
+    stop_process "$CHROMEDRIVER_PID"
   fi
 }
 trap cleanup EXIT
@@ -205,6 +218,32 @@ select_device() {
 
   local selected="${lines[$((choice-1))]}"
   SELECTED_DEVICE=$(echo "$selected" | awk -F' • ' '{print $2}' | xargs)
+}
+
+# simctl only knows simulator UDIDs. `flutter devices` prints exactly that for a
+# simulator, so the direct hit is the common case; the Booted fallback covers a
+# device string that is not a bare UDID. A physical device resolves to nothing,
+# and streaming a different device's log would be worse than streaming none.
+resolve_ios_sim_udid() {
+  IOS_SIM_UDID=""
+  local listing booted
+  listing=$(xcrun simctl list devices 2>/dev/null) || return 1
+
+  if [ -n "$IOS_DEVICE" ] && echo "$listing" | grep -qF "($IOS_DEVICE)"; then
+    IOS_SIM_UDID="$IOS_DEVICE"
+    return 0
+  fi
+
+  booted=$(echo "$listing" | grep '(Booted)' \
+    | grep -oE '[0-9A-Fa-f]{8}-([0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}')
+  # `grep -c .` counts non-empty lines, so this is "exactly one booted
+  # simulator". With none there is nothing to stream; with several there is no
+  # way to tell which one the tests will land on.
+  if [ "$(echo "$booted" | grep -c .)" -eq 1 ]; then
+    IOS_SIM_UDID="$booted"
+    return 0
+  fi
+  return 1
 }
 
 # ── Test runner ───────────────────────────────────────────────────────────────
@@ -555,8 +594,7 @@ if [ "$SKIP_ANDROID" = false ]; then
     OVERALL_EXIT=1
   fi
 
-  kill "$LOGCAT_PID" 2>/dev/null || true
-  wait "$LOGCAT_PID" 2>/dev/null || true
+  stop_process "$LOGCAT_PID"
   LOGCAT_PID=""
   log "  Native logs: $LOG_DIR/android_native.log"
 else
@@ -568,12 +606,31 @@ fi
 log ""
 log "${CYAN}── iOS ──────────────────────────────────────────────────────────────${NC}"
 if [ "$SKIP_IOS" = false ]; then
+  # Capture the reader's own diagnostics alongside flutter's stdout, the way the
+  # Android leg captures logcat. Swift print() reaches neither flutter's stream
+  # nor the unified log, which is why ios.log has never carried a native line.
+  if resolve_ios_sim_udid; then
+    xcrun simctl spawn "$IOS_SIM_UDID" log stream \
+      --level debug --style compact \
+      --predicate 'subsystem == "dev.mulev.flureadium"' \
+      > "$LOG_DIR/ios_native.log" 2>&1 &
+    IOS_LOG_PID=$!
+  else
+    log "  ${YELLOW}No simulator to stream native logs from — ios_native.log will not be written.${NC}"
+  fi
+
   if ! run_test \
       "iOS — flutter test integration_test/all_tests.dart (includes @native audiobook)" \
       "$LOG_DIR/ios.log" \
       flutter_test_locked integration_test/all_tests.dart \
         -d "$IOS_DEVICE" "${FLUTTER_VERBOSE[@]}" "${FLUTTER_REPORTER[@]}"; then
     OVERALL_EXIT=1
+  fi
+
+  if [ -n "$IOS_LOG_PID" ]; then
+    stop_process "$IOS_LOG_PID"
+    IOS_LOG_PID=""
+    log "  Native logs: $LOG_DIR/ios_native.log"
   fi
 else
   report_skip "iOS" "$IOS_SKIP_REASON" \
