@@ -6,6 +6,8 @@
 
 ### Bug Fixes
 
+- **A locator's fragments come from the resource its `href` names, on iOS and on Android**: the webview merged the locator it was handed with `page=`, `totalPages=`, `toc=`, `physicalPage=` and a CSS selector, all of them read from whatever document was on screen when the JavaScript hop finished. `href` came from whenever the page change was reported. A navigation landing between the two left the halves naming different resources, and the wrong fragments were present rather than missing, so a host looking a `toc=` id up in the table of contents found another chapter's entry. One integration run delivered 78 locators, 16 of them carrying another resource's fragments. The merge now runs only when the document has not been shown to be a different resource from the one `href` names. When it has, the locator is published as it arrived: `href`, `progression` and `totalProgression` kept, nothing read from the DOM attached. A page that cannot report a document URL merges as before. The merge point is shared JavaScript, so both platforms are fixed by the same change.
+
 - **A `toc=` fragment resolves against a nav document whose hrefs carry no leading slash**: the old lookup compared a rebuilt href string to `link.href`. `Locator.hrefPath` always produces a leading slash, a nav document's hrefs need not, so on such a book every fragment match silently failed. Chapter skipping fell through to path matching, which in a spine file holding several entries resolves the wrong one. The comparison now runs on the parsed parts, `Link.elementId` against the fragment and `normalizePath` on both paths, so the two agree however the publication wrote its hrefs.
 
 ### New
@@ -17,6 +19,7 @@
 
 - `docs/api-reference/publication.md` gains a **Table of Contents Helpers** section covering `findTocIndexByFragment`, what `ownFile` means, the trade-off you take by accepting a cross-resource match, and the policy `resolveCurrentTocIndex` applies.
 - `docs/api-reference/locator.md` points from the `toc=` contract at that section, and says to look the id up in the position's own resource first.
+- `docs/api-reference/locator.md` says what a locator reported mid-navigation carries: no DOM-derived fragments and possibly no `cssSelector`, with `href`, `progression` and `totalProgression` always its own.
 - `docs/05-testing/integration-tests.md` lists both native logs in its Logs table and says what the iOS subsystem filter leaves out.
 
 ### Testing

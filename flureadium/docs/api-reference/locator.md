@@ -223,6 +223,20 @@ reuse as a real position. `findTocIndexByFragment` runs both passes and reports
 which one matched. See
 [Publication → Table of Contents Helpers](publication.md#table-of-contents-helpers).
 
+A locator reported while the reader is moving between resources carries no
+DOM-derived fragments rather than another resource's. `page=`, `totalPages=`,
+`toc=` and `physicalPage=` are read from the document on screen, and so is
+`locations.cssSelector` when the locator does not already carry one. All of them
+are left out when the document on screen is not the resource `href` names.
+`href`, `progression` and `totalProgression` come from the reported position
+itself and are always there.
+
+So expect a sparse locator during a navigation. What is in it is correct, and the
+next locator for that resource carries the full set. `totalPages` and
+`tocFragment` are already nullable, so there is nothing new to handle. What
+changed is that a missing fragment now means the position could not be resolved
+yet, where before a fragment could be present and belong to another chapter.
+
 #### progression
 
 **Type:** `double?`
