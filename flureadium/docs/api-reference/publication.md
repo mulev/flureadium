@@ -337,6 +337,69 @@ static Publication? fromJson(
 })
 ```
 
+## Table of Contents Helpers
+
+Top-level functions from `package:flureadium/flureadium.dart` that resolve a
+reading position to a table-of-contents entry.
+
+### findTocIndexByFragment
+
+```dart
+({int index, bool ownFile}) findTocIndexByFragment(
+  List<Link> toc,
+  String fragment,
+  String path,
+)
+```
+
+Finds the entry a heading id names, and reports where it was found. Pass a
+flattened TOC, the `toc=` fragment from the position's locations, and the
+position's `hrefPath`.
+
+```dart
+final fragment = locator.locations?.tocFragment;
+if (fragment != null) {
+  final match = findTocIndexByFragment(
+    flattenToc(pub.tableOfContents),
+    fragment,
+    locator.hrefPath,
+  );
+}
+```
+
+The lookup runs two passes: first inside the resource `path` names, then across
+the whole TOC. `ownFile` says which pass matched. `index` is -1 when neither
+did, and for an empty fragment.
+
+Read `ownFile` before you act on `index`. A heading id is not unique across a
+publication: in a book whose chapters all open with `id="top"`, searching the
+whole TOC maps every position to the first entry. The second pass still earns
+its place, because during a navigation the locator's href and its `toc=`
+fragment disagree for one frame, naming the chapter being left and the chapter
+being entered at once, and only that pass resolves it to the one being entered.
+
+Both answers are wrong somewhere, and the two cases look identical from inside
+the lookup, so it reports the pass instead of choosing. Accept a cross-resource
+match when a stale mid-navigation position is the worse failure. Reject it when
+landing in the wrong chapter is.
+
+Chapter skipping rejects it. `resolveCurrentTocIndex`, and so
+`skipToNextChapter` and `skipToPreviousChapter`, takes the match only when
+`ownFile` is true and falls back to path matching otherwise. That is the policy
+you get from `resolveCurrentTocIndex`; apply your own by calling
+`findTocIndexByFragment` yourself.
+
+### Related lookups
+
+- `flattenToc(toc)` — every entry in reading order, nesting removed.
+- `findTocIndexByPath(locator, toc, {lastMatch})` — matches by file path, for
+  publications whose headings carry no ids. `lastMatch` picks the last entry in
+  the file rather than the first.
+- `findTocIndexByPage(locator, toc)` — matches by page number, for PDFs.
+- `resolveCurrentTocIndex(...)` — the composite the skip buttons use: a
+  remembered index while it still points at the current file, then
+  `findTocIndexByFragment`, then page or path matching.
+
 ## Link Class
 
 A `Link` represents a reference to content or resources.

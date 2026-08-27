@@ -191,7 +191,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.17.2"
+    version: "0.18.0"
   flureadium_platform_interface:
     dependency: "direct overridden"
     description:

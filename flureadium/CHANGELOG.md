@@ -1,3 +1,37 @@
+## 0.18.0
+
+### Breaking Changes
+
+- **`tocHrefWithFragment` is removed.** It built the string `'<hrefPath>#<toc= id>'` for one caller, `_matchTocIndex`, which compared it to `link.href` for equality. That comparison is gone and the function has no other purpose. A host that called it wanted to know which table-of-contents entry a position's heading id names; `findTocIndexByFragment` answers that directly.
+
+### Behaviour Changes
+
+- **iOS delivers a page change whose fragments could not be read, instead of nothing.** The WebView call that reads a position's fragments fails while a spread is being swapped — which is while a page turn is happening — and iOS used to answer that by publishing nothing at all. A host watching `onTextLocatorChanged` or `onPageChanged` saw silence and had no way to tell it apart from a reader that had not moved. Such a page change now publishes the locator Readium reported: correct `href` and `progression`, no `toc=`, `page=`, `totalPages=` or `cssSelector`. You will see events on this stream that earlier versions swallowed, and some will carry fewer fragments than usual. Both fields were already nullable, so nothing new can be null. Android has behaved this way since before 0.17.
+
+- A resolution that a newer page change has superseded no longer publishes. No out-of-order delivery was ever observed; nothing sequenced the reports, so the ordering was unenforced rather than wrong. Now it is enforced.
+
+### Bug Fixes
+
+- **A locator's fragments come from the resource its `href` names, on iOS and on Android**: the webview merged the locator it was handed with `page=`, `totalPages=`, `toc=`, `physicalPage=` and a CSS selector, all of them read from whatever document was on screen when the JavaScript hop finished. `href` came from whenever the page change was reported. A navigation landing between the two left the halves naming different resources, and the wrong fragments were present rather than missing, so a host looking a `toc=` id up in the table of contents found another chapter's entry. One integration run delivered 78 locators, 16 of them carrying another resource's fragments. The merge now runs only when the document has not been shown to be a different resource from the one `href` names. When it has, the locator is published as it arrived: `href`, `progression` and `totalProgression` kept, nothing read from the DOM attached. A page that cannot report a document URL merges as before. The merge point is shared JavaScript, so both platforms are fixed by the same change.
+
+- **A `toc=` fragment resolves against a nav document whose hrefs carry no leading slash**: the old lookup compared a rebuilt href string to `link.href`. `Locator.hrefPath` always produces a leading slash, a nav document's hrefs need not, so on such a book every fragment match silently failed. Chapter skipping fell through to path matching, which in a spine file holding several entries resolves the wrong one. The comparison now runs on the parsed parts, `Link.elementId` against the fragment and `normalizePath` on both paths, so the two agree however the publication wrote its hrefs.
+
+### New
+
+- **`findTocIndexByFragment(toc, fragment, path)`** is public. It returns `({int index, bool ownFile})`: the entry the heading id names, and whether it was found in the resource `path` names or somewhere else in the contents. A heading id is not unique across a publication, so a match in another resource is weaker evidence than one found where the reader actually is. How much weaker depends on what you do with it, so the lookup reports which pass matched instead of choosing for you.
+- Chapter skipping accepts own-resource matches only. That is what `resolveCurrentTocIndex` already did in 0.17.2, as a side effect of the string comparison it no longer uses; it is now the explicit rule, with a test that pins it. No navigation behaviour changes in this release.
+
+### Documentation
+
+- `docs/api-reference/publication.md` gains a **Table of Contents Helpers** section covering `findTocIndexByFragment`, what `ownFile` means, the trade-off you take by accepting a cross-resource match, and the policy `resolveCurrentTocIndex` applies.
+- `docs/api-reference/locator.md` points from the `toc=` contract at that section, and says to look the id up in the position's own resource first.
+- `docs/api-reference/locator.md` says what a locator reported mid-navigation carries: no DOM-derived fragments and possibly no `cssSelector`, with `href`, `progression` and `totalProgression` always its own.
+- `docs/05-testing/integration-tests.md` lists both native logs in its Logs table and says what the iOS subsystem filter leaves out.
+
+### Testing
+
+- iOS reader diagnostics are captured by the integration runner now. Swift `print()` reaches neither `flutter test`'s stream nor the unified log, so `ios.log` had never carried a native line while Android's `android_native.log` had carried logcat all along. `EpubLocatorReporter` emits through a new `readerLog` on the `dev.mulev.flureadium` subsystem, and `scripts/run_integration_tests.sh` streams that into `test_logs/<run>/ios_native.log` next to the Android capture. A failed fragment resolution also names the page change it dropped, which it did not before.
+
 ## 0.17.2
 
 ### Bug Fixes

@@ -279,6 +279,36 @@ void main() {
       expect(channel.goCallLog.single.locator.href, 'ch2.xhtml');
     });
 
+    test(
+      'a fragment in the reader\'s own resource still drives the skip',
+      () async {
+        // Pins 0.17.2 behaviour: `toc=b` names entry 2, so "next" is entry 3.
+        await navigator.skipToNextChapter(
+          publication: _subSectionPublication(),
+          currentLocator: _atFragment('/ch1.xhtml', 'toc=b'),
+          channel: channel,
+        );
+
+        expect(channel.goCallLog, hasLength(1));
+        expect(channel.goCallLog.single.locator.href, '/ch2.xhtml');
+      },
+    );
+
+    test('a fragment living only in another resource is ignored', () async {
+      // `a` names an entry inside ch1 while the reader is in ch2. Accepting it
+      // would resolve to entry 1 and send "previous" to entry 0; path matching
+      // resolves entry 3, so "previous" is entry 2.
+      await navigator.skipToPreviousChapter(
+        publication: _subSectionPublication(),
+        currentLocator: _atFragment('/ch2.xhtml', 'toc=a'),
+        channel: channel,
+      );
+
+      expect(channel.goCallLog, hasLength(1));
+      expect(channel.goCallLog.single.locator.href, '/ch1.xhtml');
+      expect(channel.goCallLog.single.locator.locations?.cssSelector, '#b');
+    });
+
     test('skipToNextChapter stops at the last TOC entry', () async {
       await navigator.skipToNextChapter(
         publication: _hierarchicalPublication(),

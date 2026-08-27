@@ -499,8 +499,18 @@ Logs are written to `test_logs/run_<timestamp>/` (gitignored, pubignored):
 |---|---|
 | `summary.log` | Pass/fail lines and failure output for all platforms |
 | `android.log` | Full flutter output for the Android run (full suite, including `@native`) |
+| `android_native.log` | `adb logcat -v threadtime` for the Android run |
 | `ios.log` | Full flutter output for the iOS run |
+| `ios_native.log` | Unified-log records from the iOS simulator, filtered to `subsystem == "dev.mulev.flureadium"` |
 | `web.log` | Full flutter output for the Web run |
+
+The two native logs are not symmetric. `android_native.log` is the whole logcat buffer, so
+anything the device printed is in it. `ios_native.log` carries only what the plugin emitted
+through `readerLog`, because nothing else writes to the `dev.mulev.flureadium` subsystem the
+stream filters on. Swift `print()` is not in it: those lines go to the app process's stdout,
+which the unified log never sees and `flutter test` does not forward, so they end up nowhere.
+A run against a physical iOS device produces no `ios_native.log`, since `simctl` streams from
+simulators only. The summary says so rather than leaving an empty file behind.
 
 ## Running Tests Manually
 

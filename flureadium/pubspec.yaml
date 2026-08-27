@@ -1,6 +1,6 @@
 name: flureadium
 description: "Flutter plugin for reading EPUB ebooks, audiobooks, and comics using the Readium toolkits. Supports EPUB 2/3, PDF, TTS, audiobook playback, highlights, and reading preferences."
-version: 0.17.2
+version: 0.18.0
 homepage: https://github.com/mulev/flureadium
 repository: https://github.com/mulev/flureadium
 issue_tracker: https://github.com/mulev/flureadium/issues
