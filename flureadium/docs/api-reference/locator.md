@@ -216,6 +216,13 @@ resolved and look the id up in the table of contents without guarding against a
 blank one. When no heading, section or body around the position carries an id,
 no `toc=` fragment is emitted.
 
+Look the id up in the position's own resource first. A heading id is not unique
+across a publication: in a book whose chapters all open with `id="top"`, one id
+names several entries, so an id found in another resource is as likely to be a
+reuse as a real position. `findTocIndexByFragment` runs both passes and reports
+which one matched. See
+[Publication → Table of Contents Helpers](publication.md#table-of-contents-helpers).
+
 #### progression
 
 **Type:** `double?`
