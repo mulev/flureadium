@@ -66,7 +66,7 @@ mixin TocSkipNavigationMixin {
     Future<Locator?>? whenReady,
   }) async {
     final label = forward ? 'skipToNext' : 'skipToPrevious';
-    final toc = flattenToc(publication.toc);
+    final toc = navigableToc(publication);
     if (toc.isEmpty) {
       R2Log.d('$label: no TOC');
       return;
