@@ -167,6 +167,8 @@ await flureadium.skipToPrevious();
 
 For EPUB3 books with a hierarchical `toc.xhtml` — where chapters are nested under parts or sections — skip navigation moves to the next (or previous) chapter at any depth. It won't skip past a group of nested children to jump to the next top-level entry. Pages absent from the TOC (a cover, an interstitial) also work: the widget scans the reading order to find the nearest TOC entry on either side.
 
+An entry the book points at but does not ship — a nav-document link to a file that is not in the spine and not among the resources — is passed over rather than aimed at, and the skip lands on the next entry the reader can reach. Before 0.19.0 such a tap did nothing and said nothing. Hierarchical contents are unaffected: a part or section heading is a document of its own, so it resolves and stays in the list.
+
 ### Navigate to Table of Contents Entry
 
 ```dart
