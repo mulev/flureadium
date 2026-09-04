@@ -50,23 +50,30 @@ void main() {
       // while the bar is up releases onto a reopen button and the app switches
       // publications: the press opened `hierarchical_toc.epub` and the
       // assertions below then raced a fresh native open, reading '' or
-      // 'loading' depending on who won. Take the bar down, press the reader
-      // itself, then put the bar back — the cases after this one tap `→` and
-      // `Go To Saved`, which live inside it.
+      // 'loading' depending on who won. So take the bar down for the press.
+      //
+      // Everything after that order matters. The bar goes back up in a
+      // `finally`, because the cases after this one tap `→` and `Go To Saved`,
+      // which live inside it, and a case that fails here must not hand them a
+      // hidden bar. The latches are read only once it is back up: they live
+      // inside it too (`main.dart`, `reader-status` and `audio-error`), so
+      // reading them with the bar down throws `Bad state: No element` instead
+      // of reporting a status.
       await setChrome(tester, visible: false);
-      await tester.longPressAt(
-        tester.getCenter(find.byType(ReadiumReaderWidget)),
-      );
-      await tester.pump(const Duration(seconds: 1));
+      try {
+        await tester.longPressAt(
+          tester.getCenter(find.byType(ReadiumReaderWidget)),
+        );
+        await tester.pump(const Duration(seconds: 1));
+      } finally {
+        await setChrome(tester, visible: true);
+      }
 
       // Key('audio-error') carries every onErrorEvent message, not just audio.
-      final status = readerStatus(tester);
       final error =
           (tester.widget<Text>(find.byKey(const Key('audio-error'))).data ?? '')
               .replaceFirst('audio-error: ', '');
-      await setChrome(tester, visible: true);
-
-      expect(status, equals('ready'));
+      expect(readerStatus(tester), equals('ready'));
       expect(error, isEmpty, reason: 'the long press surfaced "$error"');
     });
 
