@@ -1,3 +1,21 @@
+## 0.19.0
+
+### Behaviour Changes
+
+- **A chapter skip lands on an entry the reader can actually reach.** `skipToNext` and `skipToPrevious` flattened the table of contents and picked the adjacent entry without asking whether that entry has anywhere to go. A nav document can name a document the book does not ship — an entry whose target is in neither the reading order nor the resources — and no locator can be built for it. The skip picked it anyway, found the null one step later, and returned: the tap did nothing, silently, with no navigation, no error and nothing a host could show a reader. The selection now runs over the reachable entries only, so a skip passes such an entry and lands on the next one that works. At the end of the contents this also corrects the boundary: with a final entry nobody can reach, the reader standing on the entry before it is at the last chapter, and the skip says so rather than aiming at a dead entry. On a publication whose entries all resolve, nothing changes — including hierarchical books, whose part and section headings are documents of their own and stay in the list.
+
+### New
+
+- **`navigableToc(publication)`** returns the publication's contents, flattened, with the entries that cannot produce a locator removed. `flattenToc` still returns everything the nav document declares, which is the right answer for displaying a table of contents; `navigableToc` is the right answer for deciding where a reader can go next. A host doing its own chapter-button enablement wants this one, so that a button is enabled exactly when the navigation behind it will move the reader.
+
+### Documentation
+
+- `docs/api-reference/reader-widget.md` says under `skipToNext` and `skipToPrevious` that unreachable entries are passed over, and what that does to the last-chapter boundary.
+- `docs/guides/epub-reading.md` says the same in the Chapter Navigation section, and names 0.19.0 as the release that changed it.
+- `docs/api-reference/publication.md` covers `navigableToc` in its Table of Contents Helpers section, and points chapter pickers at it.
+
+---
+
 ## 0.18.1
 
 ### Bug Fixes
