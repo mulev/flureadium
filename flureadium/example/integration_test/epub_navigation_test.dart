@@ -1,4 +1,4 @@
-// EPUB skip-navigation behaviour, run against three fixtures with different
+// EPUB skip-navigation behaviour, run against four fixtures with different
 // nav-document shapes. Separate from `epub_test.dart` because that file covers
 // opening, status and locator reporting; these cases all drive the chapter
 // buttons.
@@ -173,10 +173,10 @@ void _navigationTests(String assetLabel, String asset, String reopenButton) {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  // Navigation smoke tests run with both fixtures to catch regressions.
+  // Navigation smoke tests run with every fixture to catch regressions.
   // The hierarchical fixture has Part I → [Ch1, Ch2, Ch3] and
-  // Part II → Section 1 → [Ch4, Ch5], verifying that flattenToc-based skip
-  // navigation works with multi-level TOC structures.
+  // Part II → Section 1 → [Ch4, Ch5], verifying that skip navigation works
+  // with multi-level TOC structures.
   _navigationTests('moby_dick', 'assets/pubs/moby_dick.epub', 'Open EPUB');
   _navigationTests(
     'hierarchical_toc',
@@ -200,6 +200,7 @@ void main() {
     'Open Backlink Chapter',
   );
   _backlinkFragmentTests();
+  _hierarchicalPartTests();
 }
 
 /// The one case that belongs to `backlink_chapter.epub` alone: the fixture is
@@ -247,6 +248,59 @@ void _backlinkFragmentTests() {
             'on the div wrapping the chapter heading; an empty value means the '
             'page script fell through to the body fallback',
       );
+    });
+  });
+}
+
+/// The case that belongs to `hierarchical_toc.epub` alone: its nav document
+/// groups chapters under `Part I`, `Part II` and `Section 1`, each of which is
+/// a spine document of its own, so a skip crosses three nesting levels on the
+/// way through the book. Kept out of [_navigationTests] because the other
+/// three fixtures have no nesting to cross, and because reaching the first
+/// boundary takes more taps than the shared group makes.
+void _hierarchicalPartTests() {
+  group('navigation (hierarchical_toc) nesting', () {
+    Future<void> showFixture(WidgetTester tester) => ensureAppShowing(
+      tester,
+      initialAsset: 'assets/pubs/hierarchical_toc.epub',
+      reopenButton: 'Open Hierarchical',
+      openAfterColdBoot: true,
+    );
+
+    tearDown(() async {
+      await Flureadium().closePublication();
+    });
+
+    testWidgets('every skip crosses the nesting intact', (tester) async {
+      await showFixture(tester);
+
+      await expectEventually(
+        tester,
+        () => locatorHref(tester).isNotEmpty,
+        reason: 'no starting locator to skip from',
+      );
+
+      // Position, not TOC index — same reason as the shared group: an entry
+      // sharing a rendered page advances the index without moving the reader.
+      String position() =>
+          '${locatorHref(tester)}@${locatorProgression(tester)}';
+
+      // Five skips rather than the shared group's three: the contents are
+      // Part I -> [Ch1, Ch2, Ch3], Part II -> Section 1 -> [Ch4, Ch5], so the
+      // reader does not cross a part boundary until the fourth tap. Every one
+      // of those eight entries is its own spine document, which is what makes
+      // this the guard that filtering the contents by reachability leaves a
+      // well-formed hierarchical book alone.
+      var previous = position();
+      for (var skip = 1; skip <= 5; skip++) {
+        await tester.tap(find.text('DartSkip+'));
+        await expectEventually(
+          tester,
+          () => position() != previous,
+          reason: 'skip $skip did not move the reader from "$previous"',
+        );
+        previous = position();
+      }
     });
   });
 }
