@@ -9,6 +9,7 @@ import 'helpers/locator_latch.dart';
 import 'helpers/expect_eventually.dart';
 import 'helpers/pump_until.dart';
 import 'helpers/reader_status.dart';
+import 'helpers/set_chrome.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -44,16 +45,28 @@ void main() {
         timeout: const Duration(seconds: 30),
       );
 
+      // The control bar is stacked over the reader and covers its centre
+      // (`main.dart`, where it builds the bar), so a long press aimed there
+      // while the bar is up releases onto a reopen button and the app switches
+      // publications: the press opened `hierarchical_toc.epub` and the
+      // assertions below then raced a fresh native open, reading '' or
+      // 'loading' depending on who won. Take the bar down, press the reader
+      // itself, then put the bar back — the cases after this one tap `→` and
+      // `Go To Saved`, which live inside it.
+      await setChrome(tester, visible: false);
       await tester.longPressAt(
         tester.getCenter(find.byType(ReadiumReaderWidget)),
       );
       await tester.pump(const Duration(seconds: 1));
 
       // Key('audio-error') carries every onErrorEvent message, not just audio.
+      final status = readerStatus(tester);
       final error =
           (tester.widget<Text>(find.byKey(const Key('audio-error'))).data ?? '')
               .replaceFirst('audio-error: ', '');
-      expect(readerStatus(tester), equals('ready'));
+      await setChrome(tester, visible: true);
+
+      expect(status, equals('ready'));
       expect(error, isEmpty, reason: 'the long press surfaced "$error"');
     });
 

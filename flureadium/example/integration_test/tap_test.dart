@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flureadium/flureadium.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -9,6 +8,7 @@ import 'helpers/ensure_app_showing.dart';
 import 'helpers/locator_latch.dart';
 import 'helpers/pump_until.dart';
 import 'helpers/reader_status.dart';
+import 'helpers/set_chrome.dart';
 import 'helpers/tap_latch.dart';
 
 /// Proves the native tap chain end to end: a real tap on the platform view,
@@ -67,39 +67,6 @@ Future<void> _expectEventually(
 void _tapTests() {
   group('tap', () {
     Finder reader() => find.byType(ReadiumReaderWidget);
-
-    Finder controlBar() => find.byKey(const Key('control-bar'));
-
-    /// Puts the example app's control bar into [visible] state through its
-    /// always-visible toggle (`main.dart:800`).
-    ///
-    /// Every tap case needs the bar down first. The bar is stacked over the
-    /// reader and covers its centre, and for a fixed-layout publication the
-    /// strip left above it is mostly the blank area beside the page — measured
-    /// on a 1080x2400 emulator, the page begins 175 logical pixels down, so a
-    /// tap aimed at the middle of that strip hits nothing at all. Rather than
-    /// model any of that, take the bar away and tap the real centre, which a
-    /// centred scaled page always covers.
-    ///
-    /// Driven by the toggle rather than by a tap on the reader: a tap is the
-    /// signal under test, so using it as setup would make every case depend on
-    /// the thing it is trying to prove.
-    Future<void> setChrome(WidgetTester tester, {required bool visible}) async {
-      final toggle = find.byKey(const Key('toggle-controls'));
-      // Before the first cold boot there is no app and so no chrome to set;
-      // the app starts with the bar up, which is what a caller asking for
-      // `visible: true` wants anyway.
-      if (toggle.evaluate().isEmpty) return;
-      if (controlBar().evaluate().isNotEmpty == visible) return;
-      await tester.tap(toggle);
-      await _expectEventually(
-        tester,
-        () => controlBar().evaluate().isNotEmpty == visible,
-        reason:
-            'the control bar never became ${visible ? 'visible' : 'hidden'}',
-        timeout: const Duration(seconds: 5),
-      );
-    }
 
     Future<void> showFixture(
       WidgetTester tester, {
