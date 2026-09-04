@@ -99,6 +99,7 @@ within() { awk -v s="$1" -v a="$2" -v b="$3" 'BEGIN { exit !(s >= a && s <= b) }
 # and would discard $rc. The awk pass drops comments/blank lines and splits on
 # the first two `|` only — stage and id are trimmed, the command keeps every byte
 # after its first non-blank character, so `|` and `||` inside commands survive.
+logdir=''
 rows=$(mktemp) || exit 2
 out_rows=$(mktemp) || exit 2
 trap 'rm -f "$rows" "$out_rows"' EXIT
@@ -144,7 +145,14 @@ run)
 			printf '%s\t%s\t%s\t%s\n' "$id" "$want" "$(now_iso)" "$cmd" >>"$out_rows"
 			continue
 		fi
-		out=$(sh -c "$cmd" 2>&1)
+		# One log per row, created on first use so a `user` stage and a
+		# no-rows stage cost nothing. Deliberately not in the EXIT trap: a
+		# failing run has to outlive itself, which is the whole defect here.
+		if [ -z "$logdir" ]; then
+			logdir=$(mktemp -d) || exit 2
+		fi
+		log=$logdir/$id.log
+		sh -c "$cmd" >"$log" 2>&1
 		if [ $? -eq 0 ]; then
 			result=PASS
 		else
@@ -153,10 +161,11 @@ run)
 		fi
 		# Last line that actually says something: strip ANSI and CR, then keep only
 		# lines with a word character, so box-drawing rules and blank spacers from
-		# pretty runners never become the ledger's evidence.
-		evidence=$(printf '%s\n' "$out" |
-			sed -e "s/${ESC}\[[0-9;]*[A-Za-z]//g" -e 's/\r//g' |
-			grep -E '[A-Za-z0-9]' | tail -n 1 | cut -c1-120)
+		# pretty runners never become the ledger's evidence. The rest of the output
+		# is no longer thrown away — it is in "$log", and a failed run keeps it.
+		evidence=$(
+			sed -e "s/${ESC}\[[0-9;]*[A-Za-z]//g" -e 's/\r//g' "$log" |
+				grep -E '[A-Za-z0-9]' | tail -n 1 | cut -c1-120)
 		[ -n "$evidence" ] || evidence='(no output)'
 		printf '%s\t%s\t%s\t%s\n' "$id" "$result" "$(now_iso)" "$evidence" >>"$out_rows"
 	done <"$rows"
@@ -168,9 +177,17 @@ run)
 		commit=$(git rev-parse --short HEAD 2>/dev/null || echo '-')
 		if [ -n "$(git status --porcelain 2>/dev/null)" ]; then dirty=yes; else dirty=no; fi
 	fi
-	printf '# stage=%s conf=%s commit=%s dirty=%s started=%s finished=%s finished_epoch=%s rows=%s\n' \
+	# A green run has nothing worth keeping, so it keeps nothing: `log=` in a
+	# header means exactly "some row failed and its output is still there".
+	kept=''
+	if [ "$rc" = 0 ]; then
+		[ -n "$logdir" ] && rm -rf "$logdir"
+	else
+		kept=" log=$logdir"
+	fi
+	printf '# stage=%s conf=%s commit=%s dirty=%s started=%s finished=%s finished_epoch=%s rows=%s%s\n' \
 		"$stage" "$(conf_fingerprint)" "$commit" "$dirty" \
-		"$started" "$finished" "$(now_epoch)" "$stage_ids"
+		"$started" "$finished" "$(now_epoch)" "$stage_ids" "$kept"
 	cat "$out_rows"
 	exit $rc
 	;;
