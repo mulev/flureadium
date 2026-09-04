@@ -16,7 +16,12 @@
 #
 # `run` stamps provenance ahead of the rows:
 #   # stage=phase-exit conf=<cksum> commit=<sha> dirty=no started=<ts>
-#     finished=<ts> finished_epoch=<s> rows=id,id,id
+#     finished=<ts> finished_epoch=<s> rows=id,id,id [log=<dir>]
+# `log=` is present only when a row failed. It names a temp directory holding one
+# <id>.log per row that ran, each with that row's complete output, kept so a red
+# run can be diagnosed without re-running it. The directory sits outside the
+# worktree so `verify` cannot read it as source, it is machine-local and
+# disposable, and a run where every row passed removes it and prints no `log=`.
 # `verify` re-reads that stamp instead of the calendar. It asks three questions
 # the old date-only ledger could not answer:
 #   * was every row of THAT run stamped inside THAT run's window — a row pasted
@@ -34,7 +39,9 @@
 #   0  every row for the stage passed (or was handed over); `list` on a stage with
 #      no rows also exits 0 — "nothing to hand over" is an answer, not an error.
 #      DRIFT, LEGACY and NOTE lines are reports, not failures.
-#   1  a row failed, or verification found a missing, mis-stamped or stale row
+#   1  a row failed, or verification found a missing, mis-stamped or stale row.
+#      A failed `run` leaves its captured output in the directory its header's
+#      `log=` names; nothing cleans that up but the machine's own temp reaper.
 #   2  misconfigured: usage error, missing config, or `run`/`verify` on a stage
 #      this repo does not define → do not loop, fix the config
 #
