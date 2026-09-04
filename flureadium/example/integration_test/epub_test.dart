@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'helpers/ensure_app_showing.dart';
+import 'helpers/extract_asset.dart';
 import 'helpers/locator_latch.dart';
 import 'helpers/expect_eventually.dart';
 import 'helpers/pump_until.dart';
@@ -230,6 +231,35 @@ void main() {
         reason: 'loadPublication never reported a title',
       );
       expect(find.byType(ReadiumReaderWidget), findsNothing);
+    });
+
+    // navigableToc drops entries that cannot produce a locator. On a healthy
+    // publication there are none, so it must agree with flattenToc exactly.
+    // Phases 2-4 all assume real books are unaffected by the swap; the unit
+    // fixtures cannot show that, because they decide resolvability by hand.
+    testWidgets('navigableToc keeps every entry of a healthy publication', (
+      tester,
+    ) async {
+      await showEpub(tester);
+
+      final path = await extractAsset('assets/pubs/moby_dick.epub');
+      final publication = await Flureadium().loadPublication(path);
+
+      final flattened = flattenToc(publication.toc).map((l) => l.href).toList();
+      final navigable = navigableToc(publication).map((l) => l.href).toList();
+
+      expect(
+        flattened,
+        isNotEmpty,
+        reason:
+            'the fixture reported no contents, so this case would be '
+            'vacuous',
+      );
+      expect(
+        navigable,
+        equals(flattened),
+        reason: 'navigableToc dropped a reachable entry of a healthy EPUB',
+      );
     });
   });
 }
