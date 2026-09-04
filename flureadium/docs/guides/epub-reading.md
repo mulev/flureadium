@@ -190,6 +190,8 @@ final chapters = flattenToc(publication.tableOfContents);
 await flureadium.goByLink(chapters[5], publication);
 ```
 
+A chapter picker or a skip control should use `navigableToc(publication)` instead: it drops the entries whose tap cannot go anywhere, because they resolve to no locator.
+
 ### Building a Table of Contents
 
 ```dart
@@ -255,6 +257,8 @@ showModalBottomSheet(
   ),
 );
 ```
+
+Use `navigableToc(publication)` here rather than `flattenToc` if the picker must never offer an entry that cannot be opened.
 
 ## Physical Page Navigation
 
