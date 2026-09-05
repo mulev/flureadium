@@ -59,16 +59,19 @@ Publication _ghostTailPublication() => Publication(
 ///
 /// The only entry before the reader's is unreachable, so the navigable
 /// contents begin where the reader is standing and `decideSkipToPrevious`
-/// takes its already-at-first-chapter branch. The reading order carries a
-/// document before it that no contents entry names — a cover or a
-/// frontmatter page — so that branch has somewhere to go and the two roads
-/// separate: filtered lands on it, unfiltered aims at the ghost and dies.
+/// takes its already-at-first-chapter branch. The reading order carries two
+/// documents before that entry, neither named by the contents — a cover and a
+/// frontmatter page. Two rather than one on purpose: the branch jumps to
+/// `readingOrder[0]` rather than stepping back one document
+/// (`navigation_helper.dart:227`), and with a single leading document those
+/// two answers coincide and the case would pin neither.
 Publication _ghostHeadPublication() => Publication(
   metadata: Metadata(
     localizedTitle: LocalizedString.fromString('Ghost Head Book'),
     identifier: 'ghost-head-book',
   ),
   readingOrder: [
+    Link(href: '/cover.xhtml', type: 'application/xhtml+xml'),
     Link(href: '/intro.xhtml', type: 'application/xhtml+xml'),
     Link(href: '/b.xhtml', type: 'application/xhtml+xml'),
   ],
@@ -155,11 +158,13 @@ void main() {
     });
 
     test('an unreachable first entry begins the contents', () async {
-      // The mirror of the case above. The reader is at the first entry it can
-      // reach, so `decideSkipToPrevious` takes its already-at-first-chapter
-      // branch (navigation_helper.dart:203) and steps back into the spine,
-      // landing on the document before B. Unfiltered, B sits at index 1 of
-      // [ghost, B], "previous" targets the ghost, and the tap does nothing.
+      // The mirror of the case above, and not a symmetric one. The reader is
+      // at the first entry it can reach, so `decideSkipToPrevious` takes its
+      // already-at-first-chapter branch (navigation_helper.dart:203) and
+      // jumps to the *first* document of the reading order, not the one just
+      // before B — the cover, passing over the frontmatter page in a single
+      // move. Unfiltered, B sits at index 1 of [ghost, B], "previous" targets
+      // the ghost, and the tap does nothing.
       await navigator.skipToPreviousChapter(
         publication: _ghostHeadPublication(),
         currentLocator: _at('/b.xhtml'),
@@ -167,7 +172,7 @@ void main() {
       );
 
       expect(channel.goCallLog, hasLength(1));
-      expect(channel.goCallLog.single.locator.href, '/intro.xhtml');
+      expect(channel.goCallLog.single.locator.href, '/cover.xhtml');
     });
 
     test('a forward skip on a fully reachable book is unchanged', () async {

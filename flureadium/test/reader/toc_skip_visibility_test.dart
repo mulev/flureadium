@@ -198,10 +198,14 @@ void main() {
         channel: channel,
       );
 
-      // Assert the filter itself, not only the silence: both assertions below
-      // held before 0.19.0 too, when the walk targeted #g1, matched the
-      // current path and broke on the null locator. This line is what fails
-      // if the mixin ever goes back to the unfiltered list.
+      // Record the precondition the guard turns on: the filter empties the
+      // list, so `_skip` returns before the walk. It is a precondition, not
+      // regression evidence — the call goes straight to the helper, and on a
+      // publication where nothing resolves both the filtered and unfiltered
+      // roads are silent anyway, so no assertion here can separate them. The
+      // red-before-green proof for the filter lives in
+      // toc_skip_navigability_test.dart, whose ghost middle, tail and head
+      // cases each fail without it.
       expect(
         navigableToc(publication),
         isEmpty,
