@@ -1,3 +1,4 @@
+import 'package:flureadium/flureadium.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -30,12 +31,28 @@ Finder _controlBar() => find.byKey(const Key('control-bar'));
 /// Driven by the toggle rather than by a tap on the reader: in the tap suites a
 /// tap is the signal under test, and using it as setup would make those cases
 /// depend on the thing they are proving.
+///
+/// One state is not settable and is rejected rather than waited out. With no
+/// publication open the app builds the bar unconditionally (`main.dart`,
+/// `if (pub == null || _controlsVisible)`), so `visible: false` cannot be
+/// honoured however many times the toggle is pressed. Asking for `visible:
+/// true` there is fine — the bar is up, which is what the caller wanted — and
+/// `tap_test.dart` does exactly that before its first cold boot.
 Future<void> setChrome(WidgetTester tester, {required bool visible}) async {
   final toggle = find.byKey(const Key('toggle-controls'));
   // Before the first cold boot there is no app and so no chrome to set; the app
   // starts with the bar up, which is what a caller asking for `visible: true`
   // wants anyway.
   if (toggle.evaluate().isEmpty) return;
+  if (!visible) {
+    expect(
+      find.byType(ReadiumReaderWidget),
+      findsOneWidget,
+      reason:
+          'taking the control bar down needs an open publication: with none '
+          'the app keeps the bar up whatever _controlsVisible says',
+    );
+  }
   if (_controlBar().evaluate().isNotEmpty == visible) return;
   await tester.tap(toggle);
   final settled = await pumpUntil(

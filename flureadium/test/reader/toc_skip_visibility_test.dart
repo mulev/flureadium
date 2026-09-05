@@ -168,9 +168,16 @@ void main() {
       expect(_entryOf(channel.goCallLog.single.locator), 'c1');
     });
 
-    test('an entry with no resource of its own stops the walk', () async {
-      // `locatorFromLink` answers null when the entry's file is missing from
-      // the reading order, so there is nothing to probe and nothing to skip.
+    test('a publication whose every entry is unreachable never walks', () async {
+      // Both entries point at /ghost.xhtml, which is in neither the reading
+      // order nor the resources, so `locatorFromLink` answers null for both and
+      // `navigableToc` filters the list empty. `_skip` then returns at its
+      // `toc.isEmpty` guard, before the walk — which is the point of the case
+      // since 0.19.0. It was written for the walk's own `candidate == null`
+      // break, and that break is no longer reachable from a contents entry:
+      // every link the walk sees from the filtered list resolves by
+      // construction. See the comment on that break for what still can reach
+      // it.
       final publication = Publication(
         metadata: Metadata(
           localizedTitle: LocalizedString.fromString('Ghost Entry Book'),
