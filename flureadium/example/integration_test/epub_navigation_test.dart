@@ -287,7 +287,9 @@ void _hierarchicalPartTests() {
 
       // Five skips rather than the shared group's three: the contents are
       // Part I -> [Ch1, Ch2, Ch3], Part II -> Section 1 -> [Ch4, Ch5], so the
-      // reader does not cross a part boundary until the fourth tap. Every one
+      // reader does not cross a part boundary until the fifth tap: the book
+      // opens on cover.xhtml, spine[0], which no contents entry names, so the
+      // first tap lands on Part I. Every one
       // of those eight entries is its own spine document, which is what makes
       // this the guard that filtering the contents by reachability leaves a
       // well-formed hierarchical book alone.

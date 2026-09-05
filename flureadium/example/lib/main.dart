@@ -428,6 +428,10 @@ class _ReaderPageState extends State<ReaderPage> {
   /// union is applied everywhere now: no latch here outlives its publication,
   /// so there is no case where clearing one is wrong.
   void _resetPublicationLatches() {
+    // The bar is chrome, not publication state, but it has to come back with
+    // each open: every latch below lives inside it, so a publication that
+    // opens with the bar down reports nothing a test can read.
+    _controlsVisible = true;
     _openGeneration++;
     _readerStatus = '';
     _locator = null;

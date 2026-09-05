@@ -54,6 +54,30 @@ Publication _ghostTailPublication() => Publication(
   ],
 );
 
+/// The head shape, the mirror of the tail one and the half the first round of
+/// tests left uncovered.
+///
+/// The only entry before the reader's is unreachable, so the navigable
+/// contents begin where the reader is standing and `decideSkipToPrevious`
+/// takes its already-at-first-chapter branch. The reading order carries a
+/// document before it that no contents entry names — a cover or a
+/// frontmatter page — so that branch has somewhere to go and the two roads
+/// separate: filtered lands on it, unfiltered aims at the ghost and dies.
+Publication _ghostHeadPublication() => Publication(
+  metadata: Metadata(
+    localizedTitle: LocalizedString.fromString('Ghost Head Book'),
+    identifier: 'ghost-head-book',
+  ),
+  readingOrder: [
+    Link(href: '/intro.xhtml', type: 'application/xhtml+xml'),
+    Link(href: '/b.xhtml', type: 'application/xhtml+xml'),
+  ],
+  tableOfContents: [
+    Link(href: '/ghost.xhtml', type: 'application/xhtml+xml'),
+    Link(href: '/b.xhtml', type: 'application/xhtml+xml'),
+  ],
+);
+
 /// Every entry resolves — the shape of every book anyone actually reads. The
 /// filter must be invisible here.
 Publication _healthyPublication() => Publication(
@@ -128,6 +152,22 @@ void main() {
 
       expect(channel.goCallLog, hasLength(1));
       expect(channel.goCallLog.single.locator.href, '/b.xhtml');
+    });
+
+    test('an unreachable first entry begins the contents', () async {
+      // The mirror of the case above. The reader is at the first entry it can
+      // reach, so `decideSkipToPrevious` takes its already-at-first-chapter
+      // branch (navigation_helper.dart:203) and steps back into the spine,
+      // landing on the document before B. Unfiltered, B sits at index 1 of
+      // [ghost, B], "previous" targets the ghost, and the tap does nothing.
+      await navigator.skipToPreviousChapter(
+        publication: _ghostHeadPublication(),
+        currentLocator: _at('/b.xhtml'),
+        channel: channel,
+      );
+
+      expect(channel.goCallLog, hasLength(1));
+      expect(channel.goCallLog.single.locator.href, '/intro.xhtml');
     });
 
     test('a forward skip on a fully reachable book is unchanged', () async {

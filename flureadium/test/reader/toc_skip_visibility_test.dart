@@ -1,4 +1,5 @@
 import 'package:flureadium/src/reader/toc_skip_navigation_mixin.dart';
+import 'package:flureadium/src/utils/toc_matcher.dart';
 import 'package:flureadium_platform_interface/flureadium_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -197,6 +198,16 @@ void main() {
         channel: channel,
       );
 
+      // Assert the filter itself, not only the silence: both assertions below
+      // held before 0.19.0 too, when the walk targeted #g1, matched the
+      // current path and broke on the null locator. This line is what fails
+      // if the mixin ever goes back to the unfiltered list.
+      expect(
+        navigableToc(publication),
+        isEmpty,
+        reason:
+            'the filter is what makes _skip return at its toc.isEmpty guard',
+      );
       expect(channel.visibilityProbeLog, isEmpty);
       expect(channel.goCallLog, isEmpty);
     });
