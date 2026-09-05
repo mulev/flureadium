@@ -380,7 +380,7 @@ The null check in that example is the whole guard, and it needs
 `flureadium_platform_interface` 0.10.3 or newer to work. Before 0.10.3 a bare
 `toc=` — a fragment that is present but names no heading — made `tocFragment`
 return an empty string, which passes `!= null` and sends a fragment that
-identifies nothing into the lookup. 0.18.1 requires 0.10.3 for that reason; if
+identifies nothing into the lookup. 0.18.1 and later require 0.10.3 for that reason; if
 you are on 0.18.0 with a lockfile pinned to 0.10.2, upgrade the platform
 interface.
 
