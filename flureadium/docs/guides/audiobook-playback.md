@@ -51,6 +51,22 @@ await flureadium.audioEnable(
 );
 ```
 
+### Track Durations and Streamed Audiobooks
+
+A manifest does not have to state how long each track is. When one is missing,
+flureadium reads it from the audio file itself, and reading it means fetching
+part of that file. For a streamed audiobook that is one network request per
+track.
+
+Those reads now happen on a background dispatcher, in parallel, before the
+navigator is built. Earlier versions did them one at a time on the Android UI
+thread while opening the book, which froze the app for as long as the requests
+took.
+
+If your manifest declares a duration for every track, none of this runs: the
+declared values are used as they are and no extra request is made. Publishing
+durations in the manifest is the fastest way to open a streamed audiobook.
+
 ## Playback Controls
 
 ### Basic Controls
