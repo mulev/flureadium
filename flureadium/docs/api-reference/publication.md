@@ -116,6 +116,15 @@ final chapters = flattenToc(pub.tableOfContents);
 // [Part I, Chapter 1, Chapter 2, Part II, Chapter 3, ...]
 ```
 
+`navigableToc(pub)` returns the same flat list with the entries that cannot
+produce a locator removed — the ones a reader cannot reach, because
+`locatorFromLink` answers null for them. Prefer it in any code that indexes the
+contents to decide what is adjacent:
+
+```dart
+final reachable = navigableToc(pub);
+```
+
 `skipToNext` and `skipToPrevious` flatten the TOC internally, so skip buttons work at any nesting depth without extra setup. Flattening also surfaces entries that are not chapters at all — a byline or an imprint line anchored inside a title page — so the skip additionally passes over any entry that is already on the reader's current page.
 
 ### toc
@@ -371,7 +380,7 @@ The null check in that example is the whole guard, and it needs
 `flureadium_platform_interface` 0.10.3 or newer to work. Before 0.10.3 a bare
 `toc=` — a fragment that is present but names no heading — made `tocFragment`
 return an empty string, which passes `!= null` and sends a fragment that
-identifies nothing into the lookup. 0.18.1 requires 0.10.3 for that reason; if
+identifies nothing into the lookup. 0.18.1 and later require 0.10.3 for that reason; if
 you are on 0.18.0 with a lockfile pinned to 0.10.2, upgrade the platform
 interface.
 
@@ -400,6 +409,8 @@ you get from `resolveCurrentTocIndex`; apply your own by calling
 ### Related lookups
 
 - `flattenToc(toc)` — every entry in reading order, nesting removed.
+- `navigableToc(publication)` — every reachable entry in reading order, nesting
+  removed and unresolvable entries dropped.
 - `findTocIndexByPath(locator, toc, {lastMatch})` — matches by file path, for
   publications whose headings carry no ids. `lastMatch` picks the last entry in
   the file rather than the first.

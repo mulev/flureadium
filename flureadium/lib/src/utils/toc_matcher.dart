@@ -186,6 +186,19 @@ List<Link> flattenToc(List<Link> toc) {
   return result;
 }
 
+/// The publication's contents, flattened, with entries that cannot produce a
+/// locator removed.
+///
+/// Those entries are unreachable. `decideSkipToNext` and
+/// `decideSkipToPrevious` will happily select one, and the navigation then
+/// dies at `locatorFromLink`, so the tap does nothing. Dropping them first
+/// makes "the next entry" mean the next one a reader can actually get to, and
+/// it makes the boundary branches correct too: with contents `[A, B]` where
+/// `B` cannot resolve, a reader in `A` is at the last reachable entry.
+List<Link> navigableToc(Publication publication) => flattenToc(
+  publication.toc,
+).where((link) => publication.locatorFromLink(link) != null).toList();
+
 /// The table-of-contents entry [fragment] names, and where it was found.
 ///
 /// Looks inside [path]'s own resource first, then across the whole [toc].

@@ -4,10 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'helpers/ensure_app_showing.dart';
+import 'helpers/extract_asset.dart';
 import 'helpers/locator_latch.dart';
 import 'helpers/expect_eventually.dart';
 import 'helpers/pump_until.dart';
 import 'helpers/reader_status.dart';
+import 'helpers/set_chrome.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -43,10 +45,29 @@ void main() {
         timeout: const Duration(seconds: 30),
       );
 
-      await tester.longPressAt(
-        tester.getCenter(find.byType(ReadiumReaderWidget)),
-      );
-      await tester.pump(const Duration(seconds: 1));
+      // The control bar is stacked over the reader and covers its centre
+      // (`main.dart`, where it builds the bar), so a long press aimed there
+      // while the bar is up releases onto a reopen button and the app switches
+      // publications: the press opened `hierarchical_toc.epub` and the
+      // assertions below then raced a fresh native open, reading '' or
+      // 'loading' depending on who won. So take the bar down for the press.
+      //
+      // Everything after that order matters. The bar goes back up in a
+      // `finally`, because the cases after this one tap `→` and `Go To Saved`,
+      // which live inside it, and a case that fails here must not hand them a
+      // hidden bar. The latches are read only once it is back up: they live
+      // inside it too (`main.dart`, `reader-status` and `audio-error`), so
+      // reading them with the bar down throws `Bad state: No element` instead
+      // of reporting a status.
+      await setChrome(tester, visible: false);
+      try {
+        await tester.longPressAt(
+          tester.getCenter(find.byType(ReadiumReaderWidget)),
+        );
+        await tester.pump(const Duration(seconds: 1));
+      } finally {
+        await setChrome(tester, visible: true);
+      }
 
       // Key('audio-error') carries every onErrorEvent message, not just audio.
       final error =
@@ -230,6 +251,35 @@ void main() {
         reason: 'loadPublication never reported a title',
       );
       expect(find.byType(ReadiumReaderWidget), findsNothing);
+    });
+
+    // navigableToc drops entries that cannot produce a locator. On a healthy
+    // publication there are none, so it must agree with flattenToc exactly.
+    // Phases 2-4 all assume real books are unaffected by the swap; the unit
+    // fixtures cannot show that, because they decide resolvability by hand.
+    testWidgets('navigableToc keeps every entry of a healthy publication', (
+      tester,
+    ) async {
+      await showEpub(tester);
+
+      final path = await extractAsset('assets/pubs/moby_dick.epub');
+      final publication = await Flureadium().loadPublication(path);
+
+      final flattened = flattenToc(publication.toc).map((l) => l.href).toList();
+      final navigable = navigableToc(publication).map((l) => l.href).toList();
+
+      expect(
+        flattened,
+        isNotEmpty,
+        reason:
+            'the fixture reported no contents, so this case would be '
+            'vacuous',
+      );
+      expect(
+        navigable,
+        equals(flattened),
+        reason: 'navigableToc dropped a reachable entry of a healthy EPUB',
+      );
     });
   });
 }

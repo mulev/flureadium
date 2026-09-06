@@ -167,6 +167,8 @@ await flureadium.skipToPrevious();
 
 For EPUB3 books with a hierarchical `toc.xhtml` — where chapters are nested under parts or sections — skip navigation moves to the next (or previous) chapter at any depth. It won't skip past a group of nested children to jump to the next top-level entry. Pages absent from the TOC (a cover, an interstitial) also work: the widget scans the reading order to find the nearest TOC entry on either side.
 
+An entry the book points at but does not ship — a nav-document link to a file that is not in the spine and not among the resources — is passed over rather than aimed at, and the skip lands on the next entry the reader can reach. Before 0.19.0 such a tap did nothing and said nothing. When the unreachable entry is the last one, the skip steps out of the table of contents and onto the next document in the reading order, then stops: no contents entry names that document, so the tap after it finds nothing ahead and does not move. At the first entry it works the other way round rather than symmetrically: the skip goes to the first document of the reading order, whatever else sits between it and the entry. Hierarchical contents are unaffected: a part or section heading is a document of its own, so it resolves and stays in the list.
+
 ### Navigate to Table of Contents Entry
 
 ```dart
@@ -189,6 +191,8 @@ final chapters = flattenToc(publication.tableOfContents);
 // Navigate to chapter 3 (index 5 in a typical structure)
 await flureadium.goByLink(chapters[5], publication);
 ```
+
+A chapter picker or a skip control should use `navigableToc(publication)` instead: it drops the entries whose tap cannot go anywhere, because they resolve to no locator.
 
 ### Building a Table of Contents
 
@@ -255,6 +259,8 @@ showModalBottomSheet(
   ),
 );
 ```
+
+Use `navigableToc(publication)` here rather than `flattenToc` if the picker must never offer an entry that resolves to no locator.
 
 ## Physical Page Navigation
 

@@ -66,7 +66,7 @@ mixin TocSkipNavigationMixin {
     Future<Locator?>? whenReady,
   }) async {
     final label = forward ? 'skipToNext' : 'skipToPrevious';
-    final toc = flattenToc(publication.toc);
+    final toc = navigableToc(publication);
     if (toc.isEmpty) {
       R2Log.d('$label: no TOC');
       return;
@@ -125,6 +125,14 @@ mixin TocSkipNavigationMixin {
         // Another resource always re-renders, so it always moves.
         if (normalizePath(link.hrefPart) != currentPath) break;
         final candidate = publication.locatorFromLink(link);
+        // Not reachable from a contents entry since 0.19.0: line 69 filters the
+        // list to entries that resolve. It stays for the other source of links
+        // here — `decide*` hands back a raw `readingOrder` link when it walks
+        // past the last or first contents entry (`navigation_helper.dart`,
+        // `navigate(nextPage, null)` and `navigate(firstPage, null)`), and that
+        // link is unfiltered. `Publication.fromJson` drops reading-order links
+        // with no media type, so a parsed book cannot get here, but this mixin
+        // is a library API and takes whatever publication a host builds.
         if (candidate == null) break;
         if (!await channel.isLocatorVisible(candidate)) break;
         final nextIndex = decision.targetTocIndex;

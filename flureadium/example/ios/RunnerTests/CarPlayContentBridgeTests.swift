@@ -174,7 +174,11 @@ final class CarPlayContentBridgeTests: XCTestCase {
     let exp = expectation(description: "gives up")
     var count = -1
     bridge.rootTabs { count = $0.count; exp.fulfill() }
-    wait(for: [exp], timeout: 8)  // 20 retries * 0.15s ≈ 3s
+    // 20 retries * 0.15s ≈ 3s of work. The ceiling is generous on purpose:
+    // this case asserts that the bridge gives up with an empty result, not how
+    // fast it does so, and an 8s ceiling failed it at 10.6s on a machine also
+    // running an emulator, a simulator and the integration suites.
+    wait(for: [exp], timeout: 30)
     XCTAssertEqual(count, 0)
   }
 }

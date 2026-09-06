@@ -328,6 +328,8 @@ Moves to the next TOC entry. For EPUB3 books with a nested `toc.xhtml`, this is 
 
 Entries the reader is already showing are passed over. A nav document that anchors a title, its byline and its imprint line as separate entries puts several of them on one rendered page, and the reader will not scroll to something already on screen — so the skip walks forward until it reaches an entry off the current page, and every tap moves. The walk stays inside the current resource: a target in another resource always re-renders, so it never needs the check. PDF outlines are left alone.
 
+Entries that cannot be reached are passed over too. A nav document can point at a file that is in neither the reading order nor the resources; no locator can be built for such an entry, so a navigation aimed at it does nothing at all. The skip selects only among entries it can reach, and lands on the next one that works. That changes both ends of the contents as well. When every entry after the reader's is unreachable, the reader counts as being at the last chapter, so `skipToNext` steps into the reading order and lands on the next spine document — and stops there, because no contents entry names that document and a further skip finds nothing ahead of it. `skipToPrevious` has the matching branch at the first entry, though not the mirror image of it: it jumps to the first document of the reading order rather than to the one immediately before. A host wiring button enablement off this should note that the first such tap still moves the reader. Entries that resolve are all kept — a part or section heading with chapters nested under it is a document of its own in a well-formed EPUB3, so hierarchical contents are unaffected.
+
 On a reader that has not yet reported a page, the call waits for the first reported position instead of returning silently. A host that subscribes from `onReady` and skips right away gets the skip it asked for, rather than a no-op. If the view is released before it reports anything — a publication swap, for instance — the call returns without navigating.
 
 ### skipToPrevious
@@ -338,7 +340,7 @@ Skip to the previous chapter.
 Future<void> skipToPrevious({bool animated = true})
 ```
 
-Moves to the previous TOC entry, with the same hierarchical, between-entries and already-on-screen behavior as `skipToNext`. It also waits for the first reported position on a reader that has not reported one yet, and returns without navigating if the view is released first.
+Moves to the previous TOC entry, with the same hierarchical, between-entries, already-on-screen and unreachable-entry behavior as `skipToNext`. It also waits for the first reported position on a reader that has not reported one yet, and returns without navigating if the view is released first.
 
 ### getCurrentLocator
 

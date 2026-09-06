@@ -1,3 +1,21 @@
+## 0.19.0
+
+### Behaviour Changes
+
+- **A chapter skip lands on an entry the reader can actually reach.** `skipToNext` and `skipToPrevious` flattened the table of contents and picked the adjacent entry without asking whether that entry has anywhere to go. A nav document can name a document the book does not ship — an entry whose target is in neither the reading order nor the resources — and no locator can be built for it. The skip picked it anyway, found the null one step later, and returned: the tap did nothing, silently, with no navigation, no error and nothing a host could show a reader. The selection now runs over the reachable entries only, so a skip passes such an entry and lands on the next one that works. At the end of the contents this also changes the boundary: with a final entry nobody can reach, the reader standing on the entry before it is treated as being at the last chapter, so `skipToNext` steps into the reading order and lands on the next spine document — an afterword or a colophon the nav document does not list. It stops there rather than walking on: no contents entry names that document, so a further skip finds nothing ahead of it and does not move. `skipToPrevious` has a matching branch at the first reachable entry, but it is not the mirror image: it jumps to the *first* document of the reading order, passing over any others before that entry in one move. On a publication whose entries all resolve, nothing changes — including hierarchical books, whose part and section headings are documents of their own and stay in the list.
+
+### New
+
+- **`navigableToc(publication)`** returns the publication's contents, flattened, with the entries that cannot produce a locator removed. `flattenToc` still returns everything the nav document declares, which is the right answer for displaying a table of contents; `navigableToc` is the right answer for deciding where a reader can go next. A host doing its own chapter-button enablement wants this one, so that a button is enabled exactly when the entry behind it can be reached. At the two ends of the contents, read the boundary from the same branch the skip takes rather than from the list alone: with a final entry nobody can reach, the list says the reader is at the last chapter while `skipToNext` still moves, out into the reading order.
+
+### Documentation
+
+- `docs/api-reference/reader-widget.md` says under `skipToNext` and `skipToPrevious` that unreachable entries are passed over, and what that does to the last-chapter boundary.
+- `docs/guides/epub-reading.md` says the same in the Chapter Navigation section, and names 0.19.0 as the release that changed it.
+- `docs/api-reference/publication.md` covers `navigableToc` in its Table of Contents Helpers section, and points chapter pickers at it.
+
+---
+
 ## 0.18.1
 
 ### Bug Fixes

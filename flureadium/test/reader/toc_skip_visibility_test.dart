@@ -1,4 +1,5 @@
 import 'package:flureadium/src/reader/toc_skip_navigation_mixin.dart';
+import 'package:flureadium/src/utils/toc_matcher.dart';
 import 'package:flureadium_platform_interface/flureadium_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -168,9 +169,16 @@ void main() {
       expect(_entryOf(channel.goCallLog.single.locator), 'c1');
     });
 
-    test('an entry with no resource of its own stops the walk', () async {
-      // `locatorFromLink` answers null when the entry's file is missing from
-      // the reading order, so there is nothing to probe and nothing to skip.
+    test('a publication whose every entry is unreachable never walks', () async {
+      // Both entries point at /ghost.xhtml, which is in neither the reading
+      // order nor the resources, so `locatorFromLink` answers null for both and
+      // `navigableToc` filters the list empty. `_skip` then returns at its
+      // `toc.isEmpty` guard, before the walk — which is the point of the case
+      // since 0.19.0. It was written for the walk's own `candidate == null`
+      // break, and that break is no longer reachable from a contents entry:
+      // every link the walk sees from the filtered list resolves by
+      // construction. See the comment on that break for what still can reach
+      // it.
       final publication = Publication(
         metadata: Metadata(
           localizedTitle: LocalizedString.fromString('Ghost Entry Book'),
@@ -190,6 +198,20 @@ void main() {
         channel: channel,
       );
 
+      // Record the precondition the guard turns on: the filter empties the
+      // list, so `_skip` returns before the walk. It is a precondition, not
+      // regression evidence — the call goes straight to the helper, and on a
+      // publication where nothing resolves both the filtered and unfiltered
+      // roads are silent anyway, so no assertion here can separate them. The
+      // red-before-green proof for the filter lives in
+      // toc_skip_navigability_test.dart, whose ghost middle, tail and head
+      // cases each fail without it.
+      expect(
+        navigableToc(publication),
+        isEmpty,
+        reason:
+            'the filter is what makes _skip return at its toc.isEmpty guard',
+      );
       expect(channel.visibilityProbeLog, isEmpty);
       expect(channel.goCallLog, isEmpty);
     });
