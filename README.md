@@ -49,7 +49,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flureadium: ^0.19.0
+  flureadium: ^0.19.1
 ```
 
 Then follow the platform-specific setup below. For full details, see the [Installation Guide](flureadium/docs/getting-started/installation.md).
