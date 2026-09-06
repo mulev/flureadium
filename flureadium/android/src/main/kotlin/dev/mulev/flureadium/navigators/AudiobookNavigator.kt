@@ -78,10 +78,20 @@ open class AudiobookNavigator(
             throw Exception("Couldn't create AudioNavigatorFactory")
         }
 
+        // Readium's createNavigator falls back to MediaMetadataRetriever for every
+        // reading-order item without a duration, and that fallback blocks the calling
+        // thread (runBlocking inside a MediaDataSource callback). For a streamed
+        // audiobook that is one socket read per track. Resolve here, on IO, so the
+        // main-thread hop below never probes anything.
+        val resolvedReadingOrder = withContext(Dispatchers.IO) {
+            resolveTrackDurations(publication, publication.readingOrder)
+        }
+
         mainScope.async {
             audioNavigator = navigatorFactory.createNavigator(
                 this@AudiobookNavigator.initialLocator,
-                preferences.toExoPlayerPreferences()
+                preferences.toExoPlayerPreferences(),
+                resolvedReadingOrder,
             ).getOrElse { error ->
                 Log.e(TAG, ":initNavigator - $error")
                 throw Exception(PublicationError.invoke(error).message)
