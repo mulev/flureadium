@@ -24,8 +24,11 @@ private const val TAG = "TrackDurationProbe"
  * Readium's own fallback (AudioNavigatorFactory.createNavigator -> MetadataRetriever)
  * does this from whatever thread calls it, and it blocks: MediaMetadataRetriever's
  * MediaDataSource callbacks are synchronous, so a streamed track parks the caller on
- * a socket read. This runs the same work up front, off the main thread, so the
- * factory's fallback never fires.
+ * a socket read. This runs the same work up front, off the main thread, so that
+ * fallback fires only for the tracks this probe could not resolve. Each of those
+ * still costs one blocking probe on whatever thread calls `createNavigator`, which
+ * for [AudiobookNavigator] is the Android main thread — a track left `null` is
+ * cheaper than a book that refuses to open, not free.
  *
  * MUST be called from a blocking-tolerant dispatcher — [kotlinx.coroutines.Dispatchers.IO].
  * A link that already declares a positive duration is returned untouched, with no

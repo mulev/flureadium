@@ -67,6 +67,14 @@ If your manifest declares a duration for every track, none of this runs: the
 declared values are used as they are and no extra request is made. Publishing
 durations in the manifest is the fastest way to open a streamed audiobook.
 
+A read can fail — a track the manifest points at may be gone, or the server may
+refuse a range request. That track then keeps no duration at all rather than a
+zero one, because a zero length makes Readium reject the whole publication, and
+a book that opens with one unknown track length beats a book that will not open.
+Readium retries that track itself while it builds the navigator, on the UI
+thread, so a run of failed reads still costs a pause even though the successful
+ones no longer do.
+
 ## Playback Controls
 
 ### Basic Controls
