@@ -406,11 +406,10 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
                 // Restore Audio navigator
                 Log.d(TAG, ":storeState - restore audio navigator")
                 bundle.getBundle(audioNavigatorStateKey)?.let { state ->
-                    audiobookNavigator =
-                        AudiobookNavigator.restoreState(pub, this@ReadiumReader, state).apply {
-                            initNavigator()
-                            Log.d(TAG, ":storeState - audioNavigator restored")
-                        }
+                    initPublished(
+                        AudiobookNavigator.restoreState(pub, this@ReadiumReader, state)
+                    ) { audiobookNavigator = it }
+                    Log.d(TAG, ":storeState - audioNavigator restored")
                 }
             } else if (bundle.getBoolean(syncAudioEnabledKey)) {
                 // Restore Sync Audio navigator
@@ -418,17 +417,15 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
                 val (ap, mediaOverlays) = pub.makeSyncAudiobook()
                 if (mediaOverlays != null) {
                     bundle.getBundle(syncAudioNavigatorStateKey)?.let { state ->
-                        syncAudiobookNavigator =
+                        initPublished(
                             SyncAudiobookNavigator.restoreState(
                                 ap,
                                 mediaOverlays,
                                 this@ReadiumReader,
                                 state
                             )
-                                .apply {
-                                    initNavigator()
-                                    Log.d(TAG, ":storeState - syncAudioNavigator restored")
-                                }
+                        ) { syncAudiobookNavigator = it }
+                        Log.d(TAG, ":storeState - syncAudioNavigator restored")
                     }
                 } else {
                     Log.e(TAG, ":storeState - no media overlays for sync audio navigator")
@@ -1159,6 +1156,34 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         syncAudiobookNavigator?.seekTo(offsetSeconds)
     }
 
+    /**
+     * Assigns [navigator] to its field through [publish], runs its suspending
+     * [AudiobookNavigator.initNavigator], and clears the field again if that throws.
+     *
+     * Both halves matter. Publishing first is required because initNavigator resolves
+     * missing track durations off the main thread and so suspends: a stop(), an
+     * audioDisable() or a second audioEnable() arriving in that window has to find the
+     * navigator in order to release and cancel it. Clearing on failure is required
+     * because the field is published by then, and a half-built navigator left in it
+     * makes the reader lie — storeState() persists audioEnabled = true across process
+     * death, goToLocator() reports the locator handled, and play() silently does
+     * nothing. initNavigator throws on a non-audio publication and on any
+     * createNavigator error, so this is a reachable path, not a theoretical one.
+     */
+    private suspend fun <T : AudiobookNavigator> initPublished(
+        navigator: T,
+        publish: (T?) -> Unit,
+    ) {
+        publish(navigator)
+        try {
+            navigator.initNavigator()
+        } catch (e: Exception) {
+            navigator.release()
+            publish(null)
+            throw e
+        }
+    }
+
     @OptIn(InternalReadiumApi::class)
     suspend fun audioEnable(initialLocator: Locator?, preferences: FlutterAudioPreferences) {
         _audioPreferences = preferences
@@ -1173,19 +1198,14 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
             syncAudiobookNavigator = null
 
             if (overlays == null) {
-                audiobookNavigator = AudiobookNavigator(
-                    ap, this@ReadiumReader, initialLocator, preferences
-                ).apply {
-                    initNavigator()
-                }
+                initPublished(
+                    AudiobookNavigator(ap, this@ReadiumReader, initialLocator, preferences)
+                ) { audiobookNavigator = it }
             } else {
                 val ail = initialLocator ?: epubNavigator?.currentLocator?.value
-                syncAudiobookNavigator = SyncAudiobookNavigator(
-                    ap, overlays, this@ReadiumReader, ail, preferences
-                ).apply {
-                    initNavigator()
-                }
-
+                initPublished(
+                    SyncAudiobookNavigator(ap, overlays, this@ReadiumReader, ail, preferences)
+                ) { syncAudiobookNavigator = it }
             }
         } ?: throw Exception("Publication not opened")
     }

@@ -79,9 +79,26 @@ open class AudiobookNavigator(
         }
 
         mainScope.async {
+            // Readium's createNavigator falls back to MediaMetadataRetriever for every
+            // reading-order item without a duration, and that fallback blocks the
+            // calling thread (runBlocking inside a MediaDataSource callback). For a
+            // streamed audiobook that is one socket read per track. Resolve first, on
+            // IO, so the createNavigator call below never probes anything.
+            //
+            // This sits inside mainScope rather than on the caller's coroutine so
+            // dispose() can stop it: dispose() calls cancelChildren() on this scope,
+            // which cancels its children but leaves the scope's own Job alive. Probed
+            // from the caller instead, a release() arriving mid-probe cancelled nothing
+            // and this async went on to build a live navigator and MediaSession for a
+            // reader that had already torn down.
+            val resolvedReadingOrder = withContext(Dispatchers.IO) {
+                resolveTrackDurations(publication, publication.readingOrder)
+            }
+
             audioNavigator = navigatorFactory.createNavigator(
                 this@AudiobookNavigator.initialLocator,
-                preferences.toExoPlayerPreferences()
+                preferences.toExoPlayerPreferences(),
+                resolvedReadingOrder,
             ).getOrElse { error ->
                 Log.e(TAG, ":initNavigator - $error")
                 throw Exception(PublicationError.invoke(error).message)
