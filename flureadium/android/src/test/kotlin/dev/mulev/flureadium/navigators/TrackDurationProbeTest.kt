@@ -2,6 +2,7 @@ package dev.mulev.flureadium.navigators
 
 import android.media.MediaMetadataRetriever
 import android.os.Build
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -179,6 +180,37 @@ internal class TrackDurationProbeTest {
 
         assertEquals(10, resolution.await().size)
         assertEquals(3, peak.get(), "more than three probes overlapped while draining")
+    }
+
+    @Test
+    fun cancellingTheCallerCancelsTheResolution() = runBlocking(Dispatchers.IO) {
+        stubDuration("90000")
+        val publication = mock(Publication::class.java)
+        val links = (1..3).map { trackLink("t$it.mp3") }
+        val firstProbeStarted = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        links.forEach { link ->
+            `when`(publication.get(link)).thenAnswer {
+                firstProbeStarted.countDown()
+                release.await(5, TimeUnit.SECONDS)
+                FakeResource()
+            }
+        }
+
+        // concurrency = 1, so probes two and three park on the semaphore. That is a real
+        // suspension point for the cancellation to land on, rather than a race against
+        // start-up that would pass even if the resolution ignored cancellation entirely.
+        val resolution = async { resolveTrackDurations(publication, links, concurrency = 1) }
+
+        assertTrue(
+            firstProbeStarted.await(5, TimeUnit.SECONDS),
+            "no probe ever started, so cancelling below would prove nothing",
+        )
+        resolution.cancel()
+        release.countDown()
+
+        assertFailsWith<CancellationException> { resolution.await() }
+        assertTrue(resolution.isCancelled, "resolveTrackDurations must honour cancellation")
     }
 
     @Test
