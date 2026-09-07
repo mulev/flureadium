@@ -183,23 +183,24 @@ internal class TrackDurationProbeTest {
     }
 
     @Test
-    fun cancellingTheCallerCancelsTheResolution() = runBlocking(Dispatchers.IO) {
+    fun cancellingTheCallerStopsTheRemainingProbes() = runBlocking(Dispatchers.IO) {
         stubDuration("90000")
         val publication = mock(Publication::class.java)
         val links = (1..3).map { trackLink("t$it.mp3") }
+        val probes = AtomicInteger()
         val firstProbeStarted = CountDownLatch(1)
         val release = CountDownLatch(1)
         links.forEach { link ->
             `when`(publication.get(link)).thenAnswer {
+                probes.incrementAndGet()
                 firstProbeStarted.countDown()
                 release.await(5, TimeUnit.SECONDS)
                 FakeResource()
             }
         }
 
-        // concurrency = 1, so probes two and three park on the semaphore. That is a real
-        // suspension point for the cancellation to land on, rather than a race against
-        // start-up that would pass even if the resolution ignored cancellation entirely.
+        // concurrency = 1, so probes two and three park on the semaphore's withPermit —
+        // a real suspension for the cancellation to land on.
         val resolution = async { resolveTrackDurations(publication, links, concurrency = 1) }
 
         assertTrue(
@@ -208,9 +209,14 @@ internal class TrackDurationProbeTest {
         )
         resolution.cancel()
         release.countDown()
+        resolution.join()
 
+        // The count is the assertion that matters. `isCancelled` and a throwing `await()`
+        // are true of any cancelled Deferred whether or not its body cooperated, so they
+        // would pass over a resolution wrapped in NonCancellable; this would not.
+        assertEquals(1, probes.get(), "cancellation did not stop the queued probes")
         assertFailsWith<CancellationException> { resolution.await() }
-        assertTrue(resolution.isCancelled, "resolveTrackDurations must honour cancellation")
+        assertTrue(resolution.isCancelled)
     }
 
     @Test
