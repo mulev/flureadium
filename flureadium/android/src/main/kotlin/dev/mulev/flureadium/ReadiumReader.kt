@@ -407,7 +407,8 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
                 Log.d(TAG, ":storeState - restore audio navigator")
                 bundle.getBundle(audioNavigatorStateKey)?.let { state ->
                     initPublished(
-                        AudiobookNavigator.restoreState(pub, this@ReadiumReader, state)
+                        AudiobookNavigator.restoreState(pub, this@ReadiumReader, state),
+                        current = { audiobookNavigator },
                     ) { audiobookNavigator = it }
                     Log.d(TAG, ":storeState - audioNavigator restored")
                 }
@@ -423,7 +424,8 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
                                 mediaOverlays,
                                 this@ReadiumReader,
                                 state
-                            )
+                            ),
+                            current = { syncAudiobookNavigator },
                         ) { syncAudiobookNavigator = it }
                         Log.d(TAG, ":storeState - syncAudioNavigator restored")
                     }
@@ -1158,28 +1160,51 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
 
     /**
      * Assigns [navigator] to its field through [publish], runs its suspending
-     * [AudiobookNavigator.initNavigator], and clears the field again if that throws.
+     * [AudiobookNavigator.initNavigator], and clears the field again if that throws —
+     * but only while the field still holds this navigator, per [current].
      *
-     * Both halves matter. Publishing first is required because initNavigator resolves
-     * missing track durations off the main thread and so suspends: a stop(), an
-     * audioDisable() or a second audioEnable() arriving in that window has to find the
-     * navigator in order to release and cancel it. Clearing on failure is required
-     * because the field is published by then, and a half-built navigator left in it
-     * makes the reader lie — storeState() persists audioEnabled = true across process
-     * death, goToLocator() reports the locator handled, and play() silently does
-     * nothing. initNavigator throws on a non-audio publication and on any
-     * createNavigator error, so this is a reachable path, not a theoretical one.
+     * Publishing first is required because initNavigator resolves missing track
+     * durations off the main thread and so suspends: a stop(), an audioDisable() or a
+     * second audioEnable() arriving in that window has to find the navigator in order
+     * to release and cancel it.
+     *
+     * Clearing on failure is required because the field is published by then, and a
+     * half-built navigator left in it makes the reader lie — storeState() persists
+     * audioEnabled = true across process death, goToLocator() reports the locator
+     * handled, and play() silently does nothing. initNavigator throws on a non-audio
+     * publication and on any createNavigator error, so this is reachable.
+     *
+     * Clearing *conditionally* is required because audio calls are not serialized:
+     * PublicationChannel launches each one on its own coroutine. A second audioEnable()
+     * releases the first navigator — cancelling its init — and publishes its own before
+     * the first init's failure is even observed. An unconditional clear would then erase
+     * the live navigator, orphaning a real ExoPlayer session and MediaSession that every
+     * teardown path guards on the field and so can never release. Identity comparison,
+     * not equality: two navigators over the same publication are not interchangeable.
+     *
+     * A failing release() must not swallow the reason we are here, nor skip the clear.
+     * It ends in `withContext(Dispatchers.Main.immediate)`, which throws immediately when
+     * the calling coroutine is already cancelled — the common case on this path.
+     *
+     * The bound is a partial guard only. `initPublished(Sync...) { audiobookNavigator = it }`
+     * compiles, because SyncAudiobookNavigator is an AudiobookNavigator; the reverse does
+     * not. Match the navigator to its own field.
      */
     private suspend fun <T : AudiobookNavigator> initPublished(
         navigator: T,
+        current: () -> AudiobookNavigator?,
         publish: (T?) -> Unit,
     ) {
         publish(navigator)
         try {
             navigator.initNavigator()
         } catch (e: Exception) {
-            navigator.release()
-            publish(null)
+            try {
+                navigator.release()
+            } catch (releaseFailure: Exception) {
+                e.addSuppressed(releaseFailure)
+            }
+            if (current() === navigator) publish(null)
             throw e
         }
     }
@@ -1199,12 +1224,14 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
 
             if (overlays == null) {
                 initPublished(
-                    AudiobookNavigator(ap, this@ReadiumReader, initialLocator, preferences)
+                    AudiobookNavigator(ap, this@ReadiumReader, initialLocator, preferences),
+                    current = { audiobookNavigator },
                 ) { audiobookNavigator = it }
             } else {
                 val ail = initialLocator ?: epubNavigator?.currentLocator?.value
                 initPublished(
-                    SyncAudiobookNavigator(ap, overlays, this@ReadiumReader, ail, preferences)
+                    SyncAudiobookNavigator(ap, overlays, this@ReadiumReader, ail, preferences),
+                    current = { syncAudiobookNavigator },
                 ) { syncAudiobookNavigator = it }
             }
         } ?: throw Exception("Publication not opened")
