@@ -1202,7 +1202,10 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
             try {
                 navigator.release()
             } catch (releaseFailure: Exception) {
-                e.addSuppressed(releaseFailure)
+                // Both can be the same JobCancellationException instance when one
+                // cancellation cancelled the init and the release; addSuppressed throws
+                // IllegalArgumentException on itself.
+                if (releaseFailure !== e) e.addSuppressed(releaseFailure)
             }
             if (current() === navigator) publish(null)
             throw e
