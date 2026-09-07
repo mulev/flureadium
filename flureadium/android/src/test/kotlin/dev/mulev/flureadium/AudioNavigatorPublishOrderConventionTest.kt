@@ -7,28 +7,31 @@ import kotlin.test.assertTrue
 /**
  * An audio navigator must be assigned to its field before `initNavigator()` runs.
  *
- * `AudiobookNavigator.initNavigator` resolves missing track durations on
- * `Dispatchers.IO` before it touches the main thread, so it suspends — for a
- * 246-track streamed book, for as long as those requests take. Anything arriving
- * on the reader in that window runs against the field as it is: `stop()`,
- * `audioDisable()` and a second `audioEnable()` all call
+ * `AudiobookNavigator.initNavigator` resolves missing track durations off the main
+ * thread, so it suspends — for a 246-track streamed book, for as long as those
+ * requests take. Anything arriving on the reader in that window runs against the
+ * field as it is: `stop()`, `audioDisable()` and a second `audioEnable()` all call
  * `audiobookNavigator?.release()`.
  *
  * Written as `field = Navigator(...).apply { initNavigator() }`, the assignment
  * happens only after `initNavigator()` returns. The field stays null for the whole
- * suspension, so a concurrent teardown releases nothing and the init that is still
- * in flight then installs a live AudioNavigator, media service and MediaSession
- * into a reader that was already told to stop. Publishing the field first also
- * lets `release()`'s `mainScope.cancelChildren()` reach the pending
- * `mainScope.async`.
+ * suspension, so a concurrent teardown releases nothing and the init still in
+ * flight then installs a live AudioNavigator, media service and MediaSession into a
+ * reader that was already told to stop.
  *
- * This was safe until durations moved off the main thread: `initNavigator()` held
- * the looper, so nothing could interleave. It is not safe now, and the shape that
- * caused it is invisible at a glance — hence this test.
+ * Publishing the field is necessary but not sufficient, and the other half lives in
+ * `AudiobookNavigator.initNavigator` rather than here: the duration probe runs
+ * inside `mainScope`, so `dispose()`'s `cancelChildren()` reaches it. Probed on the
+ * caller's coroutine it was outside that scope, and `cancelChildren()` does not
+ * cancel the scope's own Job, so a release() arriving mid-probe cancelled nothing.
  *
- * The other navigators (EPUB, PDF, image, TTS) do not probe durations and do not
- * suspend before publishing, so `.apply { initNavigator() }` remains fine for them
- * and this test deliberately ignores them.
+ * This was all safe until durations moved off the main thread: `initNavigator()`
+ * held the looper, so nothing could interleave. It is not safe now, and the shape
+ * that caused it is invisible at a glance — hence this test.
+ *
+ * Only the audio navigators probe durations, so only they are checked here. EPUB,
+ * PDF, image and TTS still use `.apply { initNavigator() }`; whether any of them
+ * suspends before publishing is a separate question this test makes no claim about.
  */
 internal class AudioNavigatorPublishOrderConventionTest {
 

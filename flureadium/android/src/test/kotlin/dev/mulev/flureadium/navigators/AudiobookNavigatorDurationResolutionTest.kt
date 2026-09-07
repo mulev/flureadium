@@ -31,12 +31,19 @@ import kotlin.test.assertTrue
 private const val NAVIGATOR_PATH = "dev/mulev/flureadium/navigators/AudiobookNavigator.kt"
 
 /**
- * `AudiobookNavigator.initNavigator` must resolve missing track durations before it
- * hops to `mainScope`, and hand the result to Readium's `createNavigator`. Otherwise
+ * `AudiobookNavigator.initNavigator` must resolve missing track durations on
+ * `Dispatchers.IO` and hand the result to Readium's `createNavigator`. Otherwise
  * Readium's own duration fallback runs on the Android main thread and parks it on one
- * socket read per un-timed track — the ANR this phase fixes.
+ * socket read per un-timed track — the ANR this work fixes.
  *
- * The first case is behavioural. The other two read the source, because `initNavigator`
+ * The IO hop belongs *inside* `mainScope.async`, not before it. `dispose()` cancels
+ * that scope's children and `cancelChildren()` leaves the scope's own Job alive, so a
+ * probe started outside the scope survives a `release()` and goes on to build a live
+ * navigator and MediaSession for a reader that has already torn down. Sitting inside
+ * the scope costs nothing: `withContext(Dispatchers.IO)` is what keeps the work off
+ * the main thread, not the position relative to the hop.
+ *
+ * The first case is behavioural. The others read the source, because `initNavigator`
  * builds its `ExoPlayerNavigatorFactory` inline and there is no seam to observe the
  * call from a JVM test; adding an injection point only a test would use is the
  * speculative parameter YAGNI forbids. This repo already guards conventions that way —
@@ -78,18 +85,35 @@ internal class AudiobookNavigatorDurationResolutionTest {
     }
 
     @Test
-    fun initNavigatorResolvesDurationsBeforeTheMainThreadHop() {
+    fun durationsResolveOnIoBeforeCreateNavigatorRuns() {
         val body = initNavigatorBody()
 
         val ioHop = body.indexOfFirst { "withContext(Dispatchers.IO)" in it }
         val resolution = body.indexOfFirst { "resolveTrackDurations(" in it }
-        val mainHop = body.indexOfFirst { "mainScope.async {" in it }
+        val create = body.indexOfFirst { "createNavigator(" in it }
 
         assertTrue(ioHop >= 0, "initNavigator never switches to Dispatchers.IO")
         assertTrue(resolution >= 0, "initNavigator never calls resolveTrackDurations")
+        assertTrue(create >= 0, "initNavigator no longer calls createNavigator")
+        assertTrue(ioHop < resolution, "resolveTrackDurations must run inside the IO hop")
+        assertTrue(resolution < create, "durations must be resolved before createNavigator runs")
+    }
+
+    @Test
+    fun theIoHopSitsInsideMainScopeSoDisposeCanCancelIt() {
+        val body = initNavigatorBody()
+
+        val mainHop = body.indexOfFirst { "mainScope.async {" in it }
+        val ioHop = body.indexOfFirst { "withContext(Dispatchers.IO)" in it }
+
         assertTrue(mainHop >= 0, "initNavigator no longer hops to mainScope")
-        assertTrue(ioHop < mainHop, "the IO hop must come before the main-thread hop")
-        assertTrue(resolution < mainHop, "durations must be resolved before the main-thread hop")
+        assertTrue(ioHop >= 0, "initNavigator never switches to Dispatchers.IO")
+        assertTrue(
+            mainHop < ioHop,
+            "the IO hop must sit inside mainScope.async so dispose()'s cancelChildren() " +
+                "reaches the probe — started outside that scope, a release() arriving " +
+                "mid-probe cancels nothing and this init still builds a live navigator",
+        )
     }
 
     @Test
