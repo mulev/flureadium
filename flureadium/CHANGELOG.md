@@ -1,3 +1,15 @@
+## 0.19.1
+
+### Bug Fixes
+
+- **Opening a streamed audiobook no longer blocks the Android main thread, so Android stops putting up its not-responding dialog.** Readium works out a reading-order item's missing duration by reading the audio file itself, through a `MediaDataSource` whose reads sit inside `runBlocking`. This package built the audiobook navigator on the main dispatcher, so that read happened on the very thread Android watches. Against a local file it is a disk seek nobody notices. Against a streamed audiobook every probe is an HTTPS round trip, and a manifest that declares no per-track durations pays one per track, in sequence, on the UI thread: a dozen tracks held the main thread far past the five seconds at which Android decides an app is gone. Measured on a physical device opening a Project Gutenberg audiobook, the gap between the navigator being asked for and the player being built ran 10.4 to 12.8 seconds, with the device's own hang detector reporting single main-looper messages over six seconds and 667 dropped frames on the cold-start restore path. Durations now resolve on `Dispatchers.IO`, a few at a time, before the navigator is built, and the resolved reading order goes to Readium so its blocking fallback never runs. A manifest that already declares its durations is passed straight through and issues no request at all. A probe that fails leaves the duration absent rather than zero: Readium refuses a publication outright when a reading-order entry declares a zero duration, so a track whose length cannot be determined costs you a missing length instead of a book that will not open.
+
+### Documentation
+
+- `docs/guides/audiobook-playback.md` says which thread duration resolution runs on, what a manifest without per-track durations costs when the audio is streamed, and what a failed probe leaves behind.
+
+---
+
 ## 0.19.0
 
 ### Behaviour Changes
