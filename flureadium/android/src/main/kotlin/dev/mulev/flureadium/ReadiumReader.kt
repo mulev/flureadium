@@ -406,11 +406,13 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
                 // Restore Audio navigator
                 Log.d(TAG, ":storeState - restore audio navigator")
                 bundle.getBundle(audioNavigatorStateKey)?.let { state ->
+                    // Publish the field before initNavigator(), which now suspends while
+                    // it resolves missing track durations on Dispatchers.IO. A release()
+                    // arriving during that window must find a navigator to release.
                     audiobookNavigator =
-                        AudiobookNavigator.restoreState(pub, this@ReadiumReader, state).apply {
-                            initNavigator()
-                            Log.d(TAG, ":storeState - audioNavigator restored")
-                        }
+                        AudiobookNavigator.restoreState(pub, this@ReadiumReader, state)
+                    audiobookNavigator?.initNavigator()
+                    Log.d(TAG, ":storeState - audioNavigator restored")
                 }
             } else if (bundle.getBoolean(syncAudioEnabledKey)) {
                 // Restore Sync Audio navigator
@@ -425,10 +427,8 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
                                 this@ReadiumReader,
                                 state
                             )
-                                .apply {
-                                    initNavigator()
-                                    Log.d(TAG, ":storeState - syncAudioNavigator restored")
-                                }
+                        syncAudiobookNavigator?.initNavigator()
+                        Log.d(TAG, ":storeState - syncAudioNavigator restored")
                     }
                 } else {
                     Log.e(TAG, ":storeState - no media overlays for sync audio navigator")
@@ -1173,19 +1173,23 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
             syncAudiobookNavigator = null
 
             if (overlays == null) {
+                // Publish the field before initNavigator(). It suspends on
+                // Dispatchers.IO to resolve missing track durations, yielding the
+                // looper for as long as those requests take, so a stop(), an
+                // audioDisable() or a second audioEnable() can interleave. Assigning
+                // afterwards left the field null for that whole window: the teardown
+                // released nothing and this init then installed a live navigator and
+                // MediaSession into a reader that had already been told to stop.
                 audiobookNavigator = AudiobookNavigator(
                     ap, this@ReadiumReader, initialLocator, preferences
-                ).apply {
-                    initNavigator()
-                }
+                )
+                audiobookNavigator?.initNavigator()
             } else {
                 val ail = initialLocator ?: epubNavigator?.currentLocator?.value
                 syncAudiobookNavigator = SyncAudiobookNavigator(
                     ap, overlays, this@ReadiumReader, ail, preferences
-                ).apply {
-                    initNavigator()
-                }
-
+                )
+                syncAudiobookNavigator?.initNavigator()
             }
         } ?: throw Exception("Publication not opened")
     }
