@@ -8,7 +8,7 @@
 # stays on PATH because resolve_deps asks it whether pubspec.lock is tracked —
 # that question is what this test is about.
 #
-# Usage: ./scripts/run_integration_tests_test.sh   (about 20s, nothing attached)
+# Usage: ./scripts/run_integration_tests_test.sh   (about 50s, nothing attached)
 
 set -u
 
@@ -107,8 +107,29 @@ exit 0
 STUB
 
 # `xcrun`: covers `simctl list devices` in resolve_ios_sim_udid and the
-# `simctl spawn <udid> log stream` capture the iOS leg starts.
-printf '#!/bin/bash\nexit 0\n' > "$WORK/bin/xcrun"
+# `simctl spawn <udid> log stream` capture the iOS leg starts. The `list`
+# fixture must name the id the harness passes: with no output at all,
+# resolve_ios_sim_udid returns 1, the capture branch is never entered, and
+# IOS_LOG_PID plus its teardown go untested — the half of the process handling
+# the unconditional `adb logcat &` already covers on the Android side.
+cat > "$WORK/bin/xcrun" <<'STUB'
+#!/bin/bash
+case "$*" in
+  *"simctl list devices"*)
+    echo "    iPhone 16 Flutter Sim (IOS1) (Booted)"
+    exit 0
+    ;;
+  *"log stream"*)
+    # The real stream runs until killed, so sleep: that leaves a live
+    # grandchild for stop_process to actually stop, while staying short enough
+    # that a missed teardown cannot outlast the suite.
+    echo "stub xcrun: log stream attached"
+    sleep 5
+    exit 0
+    ;;
+esac
+exit 0
+STUB
 
 # `curl`: the runner probes http://localhost:4444/status before the header.
 # Exiting 0 makes ChromeDriver look live, so the Web leg proceeds and no npx
@@ -295,6 +316,16 @@ grep -q '^\[ios\] stub flutter:' "$OUT" \
   && ok "--parallel tags streamed iOS output" \
   || bad "--parallel tags streamed iOS output"
 
+# ── A8. the iOS leg starts its native log capture ─────────────────────────────
+# Guards the `xcrun` stub's `list` fixture. With no listing at all,
+# resolve_ios_sim_udid returns 1, the capture branch is skipped, and
+# IOS_LOG_PID plus its `stop_process` teardown silently stop being exercised —
+# the half of this runner's process handling that `adb logcat &` covers
+# unconditionally on the Android side.
+grep -q 'Native logs: .*ios_native.log' "$PAR_DIR/ios_summary.log" \
+  && ok "A8 the iOS leg captured native logs" \
+  || bad "A8 the iOS leg captured native logs"
+
 # ── A13. the merge assembles summary.log in Android → iOS → Web order ─────────
 # A11 reads the per-leg files; this reads the merge they feed. Swapping the
 # concatenation's operands, deleting it, or moving it ahead of the waits all
@@ -339,6 +370,24 @@ grep -q 'Android suite failed' "$OUT" \
 grep -q 'passed' "$LAST_LOG_DIR/ios_summary.log" \
   && ok "iOS ran to completion after the Android failure" \
   || bad "iOS did not run to completion after the Android failure"
+# A12c. the failure dump is tagged as well. run_test has four output paths and
+# this is the only one that runs exclusively on a red leg, so two failing
+# parallel legs would otherwise interleave thousands of untagged lines with
+# nothing to attribute them to.
+#
+# Anchored on Android's own stub lines rather than on whatever follows the
+# "Output (…):" header: the legs interleave by design, so the line after that
+# header is routinely the other leg's, and an adjacency check reports a tagging
+# defect that is not there. Android's invocation is echoed twice in a failing
+# run, once by the stream and once by the dump, and both must carry the tag —
+# so an untagged copy of it anywhere in the terminal output is the dump.
+# (Web's lines are legitimately untagged: it runs on the parent, outside the
+# fork, with LOG_TAG empty. Hence the `-d AND1` anchor rather than a bare one.)
+if grep -q '^stub flutter: .*-d AND1' "$OUT"; then
+  bad "A12c the failure dump is untagged"
+else
+  ok "A12c the failure dump is tagged"
+fi
 unset STUB_FAIL_DEVICE
 
 # ── A15. the two suites genuinely overlap in time ─────────────────────────────
@@ -371,10 +420,15 @@ fi
 WEB_TS=$(stub_start 'drive .*-d web-server')
 [ -n "$WEB_TS" ] && ok "the Web leg ran under --parallel" \
   || bad "the Web leg did not run under --parallel"
-if [ -n "$WEB_TS" ] && [ -n "$IOS_TS" ] && [ "$WEB_TS" -ge "$IOS_TS" ]; then
-  ok "the Web leg started after the device legs"
+# A15 requires the two device legs to overlap; the Web leg must start after both
+# have finished. Every stub `flutter` call sleeps 1s, so a bare `-ge IOS_TS`
+# bound is satisfied by a Web leg starting 1ms after iOS — i.e. running
+# concurrently with it, which is the regression this guards. ChromeDriver on
+# 4444 is a parent-owned singleton with exactly one intended user.
+if [ -n "$WEB_TS" ] && [ -n "$IOS_TS" ] && [ "$WEB_TS" -ge "$((IOS_TS + 1000))" ]; then
+  ok "the Web leg started after the device legs finished"
 else
-  bad "the Web leg did not start after the device legs: web=$WEB_TS ios=$IOS_TS"
+  bad "the Web leg did not start after the device legs finished: web=$WEB_TS ios=$IOS_TS"
 fi
 
 # ── Regression. sequential stays the default and is unchanged ─────────────────

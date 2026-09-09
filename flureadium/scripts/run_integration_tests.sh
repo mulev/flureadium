@@ -362,7 +362,7 @@ run_test() {
     log "${LOG_TAG}${RED}   FAILED${NC}"
     if [ "$VERBOSE" = false ]; then
       log "${LOG_TAG}   Output (${logfile}):"
-      grep -v -E "$NOISE_RE" "$logfile" | tee -a "$LOG_TARGET"
+      grep -v -E "$NOISE_RE" "$logfile" | tag_stream | tee -a "$LOG_TARGET"
     fi
     return 1
   fi
