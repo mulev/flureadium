@@ -497,7 +497,7 @@ Logs are written to `test_logs/run_<timestamp>/` (gitignored, pubignored):
 
 | File | Contents |
 |---|---|
-| `summary.log` | Pass/fail lines and failure output for all platforms |
+| `summary.log` | Pass/fail lines and failure output for all platforms, plus a duration line for each device leg (`Android leg:` / `iOS leg:`) and a `Total:` line for the run, so an archived run can be timed afterwards without reading file mtimes |
 | `android.log` | Full flutter output for the Android run (full suite, including `@native`) |
 | `android_native.log` | `adb logcat -v threadtime` for the Android run |
 | `ios.log` | Full flutter output for the iOS run |
@@ -514,7 +514,7 @@ simulators only. The summary says so rather than leaving an empty file behind.
 
 ### Testing the runner itself
 
-`scripts/run_integration_tests_test.sh` is a contract test for the runner, not for the plugin. It drives `run_integration_tests.sh` end to end — argument parsing, device resolution, the ChromeDriver probe, all three legs, the summary — and checks what the runner promises: a clean run exits 0, dependencies resolve exactly once, a failing leg is blamed on the right platform without stopping the others, a skip the environment forced fails the run and says which leg went unrun, the Web leg runs against its own target, and the summary is ordered Android → iOS → Web.
+`scripts/run_integration_tests_test.sh` is a contract test for the runner, not for the plugin. It drives `run_integration_tests.sh` end to end — argument parsing, device resolution, the ChromeDriver probe, all three legs, the summary — and checks what the runner promises: a clean run exits 0, dependencies resolve exactly once, a failing leg is blamed on the right platform without stopping the others, a skip the environment forced fails the run and says which leg went unrun, the Web leg runs against its own target, the summary is ordered Android → iOS → Web, and each device leg reports its own duration.
 
 ```bash
 cd flureadium
