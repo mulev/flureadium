@@ -512,6 +512,31 @@ which the unified log never sees and `flutter test` does not forward, so they en
 A run against a physical iOS device produces no `ios_native.log`, since `simctl` streams from
 simulators only. The summary says so rather than leaving an empty file behind.
 
+### Testing the runner itself
+
+`scripts/run_integration_tests_test.sh` is a contract test for the runner, not for the plugin. It drives `run_integration_tests.sh` end to end — argument parsing, device resolution, the ChromeDriver probe, all three legs, the summary — and checks what the runner promises: a clean run exits 0, dependencies resolve exactly once, a failing leg is blamed on the right platform without stopping the others, a skip the environment forced fails the run and says which leg went unrun, the Web leg runs against its own target, and the summary is ordered Android → iOS → Web.
+
+```bash
+cd flureadium
+./scripts/run_integration_tests_test.sh
+```
+
+It needs no device, emulator, simulator or network, and takes about twenty seconds. Five stub binaries go on a prepended `PATH`:
+
+| Stub | Stands in for |
+|---|---|
+| `flutter` | `devices`, `pub get`, `test` and `drive` — records every argv with a millisecond stamp so the test can count resolutions and check ordering |
+| `adb` | the TTS-engine query, the `logcat` capture, and the name-resolution pre-flight |
+| `xcrun` | `simctl list devices` and the `simctl spawn … log stream` capture |
+| `curl` | the `http://localhost:4444/status` probe — exiting 0 makes ChromeDriver look live, so the Web leg proceeds and nothing is downloaded from npx |
+| `pkill` | the unconditional `pkill -f chromedriver` near the top of the runner, which would otherwise kill the ChromeDriver session you are using in another terminal |
+
+The last two are the ones worth spelling out. Without the `curl` stub the probe reports ChromeDriver missing and the run goes down the npx path; without the `pkill` stub the runner kills your own ChromeDriver mid-test.
+
+Real `git` stays on `PATH` on purpose. `resolve_deps` asks it whether `pubspec.lock` is tracked, and that question decides whether the run resolves against the lock or refuses to resolve at all — stubbing it away would remove the behaviour under test.
+
+The script is deliberately **not** a `validators.conf` row. It guards the runner rather than the product, so it runs by hand when the runner changes.
+
 ## Running Tests Manually
 
 ```bash
