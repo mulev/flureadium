@@ -522,22 +522,31 @@ else
   FLUTTER_REPORTER=(--reporter expanded)
 fi
 
-# Runs `flutter test` without any implicit `pub get` that could rewrite a
-# committed pubspec.lock. If the lock is version-controlled, resolve strictly to
-# it (fail loud on drift — never silently downgrade, e.g. under a wrong SDK).
-# If the lock is gitignored (library packages), do NOT run `pub get`: it can
-# cascade to sibling packages (a plugin's example) and rewrite THEIR tracked
-# locks — require deps already resolved and fail loud otherwise. Then run with
-# --no-pub so nothing can mutate any lock. Args are forwarded to `flutter test`.
-flutter_test_locked() {
+# Resolves dependencies once per run, before any leg starts. If the lock is
+# version-controlled, resolve strictly to it (fail loud on drift — never
+# silently downgrade, e.g. under a wrong SDK). If the lock is gitignored
+# (library packages), do NOT run `pub get`: it can cascade to sibling packages
+# (a plugin's example) and rewrite THEIR tracked locks — require deps already
+# resolved and fail loud otherwise. Every leg then runs with --no-pub, so
+# nothing can mutate any lock, and .dart_tool/package_config.json — the one
+# genuinely shared mutable file — is written exactly once.
+resolve_deps() {
   if git ls-files --error-unmatch pubspec.lock >/dev/null 2>&1; then
     flutter pub get --enforce-lockfile || return $?
   elif [ ! -f .dart_tool/package_config.json ]; then
-    echo "flutter_test_locked: dependencies not resolved in $(pwd) — resolve them the usual way for this project, then review and commit any lock changes intentionally (resolving can also update sibling package locks)" >&2
+    echo "resolve_deps: dependencies not resolved in $(pwd) — resolve them the usual way for this project, then review and commit any lock changes intentionally (resolving can also update sibling package locks)" >&2
     return 1
   fi
-  flutter test --no-pub "$@"
 }
+
+# Ahead of every leg, and exactly once. A failure here is not a leg failure:
+# nothing was tested, so there is nothing to report per platform. The call sits
+# directly below the definition rather than up beside `cd "$EXAMPLE_DIR"`,
+# because a call above the function it names is not yet defined when it runs.
+if ! resolve_deps; then
+  log "${RED}Dependency resolution failed — no suite ran.${NC}"
+  exit 1
+fi
 
 # Reports a suite that did not run. A skip the caller asked for is a choice and
 # leaves the exit code alone; a skip forced by the environment means the run did
@@ -589,7 +598,7 @@ if [ "$SKIP_ANDROID" = false ]; then
   if ! run_test \
       "Android — flutter test integration_test/all_tests.dart" \
       "$LOG_DIR/android.log" \
-      flutter_test_locked integration_test/all_tests.dart \
+      flutter test --no-pub integration_test/all_tests.dart \
         -d "$ANDROID_DEVICE" "${FLUTTER_VERBOSE[@]}" "${FLUTTER_REPORTER[@]}"; then
     OVERALL_EXIT=1
   fi
@@ -622,7 +631,7 @@ if [ "$SKIP_IOS" = false ]; then
   if ! run_test \
       "iOS — flutter test integration_test/all_tests.dart (includes @native audiobook)" \
       "$LOG_DIR/ios.log" \
-      flutter_test_locked integration_test/all_tests.dart \
+      flutter test --no-pub integration_test/all_tests.dart \
         -d "$IOS_DEVICE" "${FLUTTER_VERBOSE[@]}" "${FLUTTER_REPORTER[@]}"; then
     OVERALL_EXIT=1
   fi
@@ -644,7 +653,7 @@ if [ "$SKIP_WEB" = false ]; then
   if ! run_test \
       "Web — flutter drive --profile (launch smoke test only)" \
       "$LOG_DIR/web.log" \
-      flutter drive \
+      flutter drive --no-pub \
         --driver=test_driver/integration_test.dart \
         --target=integration_test/all_tests_web.dart \
         -d web-server \
