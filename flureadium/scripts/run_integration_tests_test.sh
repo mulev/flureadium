@@ -396,6 +396,88 @@ if [ -f "$LAST_LOG_DIR/android_summary.log" ]; then
   bad "--parallel --skip-ios took the parallel path"
 else ok "--parallel --skip-ios falls back to the sequential path"; fi
 
+# ── run_all_tests.sh forwarding ───────────────────────────────────────────────
+UMBRELLA="$SCRIPT_DIR/run_all_tests.sh"
+
+# Runs the umbrella with stub binaries and explicit device ids. $1.. = extra
+# args. Sets UMBRELLA_RC and INTEGRATION_LOG_DIR — the *integration* runner's
+# log dir, which is the last `Logs:` line in this output, not the first: the
+# umbrella prints its own first, and the integration row passes an empty noise
+# filter so the child's full output is tee'd through.
+run_umbrella() {
+  : > "$STUB_LOG"
+  ( cd "$PLUGIN_DIR" && PATH="$WORK/bin:$PATH" "$UMBRELLA" --integration-only \
+      --android-device AND1 --ios-device IOS1 "$@" ) > "$OUT" 2>&1
+  UMBRELLA_RC=$?
+  local dirs
+  dirs=$(sed 's/\x1b\[[0-9;]*[mK]//g' "$OUT" \
+    | sed -n 's|^Logs: *\(/.*[^/]\)/*$|\1|p')
+  INTEGRATION_LOG_DIR=$(echo "$dirs" | tail -1)
+  # Both directories go out with the run: the umbrella writes
+  # test_logs/all_tests/run_*, the integration runner test_logs/run_*. The
+  # `run_*` anchor keeps `rm -rf` inside a run directory even if the parse slips.
+  local d
+  while IFS= read -r d; do
+    case "$d" in "$PLUGIN_DIR"/test_logs/*run_*) CREATED_LOG_DIRS+=("$d") ;; esac
+  done <<< "$dirs"
+}
+
+# ── A17. --help prints the whole header block, including --parallel ───────────
+# Two checks under one id. A17a is the flag's documentation; A17b is what goes
+# red when usage() reads to a hardcoded line number, because every option added
+# below the range's end pushes one line off the tail of --help. A17a alone could
+# not catch it: the --parallel row sits in the Behaviour block near the top of
+# the header and survives a stale range.
+help_out="$("$UMBRELLA" --help 2>&1)"
+case "$help_out" in
+  *--parallel*) ok "A17a --help lists --parallel" ;;
+  *) bad "A17a --help lists --parallel" ;;
+esac
+case "$help_out" in
+  *"--fail-fast --verbose"*) ok "A17b --help prints through the last header line" ;;
+  *) bad "A17b --help prints through the last header line" ;;
+esac
+
+# ── A18. the flag reaches the integration runner ──────────────────────────────
+# Behavioural end to end: the only thing asserted about the forwarding is a file
+# that exists solely because the integration runner's parallel dispatch created
+# it. Asserting on the umbrella's source text would be vacuous.
+run_umbrella --parallel
+check "A18a the umbrella accepts and forwards --parallel" 0 "$UMBRELLA_RC"
+if grep -q 'Unknown option' "$OUT"; then
+  bad "A18b --parallel is a known option"
+else ok "A18b --parallel is a known option"; fi
+if [ -n "$INTEGRATION_LOG_DIR" ] \
+   && [ -f "$INTEGRATION_LOG_DIR/android_summary.log" ]; then
+  ok "A18c the integration runner ran its parallel dispatch"
+else
+  bad "A18c the integration runner ran its parallel dispatch"
+fi
+# The same run covers warn_if_both_virtual's early return: AND1/IOS1 are passed
+# explicitly, so no scan runs, neither id is virtual, and no warning may appear.
+if grep -q 'both targets are virtual' "$OUT"; then
+  bad "A18d two named non-virtual ids print no topology warning"
+else ok "A18d two named non-virtual ids print no topology warning"; fi
+
+# ── A19. the topology warning fires when both targets are virtual ─────────────
+# This one cannot use run_runner: that helper always passes both device ids, so
+# NEEDS_SCAN stays false, ALL_DEVICES_STRIPPED stays empty, and the (simulator)
+# grep arm has nothing to read. Omitting --ios-device runs the scan against the
+# stub `flutter devices` fixture, which carries one (emulator) row and one
+# (simulator) row. No exit-code check: the assertion is about the warning, and
+# the stubbed legs' status belongs to A1.
+: > "$STUB_LOG"
+( cd "$PLUGIN_DIR" && PATH="$WORK/bin:$PATH" "$TARGET" --parallel \
+    --android-device emulator-5554 ) > "$OUT" 2>&1
+WARN_LOG_DIR=$(sed 's/\x1b\[[0-9;]*[mK]//g' "$OUT" \
+  | sed -n 's|^Logs: *\(/.*[^/]\)/*$|\1|p' | sed -n 1p)
+case "$WARN_LOG_DIR" in
+  "$PLUGIN_DIR"/test_logs/run_*) CREATED_LOG_DIRS+=("$WARN_LOG_DIR") ;;
+esac
+grep -q 'both targets are virtual' "$OUT" \
+  && ok "A19 the topology warning fires on emulator + simulator" \
+  || bad "A19 the topology warning fires on emulator + simulator"
+
 if [ "$failures" -ne 0 ]; then
   echo "$failures test(s) failed"
   exit 1
