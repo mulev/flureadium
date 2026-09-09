@@ -123,6 +123,7 @@ done
 
 # ── Log directory ─────────────────────────────────────────────────────────────
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RUN_START=$(date +%s)
 LOG_DIR="$LOG_BASE/run_$TIMESTAMP"
 mkdir -p "$LOG_DIR"
 SUMMARY_LOG="$LOG_DIR/summary.log"
@@ -157,6 +158,19 @@ trap 'exit 2' INT TERM
 # ── Logging helpers ───────────────────────────────────────────────────────────
 log() {
   echo -e "$1" | tee -a "$SUMMARY_LOG"
+}
+
+# Formats a whole-second count as "Xm Ys" (or "Ys" under a minute).
+# Copied from run_all_tests.sh rather than shared: sibling runners are read one
+# at a time, and sharding a runner into sourced fragments buys a smaller number
+# and a worse script.
+fmt_dur() {
+  local s=$1
+  if [ "$s" -ge 60 ]; then
+    echo "$((s / 60))m $((s % 60))s"
+  else
+    echo "${s}s"
+  fi
 }
 
 # True only when a human can answer a prompt. `/dev/tty` exists and is
@@ -563,58 +577,56 @@ report_skip() {
   OVERALL_EXIT=1
 }
 
-# ── Android ───────────────────────────────────────────────────────────────────
-log "${CYAN}── Android ──────────────────────────────────────────────────────────${NC}"
-if [ "$SKIP_ANDROID" = false ]; then
-  # A dead resolver on the device fails every network-tagged test in a way that
-  # looks like a code defect. Refuse to start rather than produce that red.
-  # Checked first: it is the cheapest fatal prerequisite, so nothing is
-  # installed and no logcat capture is running when it trips.
-  #
-  # It fails the leg, not the process. Aborting here would drop the iOS and Web
-  # legs and the summary along with it, which is the coverage-deleting move this
-  # whole check exists to argue against — and it would report a broken resolver
-  # by printing nothing about the two suites that never ran.
-  if ! ensure_android_dns "$ANDROID_DEVICE"; then
-    SKIP_ANDROID=true
-    ANDROID_SKIP_REASON="$ANDROID_DEVICE failed the name-resolution pre-flight"
-    ANDROID_SKIP_FIX="Give the AVD its own resolver (see the DNS block above), then re-run — or pass --skip-android to run without it."
-  fi
-fi
-
-if [ "$SKIP_ANDROID" = false ]; then
+# Runs the Android integration suite on one device. $1 = device id.
+#
+# Returns 1 if the suite failed, 0 otherwise. It RETURNS its status rather than
+# assigning OVERALL_EXIT because the parallel dispatch runs this function inside
+# an `&` subshell, where a variable assignment dies with the subshell and the
+# parent would read the old value — a failing leg reporting green.
+#
+# It also stamps its own duration: the parallel path forks this function
+# directly and never executes the sequential call site, so a stamp at the call
+# site would drop the measurement from exactly the runs it exists to measure.
+# `started` is local, so two concurrent legs cannot read each other's stamp.
+run_android_leg() {
+  local device_id="$1"
+  local rc=0
+  local started=$(date +%s)
 
   # Pin the default TTS engine so the EPUB TTS tests have a configured
   # synthesizer (a cold/wiped emulator leaves it unset → empty voice list).
-  ensure_android_tts "$ANDROID_DEVICE"
+  ensure_android_tts "$device_id"
 
   # Capture native logcat alongside flutter output so we can diagnose hangs.
   # Clear the buffer first so only this run's output is captured.
-  "$ADB" -s "$ANDROID_DEVICE" logcat -c 2>/dev/null || true
-  "$ADB" -s "$ANDROID_DEVICE" logcat -v threadtime \
+  "$ADB" -s "$device_id" logcat -c 2>/dev/null || true
+  "$ADB" -s "$device_id" logcat -v threadtime \
     > "$LOG_DIR/android_native.log" 2>&1 &
   LOGCAT_PID=$!
 
-  if ! run_test \
+  run_test \
       "Android — flutter test integration_test/all_tests.dart" \
       "$LOG_DIR/android.log" \
       flutter test --no-pub integration_test/all_tests.dart \
-        -d "$ANDROID_DEVICE" "${FLUTTER_VERBOSE[@]}" "${FLUTTER_REPORTER[@]}"; then
-    OVERALL_EXIT=1
-  fi
+        -d "$device_id" "${FLUTTER_VERBOSE[@]}" "${FLUTTER_REPORTER[@]}" || rc=1
 
   stop_process "$LOGCAT_PID"
   LOGCAT_PID=""
   log "  Native logs: $LOG_DIR/android_native.log"
-else
-  report_skip "Android" "$ANDROID_SKIP_REASON" \
-    "${ANDROID_SKIP_FIX:-Start an emulator or attach a device, then re-run — or pass --skip-android to run without it.}"
-fi
+  # Safe before the return: rc is an explicit variable, not $?.
+  log "  Android leg: $(fmt_dur $(( $(date +%s) - started )))"
+  return $rc
+}
 
-# ── iOS ───────────────────────────────────────────────────────────────────────
-log ""
-log "${CYAN}── iOS ──────────────────────────────────────────────────────────────${NC}"
-if [ "$SKIP_IOS" = false ]; then
+# Runs the iOS integration suite on one device. $1 = device id.
+#
+# Returns 1 if the suite failed, 0 otherwise, and stamps its own duration —
+# same subshell-survival reasons as run_android_leg.
+run_ios_leg() {
+  local device_id="$1"
+  local rc=0
+  local started=$(date +%s)
+
   # Capture the reader's own diagnostics alongside flutter's stdout, the way the
   # Android leg captures logcat. Swift print() reaches neither flutter's stream
   # nor the unified log, which is why ios.log has never carried a native line.
@@ -628,19 +640,60 @@ if [ "$SKIP_IOS" = false ]; then
     log "  ${YELLOW}No simulator to stream native logs from — ios_native.log will not be written.${NC}"
   fi
 
-  if ! run_test \
+  run_test \
       "iOS — flutter test integration_test/all_tests.dart (includes @native audiobook)" \
       "$LOG_DIR/ios.log" \
       flutter test --no-pub integration_test/all_tests.dart \
-        -d "$IOS_DEVICE" "${FLUTTER_VERBOSE[@]}" "${FLUTTER_REPORTER[@]}"; then
-    OVERALL_EXIT=1
-  fi
+        -d "$device_id" "${FLUTTER_VERBOSE[@]}" "${FLUTTER_REPORTER[@]}" || rc=1
 
   if [ -n "$IOS_LOG_PID" ]; then
     stop_process "$IOS_LOG_PID"
     IOS_LOG_PID=""
     log "  Native logs: $LOG_DIR/ios_native.log"
   fi
+  # Outside the guard: the leg has a duration whether or not a native stream
+  # was captured.
+  log "  iOS leg: $(fmt_dur $(( $(date +%s) - started )))"
+  return $rc
+}
+
+# ── Pre-flight ────────────────────────────────────────────────────────────────
+# A dead resolver on the device fails every network-tagged test in a way that
+# looks like a code defect. Refuse to start rather than produce that red.
+#
+# Decided here, ahead of the leg dispatch, rather than inside the Android leg.
+# Once the legs fork, a SKIP_ANDROID or OVERALL_EXIT written inside a subshell
+# is lost, so a dead resolver would report green. Deciding the skip on the
+# parent keeps the failure attributable in both modes.
+#
+# It is also still the cheapest fatal prerequisite, so keep it ahead of
+# everything expensive: nothing is installed and no logcat capture is running
+# when it trips.
+#
+# It fails the leg, not the process. Aborting here would drop the iOS and Web
+# legs and the summary along with it, which is the coverage-deleting move this
+# whole check exists to argue against — and it would report a broken resolver
+# by printing nothing about the two suites that never ran.
+if [ "$SKIP_ANDROID" = false ] && ! ensure_android_dns "$ANDROID_DEVICE"; then
+  SKIP_ANDROID=true
+  ANDROID_SKIP_REASON="$ANDROID_DEVICE failed the name-resolution pre-flight"
+  ANDROID_SKIP_FIX="Give the AVD its own resolver (see the DNS block above), then re-run — or pass --skip-android to run without it."
+fi
+
+# ── Android ───────────────────────────────────────────────────────────────────
+log "${CYAN}── Android ──────────────────────────────────────────────────────────${NC}"
+if [ "$SKIP_ANDROID" = false ]; then
+  run_android_leg "$ANDROID_DEVICE" || OVERALL_EXIT=1
+else
+  report_skip "Android" "$ANDROID_SKIP_REASON" \
+    "${ANDROID_SKIP_FIX:-Start an emulator or attach a device, then re-run — or pass --skip-android to run without it.}"
+fi
+
+# ── iOS ───────────────────────────────────────────────────────────────────────
+log ""
+log "${CYAN}── iOS ──────────────────────────────────────────────────────────────${NC}"
+if [ "$SKIP_IOS" = false ]; then
+  run_ios_leg "$IOS_DEVICE" || OVERALL_EXIT=1
 else
   report_skip "iOS" "$IOS_SKIP_REASON" \
     "Boot a simulator (open -a Simulator) or attach a device, then re-run — or pass --skip-ios to run without it."
@@ -678,6 +731,7 @@ else
     log "Re-run with --verbose to see full flutter output inline."
   fi
 fi
+log "  Total: $(fmt_dur $(( $(date +%s) - RUN_START )))"
 log "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
 
 exit $OVERALL_EXIT

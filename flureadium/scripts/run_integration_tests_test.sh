@@ -223,6 +223,18 @@ else
   bad "the legs are not reported in Android → iOS → Web order"
 fi
 
+# ── A7. Each device leg reports its own duration ──────────────────────────────
+# Measured from the runner's own output rather than inferred from log mtimes,
+# so the parallel saving Phase 4 measures is readable from an archived run.
+# Read from the terminal stream, which is what a developer watches during a run,
+# and from A5's clean run — the same $OUT A6 reads, so no extra run is needed.
+grep -Eq 'Android leg: ([0-9]+m )?[0-9]+s$' "$OUT" \
+  && ok "A7 the Android leg logs its own duration" \
+  || bad "A7 the Android leg logs no duration"
+grep -Eq 'iOS leg: ([0-9]+m )?[0-9]+s$' "$OUT" \
+  && ok "A7 the iOS leg logs its own duration" \
+  || bad "A7 the iOS leg logs no duration"
+
 if [ "$failures" -ne 0 ]; then
   echo "$failures test(s) failed"
   exit 1
