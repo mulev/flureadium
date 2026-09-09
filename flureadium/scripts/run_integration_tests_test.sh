@@ -120,12 +120,15 @@ case "$*" in
     exit 0
     ;;
   *"log stream"*)
-    # The real stream runs until killed, so sleep: that leaves a live
-    # grandchild for stop_process to actually stop, while staying short enough
-    # that a missed teardown cannot outlast the suite.
+    # The real stream runs until killed. `exec` so the sleep *becomes* this
+    # stub's pid: the runner records that pid in IOS_LOG_PID and stop_process
+    # kills exactly it, so the teardown is genuinely exercised. Without exec
+    # the sleep is a child of this shell, survives the kill as an orphan, and
+    # the teardown this fixture exists to cover never actually reaps anything.
+    # Five seconds is short enough that even a missed kill cannot outlast the
+    # suite.
     echo "stub xcrun: log stream attached"
-    sleep 5
-    exit 0
+    exec sleep 5
     ;;
 esac
 exit 0
@@ -375,18 +378,22 @@ grep -q 'passed' "$LAST_LOG_DIR/ios_summary.log" \
 # parallel legs would otherwise interleave thousands of untagged lines with
 # nothing to attribute them to.
 #
-# Anchored on Android's own stub lines rather than on whatever follows the
-# "Output (…):" header: the legs interleave by design, so the line after that
-# header is routinely the other leg's, and an adjacency check reports a tagging
-# defect that is not there. Android's invocation is echoed twice in a failing
-# run, once by the stream and once by the dump, and both must carry the tag —
-# so an untagged copy of it anywhere in the terminal output is the dump.
-# (Web's lines are legitimately untagged: it runs on the parent, outside the
-# fork, with LOG_TAG empty. Hence the `-d AND1` anchor rather than a bare one.)
-if grep -q '^stub flutter: .*-d AND1' "$OUT"; then
-  bad "A12c the failure dump is untagged"
-else
+# Counted, and anchored on Android's own stub line. Two shapes were rejected:
+#   * the line after the "Output (…):" header — the legs interleave by design,
+#     so that line is routinely the other leg's, and the check reports a
+#     tagging defect that is not there;
+#   * "no untagged copy exists" — that also passes when the dump is deleted
+#     outright, since the untagged copy goes with the tagged one, and nothing
+#     else in this file greps the header.
+# Android's log holds exactly one stub line, so a failing run must echo it
+# twice: once by the stream pipeline, once by the dump's tee, both tagged. An
+# untagged dump, an untagged stream, and a deleted dump each drop the count.
+# Web's lines are legitimately untagged (it runs on the parent, outside the
+# fork, with LOG_TAG empty), which is why the anchor names `-d AND1`.
+if [ "$(grep -c '^\[android\] stub flutter: .*-d AND1' "$OUT")" -eq 2 ]; then
   ok "A12c the failure dump is tagged"
+else
+  bad "A12c the failure dump is missing or untagged"
 fi
 unset STUB_FAIL_DEVICE
 
