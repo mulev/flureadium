@@ -235,6 +235,167 @@ grep -Eq 'iOS leg: ([0-9]+m )?[0-9]+s$' "$OUT" \
   && ok "A7 the iOS leg logs its own duration" \
   || bad "A7 the iOS leg logs no duration"
 
+# ── A9. --parallel happy path ─────────────────────────────────────────────────
+# Red before step 3.4: --parallel does not parse yet, so the runner exits 1 with
+# "Unknown option".
+run_runner --parallel
+check "--parallel with passing stubs exits 0" 0 "$RUNNER_RC"
+PAR_DIR="$LAST_LOG_DIR"
+
+# ── A10. exactly one dependency resolution under --parallel ───────────────────
+# It cannot double today, because the resolution sits ahead of the dispatch
+# branch. It is asserted because moving the call inside the branch is a
+# plausible refactor the sequential count would not catch — and that would
+# reintroduce the concurrent .dart_tool write the hoist exists to prevent.
+check "--parallel resolves dependencies exactly once" 1 "$(pub_get_count)"
+
+# ── A11. each leg's summary holds only its own lines ──────────────────────────
+# This is what proves the LOG_TARGET redirection held under concurrency rather
+# than both branches falling back to the shared summary.log.
+[ -f "$PAR_DIR/android_summary.log" ] \
+  && ok "android_summary.log exists" || bad "android_summary.log exists"
+[ -f "$PAR_DIR/ios_summary.log" ] \
+  && ok "ios_summary.log exists" || bad "ios_summary.log exists"
+grep -q 'Android — flutter test' "$PAR_DIR/android_summary.log" \
+  && ok "android_summary.log holds Android's own label" \
+  || bad "android_summary.log holds Android's own label"
+grep -q 'iOS — flutter test' "$PAR_DIR/ios_summary.log" \
+  && ok "ios_summary.log holds iOS's own label" \
+  || bad "ios_summary.log holds iOS's own label"
+if grep -q 'iOS — flutter test' "$PAR_DIR/android_summary.log"; then
+  bad "android_summary.log holds iOS label lines"
+else ok "android_summary.log holds no iOS label lines"; fi
+if grep -q 'Android — flutter test' "$PAR_DIR/ios_summary.log"; then
+  bad "ios_summary.log holds Android label lines"
+else ok "ios_summary.log holds no Android label lines"; fi
+if grep -q '\[ios\]' "$PAR_DIR/android_summary.log"; then
+  bad "android_summary.log carries the iOS tag"
+else ok "android_summary.log carries no iOS tag"; fi
+if grep -q '\[android\]' "$PAR_DIR/ios_summary.log"; then
+  bad "ios_summary.log carries the Android tag"
+else ok "ios_summary.log carries no Android tag"; fi
+# The raw per-suite log must stay unfiltered and untagged: it is the file a
+# developer greps for a stack trace, and the tag is added after `tee`.
+if grep -q '^\[android\]' "$PAR_DIR/android.log"; then
+  bad "android.log was tagged"
+else ok "android.log is untagged"; fi
+if grep -q '^\[ios\]' "$PAR_DIR/ios.log"; then
+  bad "ios.log was tagged"
+else ok "ios.log is untagged"; fi
+
+# ── A12a. the streamed terminal output is tagged in default mode ──────────────
+# Anchored to the stub's own streamed line, never to log() output: the verdict
+# lines carry LOG_TAG too, so a bare '^\[android\] ' matches them and passes
+# even with a tagging stage removed. That exact false pass is what fablum's
+# adc46388 had to fix.
+grep -q '^\[android\] stub flutter:' "$OUT" \
+  && ok "--parallel tags streamed Android output" \
+  || bad "--parallel tags streamed Android output"
+grep -q '^\[ios\] stub flutter:' "$OUT" \
+  && ok "--parallel tags streamed iOS output" \
+  || bad "--parallel tags streamed iOS output"
+
+# ── A13. the merge assembles summary.log in Android → iOS → Web order ─────────
+# A11 reads the per-leg files; this reads the merge they feed. Swapping the
+# concatenation's operands, deleting it, or moving it ahead of the waits all
+# leave A11 green while the run's summary loses or reorders a leg.
+PAR_AND=$(grep -n 'Android — flutter test' "$PAR_DIR/summary.log" | sed -n 1p | cut -d: -f1)
+PAR_IOS=$(grep -n 'iOS — flutter test'     "$PAR_DIR/summary.log" | sed -n 1p | cut -d: -f1)
+PAR_WEB=$(grep -n 'Web — flutter drive'    "$PAR_DIR/summary.log" | sed -n 1p | cut -d: -f1)
+[ -n "$PAR_AND" ] && ok "summary.log holds the Android body" \
+  || bad "summary.log holds no Android body after the merge"
+[ -n "$PAR_IOS" ] && ok "summary.log holds the iOS body" \
+  || bad "summary.log holds no iOS body after the merge"
+[ -n "$PAR_WEB" ] && ok "summary.log holds the Web body" \
+  || bad "summary.log holds no Web body"
+if [ -n "$PAR_AND" ] && [ -n "$PAR_IOS" ] && [ -n "$PAR_WEB" ] \
+   && [ "$PAR_AND" -lt "$PAR_IOS" ] && [ "$PAR_IOS" -lt "$PAR_WEB" ]; then
+  ok "summary.log is assembled in Android → iOS → Web order"
+else
+  bad "summary.log order is wrong: android=$PAR_AND ios=$PAR_IOS web=$PAR_WEB"
+fi
+
+# ── A12b. --verbose keeps the tag ─────────────────────────────────────────────
+# The mode where tagging matters most: --verbose streams both legs' full output,
+# and it takes a different branch of run_test. fablum shipped it untagged.
+run_runner --parallel --verbose
+check "--parallel --verbose exits 0" 0 "$RUNNER_RC"
+grep -q '^\[android\] stub flutter:' "$OUT" \
+  && ok "--parallel --verbose tags streamed Android output" \
+  || bad "--parallel --verbose tags streamed Android output"
+grep -q '^\[ios\] stub flutter:' "$OUT" \
+  && ok "--parallel --verbose tags streamed iOS output" \
+  || bad "--parallel --verbose tags streamed iOS output"
+
+# ── A14. exit-code attribution survives concurrency ───────────────────────────
+export STUB_FAIL_DEVICE=AND1
+run_runner --parallel
+check "--parallel exits 1 when Android fails" 1 "$RUNNER_RC"
+grep -q 'Android suite failed' "$OUT" \
+  && ok "the summary names Android as the failure" \
+  || bad "the summary does not name Android as the failure"
+# run_test logs "passed" only after the command exited 0, so this is completion,
+# not merely invocation.
+grep -q 'passed' "$LAST_LOG_DIR/ios_summary.log" \
+  && ok "iOS ran to completion after the Android failure" \
+  || bad "iOS did not run to completion after the Android failure"
+unset STUB_FAIL_DEVICE
+
+# ── A15. the two suites genuinely overlap in time ─────────────────────────────
+# THE ONLY assertion that distinguishes real concurrency from an accidentally
+# serialized implementation. Every other assertion here passes on a runner that
+# calls the two legs one after the other. Each stub invocation sleeps 1s, so its
+# interval is at least [ts, ts+1000). If iOS starts less than 1000 ms after
+# Android does, Android was still running — the intervals overlap. A serialized
+# dispatch cannot produce a gap below 1000 ms, because iOS only starts once
+# Android has returned.
+run_runner --parallel
+check "--parallel overlap run exits 0" 0 "$RUNNER_RC"
+stub_start() { awk -v pat="$1" '$0 ~ pat {print $1; exit}' "$STUB_LOG"; }
+AND_TS=$(stub_start 'test .*-d AND1')
+IOS_TS=$(stub_start 'test .*-d IOS1')
+[ -n "$AND_TS" ] && ok "an Android 'flutter test' invocation was recorded" \
+  || bad "no Android 'flutter test' invocation recorded"
+[ -n "$IOS_TS" ] && ok "an iOS 'flutter test' invocation was recorded" \
+  || bad "no iOS 'flutter test' invocation recorded"
+if [ -n "$AND_TS" ] && [ -n "$IOS_TS" ]; then
+  GAP=$(( AND_TS > IOS_TS ? AND_TS - IOS_TS : IOS_TS - AND_TS ))
+  if [ "$GAP" -lt 1000 ]; then
+    ok "the two 'flutter test' calls overlap (${GAP}ms apart)"
+  else
+    bad "suites did not overlap: the two 'flutter test' calls started ${GAP}ms apart, and each runs for at least 1000ms — this is sequential execution"
+  fi
+fi
+
+# ── A16. the Web leg still runs, after the fork ───────────────────────────────
+WEB_TS=$(stub_start 'drive .*-d web-server')
+[ -n "$WEB_TS" ] && ok "the Web leg ran under --parallel" \
+  || bad "the Web leg did not run under --parallel"
+if [ -n "$WEB_TS" ] && [ -n "$IOS_TS" ] && [ "$WEB_TS" -ge "$IOS_TS" ]; then
+  ok "the Web leg started after the device legs"
+else
+  bad "the Web leg did not start after the device legs: web=$WEB_TS ios=$IOS_TS"
+fi
+
+# ── Regression. sequential stays the default and is unchanged ─────────────────
+# The sequential path must keep using summary.log alone: no per-leg files, no
+# tags in the stream.
+run_runner
+check "a no-flag run still exits 0" 0 "$RUNNER_RC"
+if [ -f "$LAST_LOG_DIR/android_summary.log" ]; then
+  bad "a no-flag run wrote android_summary.log"
+else ok "a no-flag run writes no per-leg summary file"; fi
+if grep -q '^\[android\]' "$OUT"; then
+  bad "a no-flag run tagged its stream"
+else ok "a no-flag run leaves its stream untagged"; fi
+
+# --parallel needs both legs, so a skipped leg falls back to the sequential path.
+run_runner --parallel --skip-ios
+check "--parallel --skip-ios exits 0 (a requested skip is a choice)" 0 "$RUNNER_RC"
+if [ -f "$LAST_LOG_DIR/android_summary.log" ]; then
+  bad "--parallel --skip-ios took the parallel path"
+else ok "--parallel --skip-ios falls back to the sequential path"; fi
+
 if [ "$failures" -ne 0 ]; then
   echo "$failures test(s) failed"
   exit 1

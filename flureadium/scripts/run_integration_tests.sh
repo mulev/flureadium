@@ -2,7 +2,8 @@
 
 # Integration Test Runner for Flureadium
 #
-# Runs integration tests for Android, iOS, and Web sequentially.
+# Runs integration tests for Android, iOS, and Web one after the other, or with
+# the two device legs at the same time under --parallel.
 # Continues on test failure — reports a summary at the end.
 #
 # Usage:
@@ -14,6 +15,8 @@
 #   --skip-android          Skip Android tests
 #   --skip-ios              Skip iOS tests
 #   --skip-web              Skip Web tests
+#   --parallel              Run the Android and iOS legs at the same time
+#                           (needs both; falls back to sequential otherwise)
 #   --verbose               Show full flutter output (printed after each test)
 #   --help                  Show this help and exit
 #
@@ -84,6 +87,7 @@ VERBOSE=false
 SKIP_ANDROID=false
 SKIP_IOS=false
 SKIP_WEB=false
+PARALLEL=false
 ANDROID_DEVICE=""
 IOS_DEVICE=""
 SELECTED_DEVICE=""      # written by select_device()
@@ -92,6 +96,15 @@ LOGCAT_PID=""          # set when capturing Android native logs
 IOS_LOG_PID=""          # set when capturing iOS native logs
 IOS_SIM_UDID=""         # simulator the iOS native log stream attaches to
 ALL_DEVICES_STRIPPED="" # set once by the device scan; reused by both select_device calls
+
+# Terminal noise the default (non-verbose) stream drops. One constant, because
+# the streaming filter and the failure dump have to stay in step: they were two
+# inline copies of the same regex, which is how a pattern gets fixed in one
+# place only.
+NOISE_RE='^\[\[|^ReaderStatus:|^onPageChanged:|^creationParams='
+
+# Prefix a concurrent leg stamps on its streamed lines; see tag_stream().
+LOG_TAG=""
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 # Prints the header comment block above: everything from line 3 down to the
@@ -112,6 +125,7 @@ while [[ $# -gt 0 ]]; do
     --skip-ios)       SKIP_IOS=true;       shift ;;
     --skip-web)       SKIP_WEB=true;       shift ;;
     --verbose)        VERBOSE=true;        shift ;;
+    --parallel)       PARALLEL=true;       shift ;;
     --help|-h)        usage ;;
     *)
       printf "${RED}Unknown option: %s${NC}\n" "$1" >&2
@@ -127,6 +141,10 @@ RUN_START=$(date +%s)
 LOG_DIR="$LOG_BASE/run_$TIMESTAMP"
 mkdir -p "$LOG_DIR"
 SUMMARY_LOG="$LOG_DIR/summary.log"
+# Every log() write goes here. Indirection rather than a second variable to keep
+# in sync: a concurrent branch points this at its own file and log() needs no
+# knowledge of branches at all.
+LOG_TARGET="$SUMMARY_LOG"
 
 # ── Process cleanup ───────────────────────────────────────────────────────────
 # Kill stale chromedriver/Chrome from previous interrupted runs.
@@ -142,6 +160,42 @@ stop_process() {
   wait "$pid" 2>/dev/null || true
 }
 
+# Pids of the branch subshells this runner forked. A space-packed string, not an
+# array: bash 3.2 is the floor here, and an empty array expansion trips over
+# older `set -u` semantics for no gain over a plain word split.
+CHILD_PIDS=""
+
+# Signals a process and everything below it, deepest first. Killing only the
+# branch subshell is not enough: bash defers a SIGTERM until its foreground
+# command returns, and that command is the `flutter` run that never got the
+# signal. Reaping the leaves first lets the subshell's own deferred termination
+# fire.
+kill_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do
+    kill_tree "$child"
+  done
+  kill -TERM "$pid" 2>/dev/null || true
+}
+
+# Terminates the branch trees this runner forked, then reaps them. `kill -- -$$`
+# is wrong here: invoked from run_all_tests.sh this script is not the
+# process-group leader, so a process-group kill signals the caller's group.
+# The parent's own cleanup() cannot reach a branch's captures either — a
+# branch's `adb logcat` and `simctl log stream` pids live in the subshell's copy
+# of LOGCAT_PID / IOS_LOG_PID, which the parent never sees. They are children of
+# the subshell, so kill_tree reaps them.
+kill_children() {
+  local pid
+  for pid in $CHILD_PIDS; do
+    kill_tree "$pid"
+  done
+  for pid in $CHILD_PIDS; do
+    wait "$pid" 2>/dev/null || true
+  done
+  CHILD_PIDS=""
+}
+
 cleanup() {
   stop_process "$LOGCAT_PID"
   stop_process "$IOS_LOG_PID"
@@ -153,11 +207,11 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
-trap 'exit 2' INT TERM
+trap 'kill_children; exit 2' INT TERM
 
 # ── Logging helpers ───────────────────────────────────────────────────────────
 log() {
-  echo -e "$1" | tee -a "$SUMMARY_LOG"
+  echo -e "$1" | tee -a "$LOG_TARGET"
 }
 
 # Formats a whole-second count as "Xm Ys" (or "Ys" under a minute).
@@ -260,6 +314,20 @@ resolve_ios_sim_udid() {
   return 1
 }
 
+# Stamps LOG_TAG onto every streamed line. A plain passthrough when LOG_TAG is
+# empty, so a sequential run's stream stays byte-for-byte what it always was.
+# One stage for both output modes: the alternative is a tagged and an untagged
+# copy of each pipeline below, and four pipelines is how one of them ends up
+# tagged and the others not. fflush() is load-bearing — without it a leg's
+# lines sit in awk's block buffer until the suite ends.
+tag_stream() {
+  if [ -z "$LOG_TAG" ]; then
+    cat
+  else
+    awk -v t="$LOG_TAG" '{print t $0; fflush()}'
+  fi
+}
+
 # ── Test runner ───────────────────────────────────────────────────────────────
 # --verbose: streams all output live to the terminal via tee.
 # default:   uses --reporter expanded for clean per-test output; native logs
@@ -274,23 +342,27 @@ run_test() {
 
   local exit_code=0
   if [ "$VERBOSE" = true ]; then
-    "$@" 2>&1 | tee "$logfile"
+    # Tagged after `tee`, so the per-suite log file stays raw.
+    "$@" 2>&1 | tee "$logfile" | tag_stream
     exit_code=${PIPESTATUS[0]}
-    cat "$logfile" >> "$SUMMARY_LOG"
+    # LOG_TARGET, not SUMMARY_LOG: a parallel --verbose run would otherwise have
+    # both legs appending their full output to the shared summary and tearing it.
+    cat "$logfile" >> "$LOG_TARGET"
   else
-    "$@" 2>&1 | tee "$logfile" | grep --line-buffered -v -E \
-      '^\[\[|^ReaderStatus:|^onPageChanged:|^creationParams='
+    "$@" 2>&1 | tee "$logfile" | grep --line-buffered -v -E "$NOISE_RE" | tag_stream
     exit_code=${PIPESTATUS[0]}
   fi
 
   if [ $exit_code -eq 0 ]; then
-    log "${GREEN}   passed${NC}"
+    # The verdict lines name no platform of their own, unlike the leg labels
+    # above, and they are what a human scans for during a nine-minute run.
+    log "${LOG_TAG}${GREEN}   passed${NC}"
     return 0
   else
-    log "${RED}   FAILED${NC}"
+    log "${LOG_TAG}${RED}   FAILED${NC}"
     if [ "$VERBOSE" = false ]; then
-      log "   Output (${logfile}):"
-      grep -v -E '^\[\[|^ReaderStatus:|^onPageChanged:|^creationParams=' "$logfile" | tee -a "$SUMMARY_LOG"
+      log "${LOG_TAG}   Output (${logfile}):"
+      grep -v -E "$NOISE_RE" "$logfile" | tee -a "$LOG_TARGET"
     fi
     return 1
   fi
@@ -657,6 +729,70 @@ run_ios_leg() {
   return $rc
 }
 
+# Runs the Android and iOS legs concurrently, each writing to its own summary
+# file so neither can tear the other's lines. Returns 1 if either leg failed.
+#
+# `leg & wait $pid` propagates the subshell's exit status, so a failing Android
+# leg neither masks nor short-circuits iOS — no status files, no temp files, no
+# `wait -n` (bash 3.2 does not have it). A `trap ... EXIT` set in this script
+# does not fire inside `&` subshells, so the branches need no teardown of their
+# own; Ctrl-C is covered by kill_children. Do not add `set -e` near this: the
+# `wait ... || ...` arms depend on the script's non-erroring behaviour.
+dispatch_parallel() {
+  local android_log="$LOG_DIR/android_summary.log"
+  local ios_log="$LOG_DIR/ios_summary.log"
+
+  log "${CYAN}── Android + iOS (parallel) ─────────────────────────────────────${NC}"
+  log "Per-leg logs: $android_log, $ios_log"
+
+  # Pre-created so the deterministic merge below has both files even if a branch
+  # dies before it logs anything.
+  : > "$android_log"
+  : > "$ios_log"
+
+  (
+    LOG_TARGET="$android_log"
+    LOG_TAG="[android] "
+    # Last command on purpose: its status is the subshell's exit status, which
+    # is what `wait` below reports. Nothing may be appended after it here.
+    run_android_leg "$ANDROID_DEVICE"
+  ) &
+  local android_pid=$!
+  # Registered here, not after both forks: a signal arriving while the second
+  # subshell is still being forked would otherwise find CHILD_PIDS empty and
+  # orphan this branch, exactly as the plain `trap 'exit 2'` did.
+  CHILD_PIDS="$android_pid"
+
+  (
+    LOG_TARGET="$ios_log"
+    LOG_TAG="[ios] "
+    run_ios_leg "$IOS_DEVICE"
+  ) &
+  local ios_pid=$!
+  CHILD_PIDS="$android_pid $ios_pid"
+
+  local rc=0
+  wait "$android_pid" || { rc=1; log "${RED}Android suite failed.${NC}"; }
+  # Dropped as soon as it is reaped. The two legs differ by roughly a minute on
+  # the measured runs, so this window is long, and signalling a pid the shell no
+  # longer owns hits whatever the host later assigns to it.
+  CHILD_PIDS="$ios_pid"
+  wait "$ios_pid"     || { rc=1; log "${RED}iOS suite failed.${NC}"; }
+  CHILD_PIDS=""
+
+  # Fixed Android→iOS order, so summary.log is byte-deterministic no matter
+  # which leg finished first.
+  cat "$android_log" "$ios_log" >> "$SUMMARY_LOG"
+  return $rc
+}
+
+# True when a parallel dispatch is both asked for and possible. Requiring both
+# legs is what keeps the fallback honest: with one leg skipped there is nothing
+# to overlap, and the sequential path already reports the skip correctly.
+run_in_parallel() {
+  [ "$PARALLEL" = true ] && [ "$SKIP_ANDROID" = false ] && [ "$SKIP_IOS" = false ]
+}
+
 # ── Pre-flight ────────────────────────────────────────────────────────────────
 # A dead resolver on the device fails every network-tagged test in a way that
 # looks like a code defect. Refuse to start rather than produce that red.
@@ -680,26 +816,33 @@ if [ "$SKIP_ANDROID" = false ] && ! ensure_android_dns "$ANDROID_DEVICE"; then
   ANDROID_SKIP_FIX="Give the AVD its own resolver (see the DNS block above), then re-run — or pass --skip-android to run without it."
 fi
 
-# ── Android ───────────────────────────────────────────────────────────────────
-log "${CYAN}── Android ──────────────────────────────────────────────────────────${NC}"
-if [ "$SKIP_ANDROID" = false ]; then
-  run_android_leg "$ANDROID_DEVICE" || OVERALL_EXIT=1
+if run_in_parallel; then
+  dispatch_parallel || OVERALL_EXIT=1
 else
-  report_skip "Android" "$ANDROID_SKIP_REASON" \
-    "${ANDROID_SKIP_FIX:-Start an emulator or attach a device, then re-run — or pass --skip-android to run without it.}"
-fi
+  # ── Android ─────────────────────────────────────────────────────────────────
+  log "${CYAN}── Android ──────────────────────────────────────────────────────────${NC}"
+  if [ "$SKIP_ANDROID" = false ]; then
+    run_android_leg "$ANDROID_DEVICE" || OVERALL_EXIT=1
+  else
+    report_skip "Android" "$ANDROID_SKIP_REASON" \
+      "${ANDROID_SKIP_FIX:-Start an emulator or attach a device, then re-run — or pass --skip-android to run without it.}"
+  fi
 
-# ── iOS ───────────────────────────────────────────────────────────────────────
-log ""
-log "${CYAN}── iOS ──────────────────────────────────────────────────────────────${NC}"
-if [ "$SKIP_IOS" = false ]; then
-  run_ios_leg "$IOS_DEVICE" || OVERALL_EXIT=1
-else
-  report_skip "iOS" "$IOS_SKIP_REASON" \
-    "Boot a simulator (open -a Simulator) or attach a device, then re-run — or pass --skip-ios to run without it."
+  # ── iOS ─────────────────────────────────────────────────────────────────────
+  log ""
+  log "${CYAN}── iOS ──────────────────────────────────────────────────────────────${NC}"
+  if [ "$SKIP_IOS" = false ]; then
+    run_ios_leg "$IOS_DEVICE" || OVERALL_EXIT=1
+  else
+    report_skip "iOS" "$IOS_SKIP_REASON" \
+      "Boot a simulator (open -a Simulator) or attach a device, then re-run — or pass --skip-ios to run without it."
+  fi
 fi
 
 # ── Web ───────────────────────────────────────────────────────────────────────
+# Outside the branch on purpose: it runs either way, it owns the parent's
+# ChromeDriver, and its log() output lands in summary.log after the merged
+# bodies — which is what keeps the Android → iOS → Web order deterministic.
 log ""
 log "${CYAN}── Web ──────────────────────────────────────────────────────────────${NC}"
 if [ "$SKIP_WEB" = false ]; then
