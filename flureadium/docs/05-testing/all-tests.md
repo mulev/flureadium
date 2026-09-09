@@ -19,6 +19,7 @@ cd flureadium/flureadium
 ./scripts/run_all_tests.sh --unit-only     # just the headless Dart suites
 ./scripts/run_all_tests.sh --skip-ios      # drop iOS from native + integration
 ./scripts/run_all_tests.sh --skip-web      # drop the Web integration leg
+./scripts/run_all_tests.sh --parallel      # fork the Android and iOS integration legs
 ./scripts/run_all_tests.sh --fail-fast --verbose
 ```
 
@@ -52,6 +53,7 @@ Behaviour:
 | Option | Effect |
 |--------|--------|
 | `--fail-fast` | Stop after the first failing suite |
+| `--parallel` | Run the Android and iOS integration legs at the same time (integration only; needs both legs) |
 | `--no-rerun` | Reuse the Android Gradle build cache (default: clean rebuild + fresh re-run) |
 | `--verbose` | Stream full tool output for every suite |
 | `--help`, `-h` | Print usage and exit |
@@ -67,6 +69,21 @@ The four Dart unit suites are headless, so `--unit-only` runs with no device. Th
 Drop what you can't run with `--skip-android` / `--skip-ios` / `--skip-web`, or use `--unit-only` for a device-free pass.
 
 By default the Android native tests do a clean rebuild for a guaranteed real result; pass `--no-rerun` to reuse the Gradle build cache and finish faster.
+
+`--parallel` is forwarded to the integration runner and nowhere else: the native runner
+puts Android on the JVM and iOS under `xcodebuild`, so it has no second platform leg to
+fork. It needs both integration device legs, so combining it with `--skip-android` or
+`--skip-ios` falls back to the sequential path. Two virtual targets on one host contend
+for the CPU, and on iOS that contention shows up as a hang rather than a red test — the
+runner warns and continues. See
+[Running Android and iOS at once](integration-tests.md#running-android-and-ios-at-once)
+for the per-branch log files, the stream tags, and what the two legs do and do not share.
+
+Measured on 2026-09-09, same suite and same two devices (a physical Android handset and
+the iPhone 16 Flutter Sim): the integration step went from 16m 30s to 7m 54s, so
+`--parallel` takes 8m 36s off a full run. See
+[What it saves](integration-tests.md#what-it-saves) for the per-leg figures and the caveat
+that goes with them.
 
 ## Intentionally skipped tests
 
