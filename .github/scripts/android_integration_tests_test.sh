@@ -106,6 +106,20 @@ for tag in native network; do
   fi
 done
 
+# 5d. Both CI platforms must exclude the same tags. Android excludes them in
+#     this wrapper, iOS in the workflow's own `flutter test` step, and for a
+#     while only Android did: the network-tagged WebPub case therefore ran on
+#     the macOS runner, where it waits 15s for a readium.org fetch
+#     (webpub_test.dart:61) and failed the iOS job intermittently while Android
+#     skipped it — including on main at 6c422c3. The exclusion belongs to CI
+#     only; local runs deliberately keep the tagged tests and are the sole
+#     place they execute (run_integration_tests.sh:25-30).
+if grep -q -- '--exclude-tags "native || network"' "$WORKFLOW"; then
+  ok "the iOS CI step excludes the same tags as this wrapper"
+else
+  bad "the iOS CI step excludes the same tags as this wrapper"
+fi
+
 # 6. A long-running logcat must not hold the step's stdout open.
 make_sandbox 0 15; run_target pipe
 if [ "$elapsed" -lt 5 ]; then ok "the log capture does not hold stdout"

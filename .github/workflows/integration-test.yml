@@ -184,7 +184,19 @@ jobs:
             # --file-reporter gives a per-test event stream, which is how the
             # retry check below tells a lost VM service URL apart from a real
             # test failure.
+            #
+            # --exclude-tags matches .github/scripts/android_integration_tests.sh
+            # so both CI platforms run the same set. `native` needs real audio
+            # or a TTS engine and `network` needs a route to the public
+            # internet; a hosted runner has neither reliably, and the
+            # network-tagged WebPub case waits only 15s for a readium.org fetch
+            # (webpub_test.dart:61, helpers/expect_eventually.dart:13), so it
+            # failed this job intermittently while Android skipped it. Local
+            # runs deliberately keep the tagged tests and are the only place
+            # they execute - see run_integration_tests.sh:25-30. Treat a green
+            # CI run as silent about them.
             flutter test integration_test/all_tests.dart -d "$IOS_UDID" \
+              --exclude-tags "native || network" \
               --reporter expanded --verbose \
               --file-reporter "json:$events" 2>&1 \
               | tee "$RUNNER_TEMP/diag/flutter-test-$attempt.log"
