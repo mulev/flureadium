@@ -729,6 +729,39 @@ run_ios_leg() {
   return $rc
 }
 
+# Two virtual targets on one host contend for the CPU that both suites' timing
+# assumptions rest on. Warn and continue — the caller asked for parallel, and
+# refusing is not this flag's job.
+#
+# Best-effort by construction: ALL_DEVICES_STRIPPED is only populated when the
+# device scan ran (see NEEDS_SCAN below), so passing both ids explicitly leaves
+# the grep arms nothing to read. The emulator-* id prefix still fires in that
+# case, which covers the common `--android-device emulator-5554` invocation. Do
+# not add a `flutter devices` call to close the gap — it costs seconds on every
+# run to sharpen a warning.
+warn_if_both_virtual() {
+  local android_virtual=false ios_virtual=false
+
+  case "$ANDROID_DEVICE" in emulator-*) android_virtual=true ;; esac
+
+  echo "$ALL_DEVICES_STRIPPED" | grep -F "$ANDROID_DEVICE" | grep -q '(emulator)' \
+    && android_virtual=true
+  echo "$ALL_DEVICES_STRIPPED" | grep -F "$IOS_DEVICE" | grep -q '(simulator)' \
+    && ios_virtual=true
+
+  { [ "$android_virtual" = true ] && [ "$ios_virtual" = true ]; } || return 0
+
+  log "${YELLOW}Warning: both targets are virtual (emulator + simulator).${NC}"
+  log "  docs/05-testing/integration-tests.md, \"When the iOS job stalls before"
+  log "  any test runs\", records that on a simulator flutter_tools learns the"
+  log "  Dart VM service URL one way only: it scrapes a single line out of"
+  log "  'xcrun simctl spawn <udid> log stream'. There is no mDNS fallback and"
+  log "  the wait has no timeout, so a lost or late record leaves the app booted"
+  log "  and idling while the tool waits forever. Host contention makes that"
+  log "  record more likely to slip, so the failure mode here is a hang, not a"
+  log "  red test. Continuing."
+}
+
 # Runs the Android and iOS legs concurrently, each writing to its own summary
 # file so neither can tear the other's lines. Returns 1 if either leg failed.
 #
@@ -742,6 +775,7 @@ dispatch_parallel() {
   local android_log="$LOG_DIR/android_summary.log"
   local ios_log="$LOG_DIR/ios_summary.log"
 
+  warn_if_both_virtual
   log "${CYAN}── Android + iOS (parallel) ─────────────────────────────────────${NC}"
   log "Per-leg logs: $android_log, $ios_log"
 
