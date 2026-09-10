@@ -463,7 +463,7 @@ naming the cause instead of counting widgets. Revert the URL afterwards.
 
 ## Test Runner Script
 
-`scripts/run_integration_tests.sh` runs all three platforms sequentially from a single command. It continues after failures and writes logs to a gitignored `test_logs/` directory.
+`scripts/run_integration_tests.sh` runs all three platforms from a single command — sequentially by default, or with the two device legs at the same time under [`--parallel`](#running-android-and-ios-at-once). It continues after failures and writes logs to a gitignored `test_logs/` directory.
 
 One thing it does not continue past: a device prerequisite it can check up front. If the Android device cannot resolve `readium.org`, the run stops before anything is installed and prints the `-dns-server` fix, rather than spending twenty minutes producing a red suite whose cause is the machine. The check runs only when the Android leg runs. Pass `--skip-android`, or attach no Android device at all, and it never fires. iOS needs no equivalent: the simulator uses the host's networking stack directly instead of a copy of its resolver list.
 
@@ -484,6 +484,9 @@ One thing it does not continue past: a device prerequisite it can check up front
 # Show full flutter output instead of pass/fail summary
 ./scripts/run_integration_tests.sh --verbose
 
+# Run the Android and iOS legs at the same time (both legs required)
+./scripts/run_integration_tests.sh --parallel
+
 # ChromeDriver is managed automatically. The script will try:
 #   1. npx chromedriver@<detected-chrome-major> --port=4444 (version-matched)
 #   2. System chromedriver binary (if on PATH, fallback)
@@ -497,12 +500,14 @@ Logs are written to `test_logs/run_<timestamp>/` (gitignored, pubignored):
 
 | File | Contents |
 |---|---|
-| `summary.log` | Pass/fail lines and failure output for all platforms |
+| `summary.log` | Pass/fail lines and failure output for all platforms, plus a duration line for each device leg (`Android leg:` / `iOS leg:`) and a `Total:` line for the run, so an archived run can be timed afterwards without reading file mtimes |
 | `android.log` | Full flutter output for the Android run (full suite, including `@native`) |
 | `android_native.log` | `adb logcat -v threadtime` for the Android run |
 | `ios.log` | Full flutter output for the iOS run |
 | `ios_native.log` | Unified-log records from the iOS simulator, filtered to `subsystem == "dev.mulev.flureadium"` |
 | `web.log` | Full flutter output for the Web run |
+| `android_summary.log` | Under `--parallel` only: the Android branch's own pass/fail lines, before they are merged into `summary.log` |
+| `ios_summary.log` | Under `--parallel` only: the iOS branch's own pass/fail lines, before they are merged into `summary.log` |
 
 The two native logs are not symmetric. `android_native.log` is the whole logcat buffer, so
 anything the device printed is in it. `ios_native.log` carries only what the plugin emitted
@@ -511,6 +516,130 @@ stream filters on. Swift `print()` is not in it: those lines go to the app proce
 which the unified log never sees and `flutter test` does not forward, so they end up nowhere.
 A run against a physical iOS device produces no `ios_native.log`, since `simctl` streams from
 simulators only. The summary says so rather than leaving an empty file behind.
+
+### Running Android and iOS at once
+
+`--parallel` forks the Android and iOS legs so they run at the same time instead of one
+after the other. It is opt-in: a run without the flag behaves exactly as it always has —
+one `summary.log`, no per-branch files, legs in Android → iOS → Web order.
+
+```bash
+./scripts/run_integration_tests.sh --parallel \
+  --android-device <id> \
+  --ios-device <udid>
+```
+
+The flag needs both device legs in play. With `--skip-android` or `--skip-ios` there is
+nothing to overlap, so the run falls back to the sequential path and says nothing about
+the flag. The same applies when a leg is force-skipped because its device could not be
+resolved.
+
+#### What it saves
+
+Measured on 2026-09-09, two runs of the same suite on the same two devices — a physical
+Android handset (`9b010059305330363400253823beac`, Android 15) and the iPhone 16 Flutter
+Sim (`C6264458-A6C0-4AF5-8AE6-1E9EFF63C986`, iOS 18.3.1). Both runs passed all three
+suites. Every figure is copied from the run's own `summary.log`, not inferred from file
+timestamps.
+
+| | Sequential | `--parallel` |
+|---|---|---|
+| Android leg | 9m 10s | 7m 35s |
+| iOS leg | 6m 53s | 6m 57s |
+| **Total** | **16m 30s** | **7m 54s** |
+| Run directory | `test_logs/run_20260909_184417/` | `test_logs/run_20260909_201652/` |
+
+**8m 36s off a 16m 30s run — 52% faster.** The total lands 19s above the longer of the two
+legs, which is what the design predicts: the legs overlap almost completely, and what is
+left over is the dependency resolution and the Web leg the parent still runs on its own.
+
+Read the per-leg columns as two samples, not as a before-and-after of one leg. The Android
+leg came in 1m 35s under its sequential figure and iOS 4s over, so leg durations vary by
+more between runs than concurrency costs them. The total is the figure worth comparing.
+
+#### What changes while the two legs run
+
+- Each branch writes its own summary file — `android_summary.log` and `ios_summary.log` —
+  so neither can tear the other's lines mid-write.
+- Terminal lines carry a `[android]` or `[ios]` tag, since both legs stream at once and an
+  untagged line tells you nothing about which suite produced it. The raw per-suite logs
+  (`android.log`, `ios.log`) stay untagged and unfiltered: they are what you grep for a
+  stack trace.
+- `summary.log` is assembled after both branches are reaped, in a fixed Android → iOS → Web
+  order. It is byte-identical no matter which leg finished first, so two runs of the same
+  code diff cleanly.
+- Exit codes stay attributed per leg. A failing Android leg neither stops nor masks iOS:
+  iOS runs to completion, the summary names Android, and the run exits non-zero.
+- Ctrl-C terminates both branch trees — the `flutter` processes, the `adb logcat` capture
+  and the `simctl log stream` capture — before the runner exits, rather than leaving
+  orphans holding the devices.
+
+The Web leg stays sequential, outside the fork. It owns the ChromeDriver instance the
+parent starts on port 4444, and a second concurrent user of that singleton is a race for
+no gain: the leg is a launch smoke test, not a suite. In the sequential run above, the Web
+leg, ChromeDriver startup and dependency resolution together accounted for 27s of the
+16m 30s — the residual after both device legs, and not a Web-leg figure on its own.
+
+Dependencies resolve once per run, before either branch starts. Everything else the two
+legs touch is per-platform:
+
+| Resource | Shared? | Detail |
+|---|---|---|
+| Device | No | `-d "$ANDROID_DEVICE"` / `-d "$IOS_DEVICE"`, both resolved before any leg starts |
+| Flutter build dir | No | `.dart_tool/flutter_build/<hash>`, and the hash is keyed on the target platform |
+| Platform build output | No | `build/app` for Android, `build/ios` for iOS |
+| Native log capture | No | `adb -s <id> logcat` writes `android_native.log`; `xcrun simctl spawn <udid> log stream` writes `ios_native.log` |
+| Gradle / CocoaPods state | No | `android/.gradle` against `ios/Pods` |
+| Per-leg log files | No | each is named after its leg prefix |
+| ChromeDriver on port 4444 | No | parent-owned, started before dispatch, used only by the sequential Web leg |
+| `.dart_tool/package_config.json` | Yes | the one genuinely shared mutable file, which is why the resolution is hoisted ahead of the dispatch |
+| `.dart_tool/flutter_build/dart_plugin_registrant.dart` | Yes | regenerated by both legs, but the content is platform-independent and byte-identical, so the outcome is benign. Accepted risk, recorded here so it is not rediscovered as a mystery |
+
+#### When both targets are virtual
+
+An emulator and a simulator on one host compete for the CPU that both suites' timing
+assumptions rest on, so the runner warns before it forks and then continues — you asked
+for parallel, and refusing is not the flag's job.
+
+Take the warning seriously on iOS. The failure mode under contention is not a red test but
+a hang: see [When the iOS job stalls before any test runs](#when-the-ios-job-stalls-before-any-test-runs)
+for the mechanism. A physical Android device plus a simulator, or either leg on real
+hardware, avoids the contention entirely.
+
+The check is best-effort. It reads the device list the runner already scanned, so passing
+both `--android-device` and `--ios-device` explicitly skips the scan and leaves it nothing
+to read — an `emulator-*` id still gives the Android half away. Sharpening it would mean
+an extra `flutter devices` call on every run, which is not worth seconds per run to
+improve a warning.
+
+### Testing the runner itself
+
+`scripts/run_integration_tests_test.sh` is a contract test for the runner, not for the plugin. It drives `run_integration_tests.sh` end to end — argument parsing, device resolution, the ChromeDriver probe, all three legs, the summary — and checks what the runner promises: a clean run exits 0, dependencies resolve exactly once, a failing leg is blamed on the right platform without stopping the others, a skip the environment forced fails the run and says which leg went unrun, the Web leg runs against its own target, the summary is ordered Android → iOS → Web, and each device leg reports its own duration.
+
+It covers `--parallel` on the same terms: the two legs genuinely overlap in time (a start gap under one second, which a serialized dispatch cannot produce), each branch's summary file holds only its own lines, the streamed output is tagged in both default and `--verbose` mode — including the failure dump, the one path that runs only on a red leg — `summary.log` still merges Android → iOS → Web, the Web leg starts only after both device legs have finished, exit attribution survives concurrency, and a run with a skipped leg falls back to the sequential path. It also drives `run_all_tests.sh`, to check that `--parallel` reaches the integration runner, that `--help` prints the whole header block rather than truncating at a stale line number, and that two named non-virtual devices produce no topology warning. The warning's positive case is asserted against the integration runner invoked directly, without `--ios-device`, because the device scan has to run for the topology to be known at all.
+
+Every assertion has been proven able to fail by mutating the code it guards.
+
+```bash
+cd flureadium
+./scripts/run_integration_tests_test.sh
+```
+
+It needs no device, emulator, simulator or network, and takes about fifty seconds. Five stub binaries go on a prepended `PATH`:
+
+| Stub | Stands in for |
+|---|---|
+| `flutter` | `devices`, `pub get`, `test` and `drive` — records every argv with a millisecond stamp so the test can count resolutions and check ordering |
+| `adb` | the TTS-engine query, the `logcat` capture, and the name-resolution pre-flight |
+| `xcrun` | `simctl list devices` and the `simctl spawn … log stream` capture |
+| `curl` | the `http://localhost:4444/status` probe — exiting 0 makes ChromeDriver look live, so the Web leg proceeds and nothing is downloaded from npx |
+| `pkill` | the unconditional `pkill -f chromedriver` near the top of the runner, which would otherwise kill the ChromeDriver session you are using in another terminal |
+
+The last two are the ones worth spelling out. Without the `curl` stub the probe reports ChromeDriver missing and the run goes down the npx path; without the `pkill` stub the runner kills your own ChromeDriver mid-test.
+
+Real `git` stays on `PATH` on purpose. `resolve_deps` asks it whether `pubspec.lock` is tracked, and that question decides whether the run resolves against the lock or refuses to resolve at all — stubbing it away would remove the behaviour under test.
+
+The script is deliberately **not** a `validators.conf` row. It guards the runner rather than the product, so it runs by hand when the runner changes.
 
 ## Running Tests Manually
 

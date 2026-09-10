@@ -41,6 +41,8 @@
 #
 # Behaviour:
 #   --fail-fast             Stop after the first failing suite
+#   --parallel              Run the Android and iOS integration legs at the
+#                           same time (integration only; needs both legs)
 #   --no-rerun              Reuse Android's Gradle build cache for the native
 #                           tests (default: clean rebuild + fresh re-run)
 #   --verbose               Stream full tool output for every suite
@@ -93,10 +95,16 @@ IOS_CLASS=""
 FAIL_FAST=false
 RERUN=true
 VERBOSE=false
+PARALLEL=false
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
+# Prints the header comment block above: everything from line 3 down to the
+# blank line that ends it. Reading to the delimiter rather than to a hard-coded
+# last line matters — the range was '3,54p', and every option added to the
+# header pushed one line off the end of --help. The header's own separators are
+# bare '#' lines, so the first empty line is the real end of the block.
 usage() {
-  sed -n '3,54p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
@@ -119,6 +127,7 @@ while [[ $# -gt 0 ]]; do
     --fail-fast)        FAIL_FAST=true;         shift ;;
     --no-rerun)         RERUN=false;            shift ;;
     --verbose)          VERBOSE=true;           shift ;;
+    --parallel)         PARALLEL=true;          shift ;;
     --help|-h)          usage ;;
     *)
       printf "${RED}Unknown option: %s${NC}\n" "$1" >&2
@@ -288,6 +297,9 @@ if [ "$VERBOSE" = true ]; then
   NATIVE_ARGS+=(--verbose)
   INTEGRATION_ARGS+=(--verbose)
 fi
+# Integration-only, like --skip-web: the native runner has no second platform
+# leg to fork.
+[ "$PARALLEL" = true ] && INTEGRATION_ARGS+=(--parallel)
 
 # ── Header ────────────────────────────────────────────────────────────────────
 log "${YELLOW}══════════════════════════════════════════════════════════════════${NC}"
