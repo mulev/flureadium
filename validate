@@ -6,7 +6,12 @@
 # Usage:
 #   ./validate list   <stage>
 #   ./validate run    <stage>
-#   ./validate verify <stage> <ledger-file>
+#   ./validate verify <stage>
+#
+# `run` writes ./ledger at the repo root: one block, the most recent run of
+# whatever stage, replacing what was there. `verify` reads that file and takes
+# no path — the ledger is the repo's own artifact, committed with the work it
+# proves, and its earlier states are in `git log -p ledger`.
 #
 # Stages (defined by the execute skill):
 #   phase-exit  every phase, run by whoever executed it, before plan update /
@@ -26,40 +31,45 @@
 # the old date-only ledger could not answer:
 #   * was every row of THAT run stamped inside THAT run's window — a row pasted
 #     in from another run falls outside it;
-#   * has the code moved since — a source file dirty and newer than the run
-#     means the ledger is older than what it claims to prove;
+#   * has the code moved since — a source file dirty and newer than the run, or
+#     committed after the commit that recorded the ledger, means the ledger is
+#     older than what it claims to prove;
 #   * did the stage gain rows afterwards — a config fingerprint mismatch makes
 #     those rows DRIFT, not failure, because a phase that adds a row cannot have
 #     run it.
 # There is no "dated today" rule: a stage is re-run because the code moved, never
-# to refresh a stamp. A ledger with no header is LEGACY — verified for content
-# only, since it predates stamping.
+# to refresh a stamp. A ledger is generated and always stamped, so one with no
+# header is wrong rather than old — hand-written, truncated, or a paste of
+# something else — and it fails.
 #
 # Exit codes:
 #   0  every row for the stage passed (or was handed over); `list` on a stage with
 #      no rows also exits 0 — "nothing to hand over" is an answer, not an error.
-#      DRIFT, LEGACY and NOTE lines are reports, not failures.
-#   1  a row failed, or verification found a missing, mis-stamped or stale row.
+#      DRIFT and NOTE lines are reports, not failures.
+#   1  a row failed, verification found a missing, mis-stamped or stale row, or
+#      this repo has no ./ledger for the stage — the stage was never run here.
 #      A failed `run` leaves its captured output in the directory its header's
 #      `log=` names; nothing cleans that up but the machine's own temp reaper.
-#   2  misconfigured: usage error, missing config, or `run`/`verify` on a stage
-#      this repo does not define → do not loop, fix the config
+#   2  misconfigured: usage error, missing config, a file path passed to
+#      `verify`, or `run`/`verify` on a stage this repo does not define → do not
+#      loop, fix the caller or the config
 #
 # Doctrine, config format and per-stack recipes:
 #   /Users/mulev/Documents/projects/skills/_shared/validators.md
 set -u
 
 CONF=${VALIDATORS_CONF:-./validators.conf}
+LEDGER=${VALIDATORS_LEDGER:-./ledger}
 ESC=$(printf '\033')
 
 sub=${1:-}
 stage=${2:-}
-ledger=${3:-}
+extra=${3:-}
 
 case $sub in
 list | run | verify) ;;
 *)
-	echo "usage: validate list|run|verify <stage> [ledger-file]" >&2
+	echo "usage: validate list|run|verify <stage>" >&2
 	exit 2
 	;;
 esac
@@ -67,20 +77,27 @@ esac
 	echo "validate: stage required (phase-exit, finalize, user)" >&2
 	exit 2
 }
-if [ "$sub" = verify ]; then
-	[ -n "$ledger" ] || {
-		echo "validate: verify needs a ledger file" >&2
-		exit 2
-	}
-	[ -f "$ledger" ] || {
-		echo "validate: no such ledger file: $ledger" >&2
-		exit 2
-	}
+# The old third argument is gone, not deprecated: `verify` reads the file the
+# runner wrote, so a caller-supplied path is the one thing it must never accept.
+if [ "$sub" = verify ] && [ -n "$extra" ]; then
+	echo "validate: verify reads $LEDGER — drop the file argument: ./validate verify $stage" >&2
+	exit 2
 fi
 [ -f "$CONF" ] || {
 	echo "validate: no $CONF in $(pwd)" >&2
 	exit 2
 }
+# After the config check, deliberately: a repo with no validators.conf is
+# misconfigured (2) whichever subcommand ran, and that verdict must not be
+# shadowed by the ledger it also lacks. A missing ledger on a configured repo
+# is an unproven gate (1) — the fix is to run the stage, not to edit anything.
+if [ "$sub" = verify ]; then
+	[ -f "$LEDGER" ] || {
+		echo "validate: no $LEDGER in $(pwd) — run './validate run $stage' first" >&2
+		exit 1
+	}
+	ledger=$LEDGER
+fi
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 now_epoch() { date -u +%s; }
@@ -99,9 +116,6 @@ else
 	mtime_of() { stat -c %Y "$1" 2>/dev/null; }
 fi
 
-# ISO-8601 UTC of fixed width compares lexicographically, so no date parsing.
-within() { awk -v s="$1" -v a="$2" -v b="$3" 'BEGIN { exit !(s >= a && s <= b) }'; }
-
 # Rows go to a temp file, not a pipe: a `while` in a pipeline runs in a subshell
 # and would discard $rc. The awk pass drops comments/blank lines and splits on
 # the first two `|` only — stage and id are trimmed, the command keeps every byte
@@ -109,7 +123,12 @@ within() { awk -v s="$1" -v a="$2" -v b="$3" 'BEGIN { exit !(s >= a && s <= b) }
 logdir=''
 rows=$(mktemp) || exit 2
 out_rows=$(mktemp) || exit 2
-trap 'rm -f "$rows" "$out_rows"' EXIT
+# Created only when `run` is about to write, never here: a staging file that
+# exists during the rows would be seen by this run's own `git status` (making
+# every run look dirty) and by a later `verify`'s untracked scan (making every
+# ledger look stale). Both were real.
+ledger_new=''
+trap 'rm -f "$rows" "$out_rows" "$ledger_new"' EXIT
 awk '
 	/^[ \t]*#/ { next }
 	/^[ \t]*$/ { next }
@@ -192,37 +211,37 @@ run)
 	else
 		kept=" log=$logdir"
 	fi
-	printf '# stage=%s conf=%s commit=%s dirty=%s started=%s finished=%s finished_epoch=%s rows=%s%s\n' \
-		"$stage" "$(conf_fingerprint)" "$commit" "$dirty" \
-		"$started" "$finished" "$(now_epoch)" "$stage_ids" "$kept"
-	cat "$out_rows"
+	# Beside the ledger, not in TMPDIR: `mv` is atomic only within one
+	# filesystem, and this is the rename that must never leave a half-written
+	# ledger behind.
+	ledger_new=$(mktemp "$(dirname "$LEDGER")/.ledger.XXXXXX") || exit 2
+	{
+		printf '# stage=%s conf=%s commit=%s dirty=%s started=%s finished=%s finished_epoch=%s rows=%s%s\n' \
+			"$stage" "$(conf_fingerprint)" "$commit" "$dirty" \
+			"$started" "$finished" "$(now_epoch)" "$stage_ids" "$kept"
+		cat "$out_rows"
+	} >"$ledger_new"
+	cat "$ledger_new"
+	# The run's last action, and a rename rather than a redirect: until this line
+	# $LEDGER still holds the previous state, so a run killed while its rows
+	# execute leaves that state intact instead of a half-written block.
+	mv "$ledger_new" "$LEDGER" || {
+		echo "validate: cannot write $LEDGER" >&2
+		exit 2
+	}
 	exit $rc
 	;;
 esac
 
 # ------------------------------------------------------------------- verify
 
-# A row id is data, not a pattern: escape ERE metacharacters so `a.c` cannot
-# match `abc`.
-id_re() { printf '%s' "$1" | sed 's/[][\.^$*+?(){}|\\]/\\&/g'; }
-
-# The ledger is usually a plan file, so a row is matched by its own line shape
-# rather than by position in the file.
-row_stamp() {
-	grep -E "^$(id_re "$1")[[:space:]]+${want}[[:space:]]" "$ledger" |
-		head -n1 | awk '{print $3}'
-}
-row_failed() {
-	grep -qE "^$(id_re "$1")[[:space:]]+FAIL[[:space:]]" "$ledger"
-}
 in_list() {
 	printf '%s' ",$2," | grep -qF ",$1,"
 }
 
-# A plan file accumulates runs: a red-state proof, a bug round, a final sweep,
-# and often a `finalize` block beside the `phase-exit` ones. Verify the latest
-# run of the stage asked for — picked by its finish stamp, so a block inserted
-# above a later one cannot hijack the check.
+# The ledger holds one block, but it is read the same way a file holding several
+# would be: the latest run of the stage asked for, picked by its finish stamp.
+# That costs nothing on a one-block file and stays correct on one a human edited.
 header=$(awk -v s="stage=$stage" '
 	/^# stage=/ {
 		is_stage = 0; fin = ""
@@ -235,25 +254,19 @@ header=$(awk -v s="stage=$stage" '
 	END { if (line != "") print line }
 ' "$ledger" 2>/dev/null)
 
-if [ -z "$header" ] && grep -q '^# stage=' "$ledger" 2>/dev/null; then
-	other=$(grep -o '^# stage=[^ ]*' "$ledger" | sed 's/^# stage=//' | sort -u | tr '\n' ' ')
-	echo "validate: this file holds no '$stage' run — the stage(s) stamped here: $other" >&2
-	exit 1
-fi
-
 if [ -z "$header" ]; then
-	echo "validate: LEGACY ledger — $ledger carries no provenance header, so only its"
-	echo "validate: LEGACY row results are checkable. Re-run the stage to stamp it."
-	for id in $(printf '%s' "$stage_ids" | tr ',' ' '); do
-		if [ -z "$(row_stamp "$id")" ]; then
-			echo "validate: DRIFT (legacy) $id — absent from an unstamped ledger, cannot be dated"
-		elif row_failed "$id"; then
-			# Without stamps a FAIL cannot be attributed to a run: an unstamped plan
-			# file holding a red-state proof looks the same as a failing phase.
-			echo "validate: NOTE $id also appears FAIL in this unstamped ledger — check which run that was"
-		fi
-	done
-	exit $rc
+	held=$(sed -n 's/^# stage=\([^ ]*\).*/\1/p' "$ledger" | sort -u | tr '\n' ' ')
+	if [ -n "$held" ]; then
+		held_commit=$(sed -n 's/.*[[:space:]]commit=\([^ ]*\).*/\1/p' "$ledger" | head -n1)
+		echo "validate: $ledger records a '${held% }' run at commit ${held_commit:-unknown}, not '$stage'" >&2
+		echo "validate: verify that stage instead, or run './validate run $stage' to record this one" >&2
+	else
+		# A ledger is generated and always stamped. An unstamped one is not old,
+		# it is wrong: hand-written, truncated, or a paste of something else.
+		echo "validate: $ledger carries no provenance header — 'validate run' always writes one" >&2
+		echo "validate: run './validate run $stage' to generate a real one" >&2
+	fi
+	exit 1
 fi
 
 hfield() { printf '%s\n' "$header" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n1; }
@@ -330,6 +343,40 @@ if in_git && [ -n "$finished_epoch" ]; then
 	fi
 	[ -n "$stale_docs" ] && echo "validate: NOTE prose changed after the run:$stale_docs"
 
+	# The loop above can only measure an uncommitted tree. The normal flow
+	# commits the work and the ledger in one commit, and from that moment there
+	# is nothing dirty left to measure. The ledger's own commit is the anchor
+	# that survives it: right after that commit `base` IS HEAD and the range is
+	# empty, so the flow passes. Phases later the range is not empty and this
+	# ledger correctly stops counting.
+	base=$(git log -1 --format=%H -- "$LEDGER" 2>/dev/null)
+	# Both conditions together mean "tracked and unmodified": an untracked
+	# ledger has no commit at all, and a modified one is not the file that was
+	# committed, so neither may anchor a range.
+	if [ -n "$base" ] && git diff --quiet HEAD -- "$LEDGER" 2>/dev/null; then
+		ranged_src=''
+		ranged_docs=''
+		for path in $(git -c core.quotePath=false diff --name-only "$base" HEAD 2>/dev/null); do
+			[ "$(basename "$path")" = "$ledger_base" ] && continue
+			[ "$(basename "$path")" = "$conf_base" ] && continue
+			# No mtime test and no -f guard here, deliberately: a file committed
+			# days ago carries an old mtime, and a deleted one has no mtime at
+			# all, yet both moved after this ledger was earned.
+			case $path in
+			*.md | *.markdown) ranged_docs="$ranged_docs $path" ;;
+			*) ranged_src="$ranged_src $path" ;;
+			esac
+		done
+		if [ -n "$ranged_src" ]; then
+			echo "validate: this ledger was committed at $(git rev-parse --short "$base"), and source moved after it:" >&2
+			for path in $ranged_src; do echo "validate:   $path" >&2; done
+			echo "validate: re-run the stage — these files are not covered by this ledger" >&2
+			rc=1
+		fi
+		[ -n "$ranged_docs" ] &&
+			echo "validate: NOTE prose changed since the ledger's commit:$ranged_docs"
+	fi
+
 	if [ "$ledger_commit" != '-' ] && [ -n "$ledger_commit" ] &&
 		! git cat-file -e "${ledger_commit}^{commit}" 2>/dev/null; then
 		echo "validate: NOTE commit $ledger_commit is not in history — amended or rebased"
@@ -339,5 +386,5 @@ if in_git && [ -n "$finished_epoch" ]; then
 		echo "validate: NOTE $later commit(s) landed after this run — expected when they record what it proved"
 fi
 
-[ "$rc" = 0 ] && echo "validate: $stage ledger verified — $ledger_rows, run $started .. $finished"
+[ "$rc" = 0 ] && echo "validate: $stage verified from $LEDGER — commit $ledger_commit, rows $ledger_rows, run $started .. $finished"
 exit $rc
