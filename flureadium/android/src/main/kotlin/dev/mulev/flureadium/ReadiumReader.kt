@@ -1159,6 +1159,16 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     }
 
     /**
+     * The durations the open audiobook navigator resolved, or an empty list when no
+     * audiobook is open. Either navigator kind answers — SyncAudiobookNavigator is an
+     * AudiobookNavigator and inherits the resolution.
+     */
+    fun audiobookTrackDurations(): List<Double?> =
+        audiobookNavigator?.resolvedTrackDurations
+            ?: syncAudiobookNavigator?.resolvedTrackDurations
+            ?: emptyList()
+
+    /**
      * Assigns [navigator] to its field through [publish], runs its suspending
      * [AudiobookNavigator.initNavigator], and clears the field again if that throws —
      * but only while the field still holds this navigator, per [current].
