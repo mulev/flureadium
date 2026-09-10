@@ -278,6 +278,19 @@ finished=$(hfield finished)
 finished_epoch=$(hfield finished_epoch)
 ledger_commit=$(hfield commit)
 
+# `run` writes every one of these on every ledger it produces, so a header
+# missing one is invented or truncated, never merely old. It matters most for
+# `rows`: an empty list makes every configured row count as newly added, the
+# drift rule below waves them all through, and a header recording no run at all
+# would exit 0.
+for f in "rows=$ledger_rows" "started=$started" "finished=$finished" \
+	"finished_epoch=$finished_epoch" "commit=$ledger_commit"; do
+	[ -n "${f#*=}" ] && continue
+	echo "validate: this ledger's header has no '${f%%=*}=' — 'validate run' always writes one" >&2
+	echo "validate: run './validate run $stage' to generate a real one" >&2
+	exit 1
+done
+
 # 1. Every row the ledger claims must have passed inside that run's window. A
 #    plan file routinely holds other runs too — a red-state proof, an earlier bug
 #    round — so a row is judged by the line stamped inside THIS run, never by any
