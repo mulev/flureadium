@@ -301,6 +301,19 @@ class Flureadium {
   /// Positive offset seeks forward, negative seeks backward.
   Future<void> audioSeekBy(Duration offset) => _platform.audioSeekBy(offset);
 
+  /// The per-track durations the open audiobook navigator resolved, in
+  /// reading-order position, in seconds.
+  ///
+  /// An entry is `null` when that track's duration is neither declared by the
+  /// manifest nor readable from the audio. The list is empty when no audiobook
+  /// navigator is open, and on platforms that never probe.
+  ///
+  /// A host that owns the manifest can persist these values into it, so a later
+  /// open declares every duration and no probe runs at all. A host whose
+  /// manifest already declares them has nothing to do here.
+  Future<List<double?>> audiobookTrackDurations() =>
+      _platform.audiobookTrackDurations();
+
   /// Renders the first page of a PDF as a JPEG image for use as a cover.
   ///
   /// Returns image bytes (JPEG), or null if the publication is not a PDF

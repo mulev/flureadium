@@ -67,6 +67,24 @@ If your manifest declares a duration for every track, none of this runs: the
 declared values are used as they are and no extra request is made. Publishing
 durations in the manifest is the fastest way to open a streamed audiobook.
 
+You can also read back what an open worked out. `audiobookTrackDurations()`
+returns one duration per reading-order position, in seconds, with `null` where
+the value is still unknown. If your app owns the manifest file, write those
+numbers into it and the second open has nothing left to fetch.
+
+```dart
+await flureadium.audioEnable();
+
+final durations = await flureadium.audiobookTrackDurations();
+if (durations.length == publication.readingOrder.length) {
+  // Store them in your own manifest; the next open declares them.
+}
+```
+
+Check the length before you use the list. An empty list means no audiobook
+navigator was open, or the platform resolves durations some other way — iOS
+reads a track's length during playback, so it always answers empty.
+
 A read can fail — a track the manifest points at may be gone, or the server may
 refuse a range request. That track then keeps no duration at all rather than a
 zero one, because a zero length makes Readium reject the whole publication, and

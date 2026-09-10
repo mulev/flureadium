@@ -395,6 +395,18 @@ void main() {
           equals(const Duration(seconds: -15)),
         );
       });
+
+      test(
+        'audiobookTrackDurations returns the platform list unchanged',
+        () async {
+          mockPlatform.mockTrackDurations = const <double?>[12.5, null, 3.0];
+
+          final durations = await flureadium.audiobookTrackDurations();
+
+          expect(mockPlatform.wasCalled('audiobookTrackDurations'), isTrue);
+          expect(durations, equals(<double?>[12.5, null, 3.0]));
+        },
+      );
     });
 
     group('Extract Page Thumbnail', () {
