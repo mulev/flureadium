@@ -350,6 +350,28 @@ added later can throw, and the call site answers for it either way.
 `FlureadiumPluginAudioEnableTests` covers the reachable half: the call answers,
 and answers exactly once.
 
+### Resolved Track Durations Answer Empty
+
+The `/main` method `audiobookTrackDurations` answers with an empty list on iOS.
+Nothing here probes a track before it plays: the length arrives with the
+playback info AVFoundation reports during playback, and
+`FlutterAudioNavigator.submitTimebasedPlayerStateToListener` passes it into the
+timebased state (`currentDuration: info.duration ?? nil`,
+`FlutterAudioNavigator.swift:360`). No resolved list exists to hand back, so the
+empty one is the honest answer.
+
+Empty is what the contract expects from a platform that never probes, not an
+error. A host compares the list length against its own reading order and does
+nothing when the two differ, so an empty answer leaves its stored manifest
+alone and costs no iOS special case. Answering at all is the point: without the
+case the call falls through to `default: result(FlutterMethodNotImplemented)`,
+which Dart raises as a `MissingPluginException` on the audiobook open path of a
+platform with nothing wrong with it. `FlureadiumPluginAudioDurationsTests` pins
+the empty answer.
+
+Android resolves the durations while it builds the navigator and reports what
+it found — see "Audiobook Navigator Build Thread" in [android.md](android.md).
+
 ### Audio-Only Reader Host
 
 An audio-only publication mounts `AudioReaderView`, not the EPUB reader view.
