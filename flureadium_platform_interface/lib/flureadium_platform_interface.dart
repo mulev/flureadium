@@ -234,8 +234,9 @@ abstract class FlureadiumPlatform extends PlatformInterface {
   /// The per-track durations the open audiobook navigator resolved, in
   /// reading-order position, in seconds. An entry is `null` when that track's
   /// duration is neither declared by the manifest nor readable from the audio.
-  /// Empty when no audiobook navigator is open, and on platforms that never
-  /// probe.
+  /// Empty when no audiobook navigator is open, and on iOS, which reads a
+  /// track's length as it plays and so resolves nothing up front. Web throws
+  /// `UnimplementedError`, as it does for the rest of the audiobook API.
   Future<List<double?>> audiobookTrackDurations() => throw UnimplementedError(
     'audiobookTrackDurations() has not been implemented',
   );
