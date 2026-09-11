@@ -1,6 +1,6 @@
 ## 0.10.4
 
-### New
+### New Features
 
 - **`audiobookTrackDurations()`** reports the per-track durations an open audiobook navigator resolved, in reading-order position, in seconds. Readium works out a reading-order item's missing duration by reading the audio file itself, and the answer was discarded as soon as the navigator was built: nothing above the platform layer could see it, so a host holding its own copy of the manifest had no way to record what the probe had already cost. Entries are indexed by position rather than by href, because Readium normalises and re-serialises hrefs on the way across the boundary and a string key does not survive that. An entry is `null` when a track's duration is neither declared by the manifest nor readable from the audio, never `0.0` — Readium reads `0.0` as "missing" and refuses a reading order that declares it. The list is empty when no audiobook navigator is open, and on platforms that resolve durations some other way, so a caller whose own reading order is a different length must do nothing with the answer.
 
