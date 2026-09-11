@@ -1,3 +1,29 @@
+## 0.19.2
+
+### New Features
+
+- **`audiobookTrackDurations()`** hands back the per-track durations the open audiobook navigator resolved, in reading-order position, in seconds. A host that owns the manifest it opened can write those values into it, and the next open then declares every duration, so Readium's probe has nothing left to resolve. That is worth the most on a streamed audiobook whose manifest declares no durations: every probe is an HTTPS range read, one per track, and 0.19.1 moved that work off the main thread without making it happen any less often — a book opened after each cold start paid the full round of reads again. An entry is `null` when a track's duration is neither declared by the manifest nor readable from the audio, and the list is empty when no audiobook navigator is open. Entries are indexed by reading-order position, not by href, because hrefs are normalised and re-serialised on the way to Dart and a string key does not survive the trip.
+
+### Behaviour Changes
+
+- Android keeps what its probe resolved instead of throwing it away. `AudiobookNavigator` now publishes the list `initNavigator` already computes, and both the audiobook and the sync-audiobook navigator report through it. A value the probe could not determine stays `null` rather than being flattened to `0.0`, which Readium reads as "missing" and refuses in a reading order.
+- iOS answers the method with an empty list instead of leaving it unhandled. `FlutterAudioNavigator` reads a track's length from playback info as it plays, so nothing is resolved up front and there is no list to report. Leaving the call unhandled reached Dart as `MissingPluginException`, which is an error raised on the audiobook open path of a platform that has nothing wrong with it.
+- The web platform throws `UnimplementedError`, in line with the rest of its audiobook surface.
+
+### Documentation
+
+- `docs/api-reference/flureadium-class.md` documents the method under Audiobook.
+- `docs/guides/audiobook-playback.md` covers the read-back half of Track Durations and Streamed Audiobooks.
+- `docs/platform-specific/android.md` says what the Android side publishes and when. It also corrects a claim in that section that has been wrong since 0.19.1: the streamed-Gutenberg null-duration freeze was described as something only the consuming app's duration mapping could address, which stopped being true once the probe moved to `Dispatchers.IO` inside `initNavigator`.
+- `docs/platform-specific/ios.md` says what iOS answers and why an empty list is the right answer there.
+
+### Testing
+
+- The example app shows the reported list on its debug surface, and the audiobook integration test checks that it carries one entry per track in the publication's reading order.
+- Kotlin tests cover the `/main` route for both audio navigator kinds and the empty answer when neither is open; an iOS `RunnerTests` case covers the empty answer there.
+
+---
+
 ## 0.19.1
 
 ### Bug Fixes
