@@ -25,6 +25,7 @@ class MockFlureadiumPlatform
   bool mockGoToLocatorResult = true;
   Uint8List? mockRenderFirstPageResult;
   Uint8List? mockExtractPageThumbnailResult;
+  List<double?> mockTrackDurations = const <double?>[];
 
   // Stream controllers for testing
   final StreamController<ReadiumReaderStatus> _readerStatusController =
@@ -299,6 +300,12 @@ class MockFlureadiumPlatform
   @override
   Future<void> audioSeekBy(Duration offset) async {
     calls.add(MockMethodCall('audioSeekBy', {'offset': offset}));
+  }
+
+  @override
+  Future<List<double?>> audiobookTrackDurations() async {
+    calls.add(MockMethodCall('audiobookTrackDurations'));
+    return mockTrackDurations;
   }
 
   @override

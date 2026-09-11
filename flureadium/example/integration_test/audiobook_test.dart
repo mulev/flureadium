@@ -134,6 +134,58 @@ void main() {
       expect(find.text('Audio Pause'), findsOneWidget);
     });
 
+    audioTest('audiobookTrackDurations reports one entry per track', (
+      tester,
+    ) async {
+      // The reporting API end to end: enabling audio resolves the durations
+      // natively, Dart reads them back, and the example latches what came back.
+      // Entries are indexed by reading-order position, so the list lining up
+      // one-to-one with the reading order is the whole contract.
+      await showAudiobook(tester);
+      await tester.tap(find.text('Audio Play'));
+      await waitForPlaying(tester);
+
+      final durations = await Flureadium().audiobookTrackDurations();
+      final tracks = audiobookPub.readingOrder.length;
+
+      if (Platform.isAndroid) {
+        expect(
+          durations,
+          hasLength(tracks),
+          reason:
+              'a list that does not match the reading order cannot be mapped '
+              'back to tracks by position',
+        );
+        expect(
+          durations.whereType<double>(),
+          hasLength(tracks),
+          reason:
+              'every track of a packaged fixture is a local file read, so '
+              'nothing here should be left unresolved — a null entry means the '
+              'probe failed on a track it could have read',
+        );
+      } else {
+        expect(
+          durations,
+          isEmpty,
+          reason:
+              'iOS resolves a track length from playback info instead of '
+              'probing up front, so an empty list is the contract, not a '
+              'failure (see phase_3_ios_parity.md)',
+        );
+      }
+
+      // The example's debug surface agrees with the API — that latch is how
+      // this chain is observed on a device with no debugger attached.
+      final label = tester
+          .widget<Text>(find.byKey(const Key('audiobook-durations')))
+          .data;
+      expect(
+        label,
+        'durations: ${durations.whereType<double>().length}/${durations.length}',
+      );
+    });
+
     audioTest('audioSeekBy does not crash', (tester) async {
       await showAudiobook(tester);
       await tester.tap(find.text('Audio Play'));

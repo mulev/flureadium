@@ -92,6 +92,10 @@ class _ReaderPageState extends State<ReaderPage> {
   Locator? _readerLocatorAtTtsDisable;
   bool _audioEnabled = false;
   bool _audioPaused = false;
+  // What the last audioEnable reported through Flureadium.audiobookTrackDurations().
+  // Null until an enable has answered; on iOS the answer is an empty list by
+  // contract, which is why "not asked yet" and "asked, got nothing" must differ.
+  List<double?>? _trackDurations;
   List<ReaderTTSVoice> _voices = [];
   int _voiceIndex = 0;
   TimebasedState? _ttsPlaybackState;
@@ -450,6 +454,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _readerLocatorAtTtsDisable = null;
     _audioEnabled = false;
     _audioPaused = false;
+    _trackDurations = null;
     _voices = [];
     _voiceIndex = 0;
   }
@@ -618,11 +623,13 @@ class _ReaderPageState extends State<ReaderPage> {
     }
     try {
       await _flureadium.audioEnable();
+      final durations = await _flureadium.audiobookTrackDurations();
       await _flureadium.play(null);
       if (!mounted) return;
       setState(() {
         _audioEnabled = true;
         _audioPaused = false;
+        _trackDurations = durations;
       });
     } catch (e) {
       debugPrint('audioEnable error: $e');
@@ -638,6 +645,14 @@ class _ReaderPageState extends State<ReaderPage> {
     if (!_audioEnabled) return 'Audio Play';
     if (_audioPaused) return 'Audio Resume';
     return 'Audio Pause';
+  }
+
+  // '<resolved>/<tracks>' — how many entries came back non-null over how many
+  // the navigator reported, or '-' before any enable has answered.
+  String get _durationsLabel {
+    final durations = _trackDurations;
+    if (durations == null) return '-';
+    return '${durations.whereType<double>().length}/${durations.length}';
   }
 
   Future<void> _addHighlight() async {
@@ -800,6 +815,10 @@ class _ReaderPageState extends State<ReaderPage> {
                       'timebased-position',
                       'pos: ${_timebasedState?.currentOffset?.inMilliseconds ?? -1} '
                           'dur: ${_timebasedState?.currentDuration?.inMilliseconds ?? -1}',
+                    ),
+                    _latch(
+                      'audiobook-durations',
+                      'durations: $_durationsLabel',
                     ),
                     _latch('ended-seen', 'ended-seen: $_endedSeen'),
                     _latch('audio-error', 'audio-error: $_lastAudioError'),

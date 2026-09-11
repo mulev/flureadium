@@ -270,6 +270,10 @@ internal class PublicationMethodCallHandler(
                 return Try.success(null)
             }
 
+            "audiobookTrackDurations" -> {
+                return Try.success(ReadiumReader.audiobookTrackDurations())
+            }
+
             "renderFirstPage" -> {
                 val args = arguments as List<Any?>
                 val pubUrlStr = args[0] as String

@@ -34,6 +34,7 @@
 		F1A2B3C4D5E6F7A800009002 /* ImageCacheURLProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */; };
 		A2B3C4D5E6F7A8B900010002 /* FlureadiumPluginGoToLocatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */; };
 		A2B3C4D5E6F7A8B900020002 /* FlureadiumPluginAudioEnableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */; };
+		A2B3C4D5E6F7A8B900040002 /* FlureadiumPluginAudioDurationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900040001 /* FlureadiumPluginAudioDurationsTests.swift */; };
 		A2B3C4D5E6F7A8B900030002 /* FlureadiumPluginCarRefreshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900030001 /* FlureadiumPluginCarRefreshTests.swift */; };
 		A2B3C4D5E6F7A8B900011002 /* FlureadiumPluginErrorChannelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B900011001 /* FlureadiumPluginErrorChannelTests.swift */; };
 		C4D5E6F7A8B9CADB00010002 /* FlureadiumPluginChapterNavTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D5E6F7A8B9CADB00010001 /* FlureadiumPluginChapterNavTests.swift */; };
@@ -138,6 +139,7 @@
 		F1A2B3C4D5E6F7A800009001 /* ImageCacheURLProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheURLProtocolTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginGoToLocatorTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginAudioEnableTests.swift; sourceTree = "<group>"; };
+		A2B3C4D5E6F7A8B900040001 /* FlureadiumPluginAudioDurationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginAudioDurationsTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900030001 /* FlureadiumPluginCarRefreshTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginCarRefreshTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B900011001 /* FlureadiumPluginErrorChannelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginErrorChannelTests.swift; sourceTree = "<group>"; };
 		C4D5E6F7A8B9CADB00010001 /* FlureadiumPluginChapterNavTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlureadiumPluginChapterNavTests.swift; sourceTree = "<group>"; };
@@ -223,6 +225,7 @@
 				E1F2A3B4C5D6E7F80000D001 /* PdfGestureSuppressionTests.swift */,
 				A2B3C4D5E6F7A8B900010001 /* FlureadiumPluginGoToLocatorTests.swift */,
 				A2B3C4D5E6F7A8B900020001 /* FlureadiumPluginAudioEnableTests.swift */,
+				A2B3C4D5E6F7A8B900040001 /* FlureadiumPluginAudioDurationsTests.swift */,
 				A2B3C4D5E6F7A8B900030001 /* FlureadiumPluginCarRefreshTests.swift */,
 				A2B3C4D5E6F7A8B900011001 /* FlureadiumPluginErrorChannelTests.swift */,
 				C4D5E6F7A8B9CADB00010001 /* FlureadiumPluginChapterNavTests.swift */,
@@ -547,6 +550,7 @@
 				E1F2A3B4C5D6E7F80000D002 /* PdfGestureSuppressionTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900010002 /* FlureadiumPluginGoToLocatorTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900020002 /* FlureadiumPluginAudioEnableTests.swift in Sources */,
+				A2B3C4D5E6F7A8B900040002 /* FlureadiumPluginAudioDurationsTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900030002 /* FlureadiumPluginCarRefreshTests.swift in Sources */,
 				A2B3C4D5E6F7A8B900011002 /* FlureadiumPluginErrorChannelTests.swift in Sources */,
 				C4D5E6F7A8B9CADB00010002 /* FlureadiumPluginChapterNavTests.swift in Sources */,

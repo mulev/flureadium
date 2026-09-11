@@ -292,6 +292,11 @@ class FlureadiumWebPlugin extends FlureadiumPlatform {
       throw UnimplementedError(
         'audioSetPreferences is not implemented on web platform',
       );
+
+  @override
+  Future<List<double?>> audiobookTrackDurations() => throw UnimplementedError(
+    'audiobookTrackDurations is not implemented on web platform',
+  );
   // AUDIOBOOK API - END
 
   // @override

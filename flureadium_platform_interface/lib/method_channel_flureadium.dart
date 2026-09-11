@@ -291,6 +291,15 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
       methodChannel.invokeMethod('audioSeekBy', offset.inSeconds);
 
   @override
+  Future<List<double?>> audiobookTrackDurations() async {
+    final reply = await methodChannel.invokeListMethod<Object?>(
+      'audiobookTrackDurations',
+    );
+    if (reply == null) return const <double?>[];
+    return [for (final value in reply) (value as num?)?.toDouble()];
+  }
+
+  @override
   Future<Uint8List?> renderFirstPage(
     String pubUrl, {
     int maxWidth = 600,

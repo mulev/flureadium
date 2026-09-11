@@ -230,6 +230,16 @@ abstract class FlureadiumPlatform extends PlatformInterface {
   /// This is an alternative to next/previous which seeks by a fixed interval.
   Future<void> audioSeekBy(Duration offset) =>
       throw UnimplementedError('seekInAudio() has not been implemented');
+
+  /// The per-track durations the open audiobook navigator resolved, in
+  /// reading-order position, in seconds. An entry is `null` when that track's
+  /// duration is neither declared by the manifest nor readable from the audio.
+  /// Empty when no audiobook navigator is open, and on iOS, which reads a
+  /// track's length as it plays and so resolves nothing up front. Web throws
+  /// `UnimplementedError`, as it does for the rest of the audiobook API.
+  Future<List<double?>> audiobookTrackDurations() => throw UnimplementedError(
+    'audiobookTrackDurations() has not been implemented',
+  );
   // AUDIOBOOK API - END
 
   /// Renders the first page of a PDF publication as a JPEG image.

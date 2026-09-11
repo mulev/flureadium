@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
@@ -48,6 +49,8 @@ private const val NAVIGATOR_PATH = "dev/mulev/flureadium/navigators/AudiobookNav
  * call from a JVM test; adding an injection point only a test would use is the
  * speculative parameter YAGNI forbids. This repo already guards conventions that way —
  * see `CoroutineScopeHandlerConventionTest`.
+ * The published `resolvedTrackDurations` is guarded the same way, and read
+ * behaviourally through `PublicationChannelAudioDurationsTest`.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [Build.VERSION_CODES.P])
@@ -128,6 +131,35 @@ internal class AudiobookNavigatorDurationResolutionTest {
         assertTrue(
             body.subList(call, call + closerOffset).any { "resolvedReadingOrder" in it },
             "createNavigator is not given the resolved reading order",
+        )
+    }
+
+    @Test
+    fun resolvedTrackDurationsArePublishedBeforeCreateNavigator() {
+        val body = initNavigatorBody()
+
+        val assignment = body.indexOfFirst {
+            "resolvedTrackDurations = resolvedReadingOrder" in it
+        }
+        val create = body.indexOfFirst { "createNavigator(" in it }
+
+        assertTrue(
+            assignment >= 0,
+            "initNavigator does not publish resolvedTrackDurations from the resolved " +
+                "reading order — a second source of truth can disagree with the " +
+                "navigator Readium was actually given",
+        )
+        assertTrue(create >= 0, "initNavigator no longer calls createNavigator")
+        assertEquals(
+            "resolvedTrackDurations = resolvedReadingOrder.map { it.duration }",
+            body[assignment].trim(),
+            "a duration the probe could not resolve must stay null. Coerced to 0.0, " +
+                "Readium reads it as missing and AudioNavigatorFactory.invoke rejects " +
+                "the whole publication, so a slow book becomes an unopenable one",
+        )
+        assertTrue(
+            assignment < create,
+            "the durations must be published before createNavigator runs",
         )
     }
 

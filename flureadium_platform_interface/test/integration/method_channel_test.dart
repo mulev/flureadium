@@ -502,6 +502,35 @@ void main() {
         expect(methodCalls.length, equals(1));
         expect(methodCalls.last.arguments, equals(-15));
       });
+
+      test(
+        'audiobookTrackDurations sends the method with no arguments',
+        () async {
+          await platform.audiobookTrackDurations();
+
+          expect(methodCalls.length, equals(1));
+          expect(methodCalls.last.method, equals('audiobookTrackDurations'));
+          expect(methodCalls.last.arguments, isNull);
+        },
+      );
+
+      test('audiobookTrackDurations keeps nulls and widens ints', () async {
+        final durations = await platform.audiobookTrackDurations();
+
+        expect(durations, equals(<double?>[12.5, null, 3.0]));
+      });
+
+      test('audiobookTrackDurations returns empty on a null reply', () async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(platform.methodChannel, (call) async {
+              methodCalls.add(call);
+              return null;
+            });
+
+        final durations = await platform.audiobookTrackDurations();
+
+        expect(durations, isEmpty);
+      });
     });
 
     group('Widget Delegation', () {
@@ -622,6 +651,8 @@ dynamic _mockResponse(MethodCall call) {
       return null;
     case 'getLinkContent':
       return '<html><body>Content</body></html>';
+    case 'audiobookTrackDurations':
+      return <Object?>[12.5, null, 3];
     default:
       return null;
   }

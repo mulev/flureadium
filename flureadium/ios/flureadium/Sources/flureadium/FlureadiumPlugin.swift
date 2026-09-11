@@ -614,6 +614,11 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
         let _ = await self.timebasedNavigator?.seekRelative(byOffsetSeconds: seekOffset)
         result(nil)
       }
+    case "audiobookTrackDurations":
+      // iOS resolves nothing up front: FlutterAudioNavigator reads a track's length
+      // from playback info as it plays, so there is no probed list to report. Answering
+      // still matters - an unhandled method reaches Dart as MissingPluginException.
+      result([])
 
     case "renderFirstPage":
       let args = call.arguments as! [Any?]

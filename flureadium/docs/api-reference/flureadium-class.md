@@ -562,6 +562,32 @@ await flureadium.audioSeekBy(Duration(seconds: 30));
 await flureadium.audioSeekBy(Duration(seconds: -10));
 ```
 
+### audiobookTrackDurations
+
+Reports the per-track durations the open audiobook navigator resolved.
+
+The list is indexed by reading-order position, not by href: hrefs are re-serialized when the manifest crosses the platform boundary, so position is the only key both sides agree on. An entry is `null` when that track's duration is neither declared by the manifest nor readable from the audio, never `0.0` — Readium treats a zero length as missing and refuses the publication. The list is empty when no audiobook navigator is open, and on iOS, which reads a track's length during playback and so has nothing to report up front. Web throws `UnimplementedError`, as it does for the rest of the audiobook API.
+
+Check the length against your own reading order before you use it. If the two do not match, the answer is not about the publication you have open, and the right move is to do nothing. When the lengths agree and your app owns the manifest file, writing these values into it means the next open declares every duration and fetches no audio to work them out. See [Audiobook Playback](../guides/audiobook-playback.md#track-durations-and-streamed-audiobooks).
+
+```dart
+Future<List<double?>> audiobookTrackDurations()
+```
+
+**Returns:** One duration in seconds per reading-order position, `null` where the duration is unknown, or an empty list when nothing was resolved
+
+**Example:**
+```dart
+await flureadium.audioEnable();
+
+final durations = await flureadium.audiobookTrackDurations();
+if (durations.length == pub.readingOrder.length) {
+  for (var i = 0; i < durations.length; i++) {
+    print('${pub.readingOrder[i].href}: ${durations[i] ?? 'unknown'}');
+  }
+}
+```
+
 ## Playback Control
 
 These methods work for both TTS and audiobook modes.

@@ -60,6 +60,19 @@ open class AudiobookNavigator(
      */
     protected var mediaServiceFacade: PluginMediaServiceFacade? = null
 
+    /**
+     * The per-track durations this navigator resolved, in reading-order position:
+     * the manifest's own value where it declared one, the probed value where it did
+     * not, and `null` where neither was available. Empty until [initNavigator] has
+     * resolved them.
+     *
+     * Volatile because it is written on the main dispatcher inside [initNavigator]
+     * and read from the IO coroutine PublicationChannel launches per method call.
+     */
+    @Volatile
+    var resolvedTrackDurations: List<Double?> = emptyList()
+        protected set
+
     override suspend fun initNavigator() {
         // Create AudioNavigatorFactory
         val navigatorFactory = ExoPlayerNavigatorFactory(
@@ -94,6 +107,7 @@ open class AudiobookNavigator(
             val resolvedReadingOrder = withContext(Dispatchers.IO) {
                 resolveTrackDurations(publication, publication.readingOrder)
             }
+            resolvedTrackDurations = resolvedReadingOrder.map { it.duration }
 
             audioNavigator = navigatorFactory.createNavigator(
                 this@AudiobookNavigator.initialLocator,

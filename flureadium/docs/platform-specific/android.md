@@ -535,13 +535,31 @@ wrong thread`.
 
 Readium's `AudioNavigatorFactory.createNavigator` probes each track's duration
 up front and, for a track whose manifest `duration` is null, reads the remote
-resource synchronously. That probe is skipped when the manifest already carries
-per-track durations, so the null-duration ANR seen on streamed Gutenberg
-audiobooks is addressed upstream by the consuming app's Gutenberg duration mapping, not
-by moving the build off the main thread.
+resource synchronously on whatever thread calls it. So `initNavigator` resolves
+the missing durations first, on `Dispatchers.IO` (`resolveTrackDurations` in
+`TrackDurationProbe.kt`), and hands the resolved reading order to
+`createNavigator`, which leaves the main-thread build with nothing left to
+probe. A track the probe cannot read stays `null` rather than `0.0`, because
+Readium reads `0.0` as missing and rejects a publication that declares it;
+those tracks still cost one blocking probe inside `createNavigator`. A manifest
+that already declares every duration is cheapest: the probe returns those links
+untouched and issues no request.
+
+`initNavigator` keeps what the probe resolved in
+`AudiobookNavigator.resolvedTrackDurations`: the manifest's own value where it
+declared one, the probed value where it did not, and `null` where neither was
+available, indexed by reading-order position.
+`ReadiumReader.audiobookTrackDurations()` reads it from whichever audio
+navigator is open, and since `SyncAudiobookNavigator` inherits `initNavigator`,
+the karaoke path resolves and reports through the same code. The `/main` method
+`audiobookTrackDurations` hands the list to Dart, empty when no audiobook is
+open. A host that owns the manifest file can write those durations into it,
+after which the next open declares them and probes nothing.
 
 **Files:**
 - `AudiobookNavigator.kt` — `initNavigator()` builds the navigator inside `mainScope.async { }`
+- `ReadiumReader.kt` — `audiobookTrackDurations()` reads the resolved list from the open audio navigator
+- `PublicationChannel.kt` — the `/main` `audiobookTrackDurations` route
 
 ### Publication Open Concurrency
 
