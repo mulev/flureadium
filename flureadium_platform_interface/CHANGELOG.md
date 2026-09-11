@@ -6,7 +6,7 @@
 
   The abstract member carries a default that throws `UnimplementedError`, the same shape every sibling in the audiobook block uses, so a platform implementation that never overrides it still compiles.
 
-- `MethodChannelFlureadium` answers the method over `dev.mulev.flureadium/main`. A whole-second duration the platform sent as an integer is widened to a double, `null` passes through untouched, and a platform that replies with nothing at all — including one whose channel method is not registered — reads as the empty list.
+- `MethodChannelFlureadium` answers the method over `dev.mulev.flureadium/main`. A whole-second duration the platform sent as an integer is widened to a double, `null` passes through untouched, and a platform that answers with an explicit empty reply reads as the empty list. Leaving the method unregistered is not equivalent: that raises `MissingPluginException` on the audiobook open path, which is why every platform in this release answers it, iOS included.
 
 ---
 
