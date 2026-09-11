@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
@@ -149,6 +150,13 @@ internal class AudiobookNavigatorDurationResolutionTest {
                 "navigator Readium was actually given",
         )
         assertTrue(create >= 0, "initNavigator no longer calls createNavigator")
+        assertEquals(
+            "resolvedTrackDurations = resolvedReadingOrder.map { it.duration }",
+            body[assignment].trim(),
+            "a duration the probe could not resolve must stay null. Coerced to 0.0, " +
+                "Readium reads it as missing and AudioNavigatorFactory.invoke rejects " +
+                "the whole publication, so a slow book becomes an unopenable one",
+        )
         assertTrue(
             assignment < create,
             "the durations must be published before createNavigator runs",
