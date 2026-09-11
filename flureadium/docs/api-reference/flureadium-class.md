@@ -566,7 +566,7 @@ await flureadium.audioSeekBy(Duration(seconds: -10));
 
 Reports the per-track durations the open audiobook navigator resolved.
 
-The list is indexed by reading-order position, not by href: hrefs are re-serialized when the manifest crosses the platform boundary, so position is the only key both sides agree on. An entry is `null` when that track's duration is neither declared by the manifest nor readable from the audio, never `0.0` — Readium treats a zero length as missing and refuses the publication. The list is empty when no audiobook navigator is open, and on platforms that never probe; iOS reads a track's length during playback, so it has nothing to report up front.
+The list is indexed by reading-order position, not by href: hrefs are re-serialized when the manifest crosses the platform boundary, so position is the only key both sides agree on. An entry is `null` when that track's duration is neither declared by the manifest nor readable from the audio, never `0.0` — Readium treats a zero length as missing and refuses the publication. The list is empty when no audiobook navigator is open, and on iOS, which reads a track's length during playback and so has nothing to report up front. Web throws `UnimplementedError`, as it does for the rest of the audiobook API.
 
 Check the length against your own reading order before you use it. If the two do not match, the answer is not about the publication you have open, and the right move is to do nothing. When the lengths agree and your app owns the manifest file, writing these values into it means the next open declares every duration and fetches no audio to work them out. See [Audiobook Playback](../guides/audiobook-playback.md#track-durations-and-streamed-audiobooks).
 

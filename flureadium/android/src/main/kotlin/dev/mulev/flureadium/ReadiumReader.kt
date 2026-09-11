@@ -1162,6 +1162,13 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
      * The durations the open audiobook navigator resolved, or an empty list when no
      * audiobook is open. Either navigator kind answers — SyncAudiobookNavigator is an
      * AudiobookNavigator and inherits the resolution.
+     *
+     * Empty is also the answer while an audioEnable() is still in flight. initPublished
+     * publishes the navigator before initNavigator has resolved anything, and
+     * PublicationChannel runs each call on its own coroutine instead of serializing
+     * them, so a read landing in that window finds the field set and the list still at
+     * its initialiser. Await audioEnable() before reading this: an empty list does not
+     * mean the navigator is closed.
      */
     fun audiobookTrackDurations(): List<Double?> =
         audiobookNavigator?.resolvedTrackDurations

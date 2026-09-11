@@ -306,7 +306,9 @@ class Flureadium {
   ///
   /// An entry is `null` when that track's duration is neither declared by the
   /// manifest nor readable from the audio. The list is empty when no audiobook
-  /// navigator is open, and on platforms that never probe.
+  /// navigator is open, and on iOS, which reads a track's length as it plays
+  /// and so resolves nothing up front. Web throws `UnimplementedError`, as it
+  /// does for the rest of the audiobook API.
   ///
   /// A host that owns the manifest can persist these values into it, so a later
   /// open declares every duration and no probe runs at all. A host whose
