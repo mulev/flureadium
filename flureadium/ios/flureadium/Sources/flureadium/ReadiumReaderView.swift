@@ -218,9 +218,15 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       hasSentReady = true
     }
     locatorReporter.report(locator, isScrollMode: isVerticalScroll)
-    // Covers the navigations Readium starts itself — notably
-    // `accessibilityScroll`, the VoiceOver three-finger swipe, which calls
-    // goLeft/goRight internally and never reaches the method channel.
+    // Covers the navigations that never reach the method channel: the VoiceOver
+    // three-finger swipe through `accessibilityScroll`, and the edge-tap turns
+    // `ReaderEdgeNavigationState` drives on the navigator directly.
+    //
+    // This is the widest window in which the settle can cancel a live finger:
+    // Readium polls for the location change every 0.1 s once it is back to
+    // `.idle`, so interaction has been restored for a while by the time this
+    // runs. See `EpubUserScripts.pointerSettleSource` for why no cutoff can
+    // separate the two cases.
     pointerSettler.settle()
   }
 
@@ -331,10 +337,11 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     }
 
     switch command {
-    // Each settle runs *after* the await: Readium has disabled interaction by
-    // then, so every pointer the page still holds is one it killed itself.
-    // Settling first would only insert evaluateJavaScript round-trips ahead of
-    // the transition and hide the bug behind a wider timing margin.
+    // Each settle runs *after* the await. Readium has already resolved the
+    // transition by then — it restores interaction before the call returns — so
+    // the ids the page still holds are the ones it killed on the way. Settling
+    // first would only insert evaluateJavaScript round-trips ahead of the
+    // transition and hide the bug behind a wider timing margin.
     case let .go(locator, animated, isAudioBookWithText):
       Task { @MainActor in
         await self.goToLocator(locator: locator, animated: animated)

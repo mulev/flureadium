@@ -12,6 +12,7 @@ import XCTest
 /// event. A payload that fails one of those filters is dropped by Readium, so
 /// the dispatch shape is asserted here rather than by matching the script's
 /// source text.
+@MainActor
 final class SpreadPointerSettlerTests: XCTestCase {
 
     /// The anchor matters: Readium walks ancestors for an interactive element,
@@ -52,6 +53,25 @@ final class SpreadPointerSettlerTests: XCTestCase {
         XCTAssertEqual(payload?["pointerType"] as? String, "touch", "both observers ignore non-touch pointers")
     }
 
+    /// Without this, deleting the script's `pointerup`/`pointercancel`
+    /// listeners would leave every other case green while turning each
+    /// navigation into a source of cancels for pointers the page finished
+    /// cleanly.
+    func testSettleIgnoresAPointerThatAlreadyEnded() {
+        let settler = SpreadPointerSettler()
+        let bridge = PointerEventRecorder()
+        let webView = loadSpread(settler: settler, bridge: bridge)
+
+        press(pointerId: 3, in: webView)
+        dispatch("pointerup", pointerId: 3, in: webView)
+        settler.settle()
+
+        // Ordered after the settle's own evaluation on the same web view.
+        evaluate("void 0;", in: webView)
+        XCTAssertTrue(
+            bridge.payloads.isEmpty, "a pointer the page terminated itself is not stranded")
+    }
+
     func testSettledPayloadClearsReadiumsPreObserverFilters() {
         let settler = SpreadPointerSettler()
         let bridge = PointerEventRecorder()
@@ -87,12 +107,7 @@ final class SpreadPointerSettlerTests: XCTestCase {
         let bridge = PointerEventRecorder()
         let webView = loadSpread(settler: settler, bridge: bridge)
 
-        evaluate(
-            """
-            document.getElementById('word').dispatchEvent(
-              new PointerEvent('pointercancel', { pointerId: 9, pointerType: 'touch', bubbles: true }));
-            """,
-            in: webView)
+        dispatch("pointercancel", pointerId: 9, in: webView)
 
         XCTAssertTrue(
             (bridge.awaitPayload(self)?["interactiveElement"] as? String)?.contains("<a") == true,
@@ -192,10 +207,16 @@ final class SpreadPointerSettlerTests: XCTestCase {
 
     /// Leaves a live pointer id in the document, on a target inside the anchor.
     private func press(pointerId: Int, in webView: WKWebView) {
+        dispatch("pointerdown", pointerId: pointerId, in: webView)
+    }
+
+    /// Dispatches one pointer event on the anchor's child, where a real touch
+    /// would land.
+    private func dispatch(_ type: String, pointerId: Int, in webView: WKWebView) {
         evaluate(
             """
             document.getElementById('word').dispatchEvent(
-              new PointerEvent('pointerdown', { pointerId: \(pointerId), pointerType: 'touch', bubbles: true }));
+              new PointerEvent('\(type)', { pointerId: \(pointerId), pointerType: 'touch', bubbles: true }));
             """,
             in: webView)
     }

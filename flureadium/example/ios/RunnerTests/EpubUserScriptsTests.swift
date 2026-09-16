@@ -33,7 +33,7 @@ final class EpubUserScriptsTests: XCTestCase {
         XCTAssertEqual(
             scripts[2].injectionTime,
             .atDocumentStart,
-            "platform flags are defined before the document loads, last of the three document-start scripts as the pre-refactor build injected them"
+            "platform flags are defined before the document loads, after the two JS helpers as the pre-refactor build injected them"
         )
         XCTAssertEqual(
             scripts[6].injectionTime,

@@ -8,6 +8,12 @@ import WebKit
 /// one, and the stranded pointer is not always there. References are weak
 /// because `PaginationView` creates and discards spread views as the reader
 /// moves.
+///
+/// Main-actor isolated: the registry is mutated from the script-message
+/// callback and read from the navigation call sites, and both are main-thread
+/// paths today. Stating it keeps an off-main caller a compile error rather than
+/// a hash-table race.
+@MainActor
 final class SpreadPointerSettler: NSObject, WKScriptMessageHandler {
 
   private let spreads = NSHashTable<WKWebView>.weakObjects()

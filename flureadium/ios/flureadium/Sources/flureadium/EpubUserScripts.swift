@@ -67,6 +67,16 @@ enum EpubUserScripts {
   ///     bubbles: true      reaches Readium's document-level pointercancel listener
   ///
   /// The location is irrelevant to the outcome: a cancel is keyed on pointer id.
+  ///
+  /// A settle cannot tell a stranded id from a finger that is genuinely still
+  /// down, and nothing in the page can: a strand differs from a live press only
+  /// in what WebKit will do next. Readium restores interaction before the
+  /// navigation call returns, so a press that begins between that moment and the
+  /// settle is cancelled with the strand and loses its tap. An age cutoff was
+  /// considered and rejected — a non-animated `go` strands a pointer younger
+  /// than a held finger, so no threshold separates them. The trade is one
+  /// dropped tap in a window a few hundred milliseconds wide, against a reader
+  /// whose taps never work again.
   static let pointerSettleSource = """
     (function() {
         var live = {};
@@ -96,8 +106,9 @@ enum EpubUserScripts {
             }
             // A fixed-layout spread holds the resource in an iframe, and native
             // can only evaluate in the main frame, so the parent hands the call
-            // down. Same origin under Readium's server; the catch is for the
-            // frame that is not.
+            // down. Same origin under Readium's server. A cross-origin child
+            // throws here and keeps its own live ids, which nothing can settle:
+            // WebKit hands out no frame handle to reach it natively either.
             for (var i = 0; i < window.frames.length; i++) {
                 try { window.frames[i].\(settleFunctionName)?.(); } catch (e) {}
             }
