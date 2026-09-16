@@ -36,6 +36,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   private var tapObserverToken: InputObservableToken?
   private let userScripts: [WKUserScript]
   private let page: EpubPageBridge
+  private let pointerSettler = SpreadPointerSettler()
 
   /// Publishes page changes to Dart. Lazy so its `[weak self]` closures can be
   /// formed after `super.init()`.
@@ -166,6 +167,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     for script in userScripts {
       userContentController.addUserScript(script)
     }
+    pointerSettler.register(on: userContentController)
   }
 
   // override EPUBNavigatorDelegate::middleTapHandler
@@ -216,6 +218,10 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       hasSentReady = true
     }
     locatorReporter.report(locator, isScrollMode: isVerticalScroll)
+    // Covers the navigations Readium starts itself — notably
+    // `accessibilityScroll`, the VoiceOver three-finger swipe, which calls
+    // goLeft/goRight internally and never reaches the method channel.
+    pointerSettler.settle()
   }
 
   func navigator(_ navigator: Navigator, presentExternalURL url: URL) {
@@ -325,11 +331,16 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     }
 
     switch command {
+    // Each settle runs *after* the await: Readium has disabled interaction by
+    // then, so every pointer the page still holds is one it killed itself.
+    // Settling first would only insert evaluateJavaScript round-trips ahead of
+    // the transition and hide the bug behind a wider timing margin.
     case let .go(locator, animated, isAudioBookWithText):
       Task { @MainActor in
         await self.goToLocator(locator: locator, animated: animated)
         let _ = await self.page.setLocation(
           locatorJson: locator.jsonString ?? "null", isAudioBookWithText: isAudioBookWithText)
+        self.pointerSettler.settle()
         result(true)
       }
 
@@ -337,12 +348,14 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       let readiumViewController = self.readiumViewController
       Task { @MainActor in
         result(await readiumViewController.goLeft(options: NavigatorGoOptions(animated: animated)))
+        self.pointerSettler.settle()
       }
 
     case let .goRight(animated):
       let readiumViewController = self.readiumViewController
       Task { @MainActor in
         result(await readiumViewController.goRight(options: NavigatorGoOptions(animated: animated)))
+        self.pointerSettler.settle()
       }
 
     case let .setLocation(locator, isAudioBookWithText):

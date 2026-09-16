@@ -17,11 +17,11 @@ final class EpubUserScriptsTests: XCTestCase {
         )
     }
 
-    func testMakeReturnsSixScripts() {
+    func testMakeReturnsSevenScripts() {
         XCTAssertEqual(
             makeScripts().count,
-            6,
-            "two JS helpers, the platform flags, two CSS injections, and click synthesis"
+            7,
+            "two JS helpers, the platform flags, two CSS injections, click synthesis, and the pointer settle"
         )
     }
 
@@ -34,6 +34,11 @@ final class EpubUserScriptsTests: XCTestCase {
             scripts[2].injectionTime,
             .atDocumentStart,
             "platform flags are defined before the document loads, last of the three document-start scripts as the pre-refactor build injected them"
+        )
+        XCTAssertEqual(
+            scripts[6].injectionTime,
+            .atDocumentStart,
+            "the pointer bookkeeping has to be listening before the page can see a touch"
         )
     }
 

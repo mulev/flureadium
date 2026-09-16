@@ -1,7 +1,7 @@
 import Flutter
 import WebKit
 
-/// The scripts injected into the EPUB WebView, in injection order.
+/// The scripts injected into the EPUB WebView.
 enum EpubUserScripts {
 
   /// Loads the bundled helper assets through `registrar` and builds the scripts.
@@ -36,11 +36,78 @@ enum EpubUserScripts {
     scripts.append(
       WKUserScript(
         source: clickSynthesisSource, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
+    scripts.append(
+      WKUserScript(
+        source: pointerSettleSource, injectionTime: .atDocumentStart, forMainFrameOnly: false))
     return scripts
   }
 
   /// Read by our helper JS to branch on platform.
   static let platformFlagsSource = "const isAndroid=false,isIos=true;"
+
+  /// The settle entry point `pointerSettleSource` installs on `window`.
+  static let settleFunctionName = "__flureadiumSettlePointers"
+
+  /// The handler each document posts to once, so native learns its web view.
+  static let spreadReadyMessageName = "flureadiumSpreadReady"
+
+  /// Tracks the pointer ids this document holds, and cancels them on demand.
+  ///
+  /// Readium disables interaction on the shared pagination view for the length
+  /// of a page transition. A touch still in flight then dies without WebKit
+  /// dispatching `pointerup`, so the page never terminates that pointer id and
+  /// Readium's tap recognisers keep it active forever — swallowing every later
+  /// tap, including Readium's own `didTapAt`. `SpreadPointerSettler` calls the
+  /// settle function after each navigation; each part of the dispatch clears one
+  /// filter Readium applies before any observer sees the event:
+  ///
+  ///     document.body      its ancestor walk finds no interactive element
+  ///     cancelable: false  preventDefault() is a no-op, defaultPrevented stays false
+  ///     clientX/Y: -1      matches no activable decoration rect
+  ///     bubbles: true      reaches Readium's document-level pointercancel listener
+  ///
+  /// The location is irrelevant to the outcome: a cancel is keyed on pointer id.
+  static let pointerSettleSource = """
+    (function() {
+        var live = {};
+
+        document.addEventListener('pointerdown', function(e) {
+            live[e.pointerId] = e.pointerType;
+        }, true);
+
+        ['pointerup', 'pointercancel'].forEach(function(name) {
+            document.addEventListener(name, function(e) { delete live[e.pointerId]; }, true);
+        });
+
+        window.\(settleFunctionName) = function() {
+            var target = document.body || document.documentElement;
+            if (target) {
+                Object.keys(live).forEach(function(id) {
+                    target.dispatchEvent(new PointerEvent('pointercancel', {
+                        pointerId: Number(id),
+                        pointerType: live[id] || 'touch',
+                        bubbles: true,
+                        cancelable: false,
+                        clientX: -1,
+                        clientY: -1
+                    }));
+                });
+                live = {};
+            }
+            // A fixed-layout spread holds the resource in an iframe, and native
+            // can only evaluate in the main frame, so the parent hands the call
+            // down. Same origin under Readium's server; the catch is for the
+            // frame that is not.
+            for (var i = 0; i < window.frames.length; i++) {
+                try { window.frames[i].\(settleFunctionName)?.(); } catch (e) {}
+            }
+        };
+
+        try {
+            window.webkit.messageHandlers.\(spreadReadyMessageName).postMessage(null);
+        } catch (e) {}
+    })();
+    """
 
   /// Appends a `style` element carrying the decoded payload to the document head.
   ///
