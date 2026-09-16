@@ -447,6 +447,61 @@ still matters — the tap observer is added after
 pointer observer at all, so nothing behind the tap observer turns a page. See
 [Edge Tap and Swipe Navigation](#edge-tap-and-swipe-navigation).
 
+### Pointer Settling After Navigation
+
+After a page navigation completes, the plugin asks every spread's document to
+cancel the pointer ids it still holds. The reason is a defect in Readium's own
+navigator, and it costs the reader every tap once it happens.
+
+While a page transition runs, `EPUBNavigatorViewController` sets
+`isUserInteractionEnabled = false` on the pagination view the spreads share. If a
+touch is in flight at that moment, UIKit has already ended it but WebKit has not
+yet turned it into a page `pointerup`, and disabling interaction tears the
+pipeline down: the page receives neither `pointerup` nor `pointercancel` for that
+id. Readium's `ActivatePointerObserver` reads an unterminated press as a pointer
+that is still down and keeps the id forever, so every later tap fails against it.
+One stranded id is enough, and it kills Readium's own `didTapAt` recogniser
+alongside the plugin's. Until the fix, the reader stayed dead until the view was
+re-created, which in a typical host means force-quitting the app.
+
+A press on a host's own navigation button is the common trigger, because a button
+drawn over the platform view sends its touch into the web view as well as to
+Flutter. The window is small, single-digit to low-tens of milliseconds, so it
+takes a few presses to lose the race. It was measured at 7–17 ms on iOS 17.5,
+where every press stranded, and 28–114 ms on 18.3, where none did.
+
+`EpubUserScripts.pointerSettleSource` records the ids each document holds and
+installs the settle entry point. `SpreadPointerSettler` learns each spread's web
+view from the post that script makes at document start, and calls the entry point
+on all of them. Going through every spread matters: the pointer can strand in a
+document that is not the one on screen, and
+`EPUBNavigatorViewController.evaluateJavaScript` only reaches the current one.
+`ReadiumReaderView` settles after `go`, `goLeft` and `goRight` return, and from
+`locationDidChange`, which covers the navigations Readium starts by itself — the
+VoiceOver three-finger swipe among them. The channel's `setLocation` is not one
+of them: it only moves the position inside the page through JavaScript, never
+through Readium's state machine, so it cannot disable interaction and cannot
+strand anything.
+
+The cancel is dispatched on `document.body`, non-cancelable, at negative
+coordinates. Each of those clears one filter Readium applies before an observer
+sees the event, so changing the dispatch shape is what breaks this rather than
+changing the timing.
+
+A fixed-layout spread keeps its resource in an `<iframe>`, and
+`evaluateJavaScript` only runs in the main frame, so the settle function walks
+`window.frames` and hands the call down to each child document. Every frame keeps
+its own set of live pointers, which is why the script is injected with
+`forMainFrameOnly: false`.
+
+Two things it deliberately does not do. It runs after the navigation, never
+before: settling first only puts `evaluateJavaScript` round-trips ahead of the
+transition, which widens the timing margin and hides the bug instead of fixing
+it. And a tap during the page-turn animation is still lost, roughly a 450 ms
+window, because the settle lands once the navigation has finished. A spread
+reloading for a rotation or a preference change has no host-side trigger and
+remains exposed.
+
 ### Edge Tap and Swipe Navigation
 
 The flureadium iOS plugin supports both edge tap and swipe gesture navigation for EPUB, PDF, and image-based readers.

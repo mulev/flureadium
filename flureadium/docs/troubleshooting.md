@@ -438,6 +438,33 @@ during platform-view creation still reaches the first subscriber.
 
 ## Platform-Specific Issues
 
+### iOS: Taps Stop Working After Using Page-Navigation Controls
+
+**Symptoms:**
+- A tap on the page toggles the reader chrome at first, then stops for the rest
+  of the reading session
+- It starts after a few presses on a next-page or previous-page control the host
+  draws over the reader
+- Reopening the reader fixes it; nothing else does
+- iOS 17.x and below. Seen on both iPhone and iPad, in reflowable EPUB
+
+**Cause:**
+Readium's EPUB navigator disables interaction on the spreads' shared pagination
+view for the length of a page transition. A touch caught in flight dies there
+without the page ever receiving `pointerup`, and Readium's tap recognisers treat
+that pointer id as still pressed, refusing every tap afterwards. One occurrence
+is enough. The defect is in the toolkit, not in the host app, and a button placed
+over the platform view is what puts a touch in flight.
+
+**Solution:**
+Upgrade to flureadium 0.19.3 or later, which cancels the pointer ids each spread
+still holds once a navigation completes. See
+[Pointer Settling After Navigation](platform-specific/ios.md#pointer-settling-after-navigation).
+
+On an older release there is no host-side workaround worth the trouble: moving
+the navigation controls off the reader surface avoids the trigger, but the same
+strand is reachable from the VoiceOver three-finger swipe.
+
 ### iOS: Localhost Connection Failed
 
 **Error:**
