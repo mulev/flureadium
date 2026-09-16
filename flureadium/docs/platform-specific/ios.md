@@ -184,6 +184,7 @@ ios/Sources/flureadium/
 ├── ImageReaderView.swift        # CBZ / DIVINA reader view
 ├── AudioReaderView.swift        # Audio-only reader host (no navigator)
 ├── EpubUserScripts.swift        # The WKUserScripts the EPUB WebView injects
+├── SpreadPointerSettler.swift   # Cancels the pointer ids each spread's document still holds
 ├── EpubNavigatorConfiguration.swift # The configuration handed to the Readium EPUB navigator
 ├── SpineItemPositionMemory.swift # The scroll position remembered per spine item, for swipe-back
 ├── EpubPageBridge.swift         # Every call into the window.epubPage JavaScript API
@@ -494,13 +495,25 @@ A fixed-layout spread keeps its resource in an `<iframe>`, and
 its own set of live pointers, which is why the script is injected with
 `forMainFrameOnly: false`.
 
-Two things it deliberately does not do. It runs after the navigation, never
-before: settling first only puts `evaluateJavaScript` round-trips ahead of the
+What it deliberately does not do. It runs after the navigation, never before:
+settling first only puts `evaluateJavaScript` round-trips ahead of the
 transition, which widens the timing margin and hides the bug instead of fixing
-it. And a tap during the page-turn animation is still lost, roughly a 450 ms
-window, because the settle lands once the navigation has finished. A spread
-reloading for a rotation or a preference change has no host-side trigger and
-remains exposed.
+it.
+
+Three gaps are known and left open, each cheaper to live with than to close:
+
+- A tap during the page-turn animation is still lost, roughly a 450 ms window,
+  because the settle lands once the navigation has finished.
+- A press that begins after the navigation resolves but before the settle runs
+  is cancelled along with the strand, and loses its tap. Nothing in the page can
+  tell the two apart — a stranded id differs from a live one only in what WebKit
+  will do next — and no age cutoff separates them either, since a non-animated
+  `go` strands a pointer younger than a held finger. The window is widest for
+  the settle that follows `locationDidChange`, which Readium reports by polling.
+  The cost is one dropped tap that the next tap fixes.
+- A spread reloading for a rotation or a preference change has no host-side
+  trigger, and a cross-origin iframe inside a resource cannot be reached from
+  the parent document. Both remain exposed.
 
 ### Edge Tap and Swipe Navigation
 

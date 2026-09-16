@@ -22,6 +22,7 @@ flureadium/example/ios/RunnerTests/
 ├── FlutterNavigationConfigTests.swift # setNavigationConfig dictionary decoding
 ├── ReaderEdgeNavigationStateTests.swift # Edge tap/swipe gate matrix and page-turn direction
 ├── EpubUserScriptsTests.swift         # Injected script count, order, injection times, generated sources
+├── SpreadPointerSettlerTests.swift    # Pointer settle against real WKWebViews: bridge payload, every spread, subframes, weak registry
 ├── EpubNavigatorConfigurationTests.swift # Content insets, preload counts, decorations, editing actions, preferences
 ├── EpubPageBridgeTests.swift          # Exact window.epubPage JavaScript per call, and every reply shape
 ├── EpubLocatorReporterTests.swift     # Page-changed publishing, the dispose race, external links
