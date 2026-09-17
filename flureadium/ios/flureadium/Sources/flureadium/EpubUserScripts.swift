@@ -104,11 +104,13 @@ enum EpubUserScripts {
                 });
                 live = {};
             }
-            // A fixed-layout spread holds the resource in an iframe, and native
-            // can only evaluate in the main frame, so the parent hands the call
-            // down. Same origin under Readium's server. A cross-origin child
-            // throws here and keeps its own live ids, which nothing can settle:
-            // WebKit hands out no frame handle to reach it natively either.
+            // A fixed-layout spread holds the resource in an iframe, and the
+            // registry keys on the web view rather than on frames, so the
+            // parent hands the call down. Same origin under Readium's server. A
+            // cross-origin child throws here and keeps its own live ids:
+            // reaching it from native would take the `WKFrameInfo` its ready
+            // post already carries plus `evaluateJavaScript(_:in:contentWorld:)`,
+            // which needs iOS 14 while this package declares 13.4.
             for (var i = 0; i < window.frames.length; i++) {
                 try { window.frames[i].\(settleFunctionName)?.(); } catch (e) {}
             }

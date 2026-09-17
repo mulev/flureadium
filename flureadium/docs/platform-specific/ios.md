@@ -512,8 +512,11 @@ Three gaps are known and left open, each cheaper to live with than to close:
   the settle that follows `locationDidChange`, which Readium reports by polling.
   The cost is one dropped tap that the next tap fixes.
 - A spread reloading for a rotation or a preference change has no host-side
-  trigger, and a cross-origin iframe inside a resource cannot be reached from
-  the parent document. Both remain exposed.
+  trigger. A cross-origin iframe inside a resource is unreachable from the
+  parent document, and reaching it from native would take the `WKFrameInfo` its
+  ready post already carries together with
+  `evaluateJavaScript(_:in:contentWorld:)`, which needs iOS 14 while the plugin
+  declares 13.4. Both remain exposed.
 
 ### Edge Tap and Swipe Navigation
 

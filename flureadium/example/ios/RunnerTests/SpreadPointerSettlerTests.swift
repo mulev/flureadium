@@ -64,7 +64,9 @@ final class SpreadPointerSettlerTests: XCTestCase {
 
         press(pointerId: 3, in: webView)
         dispatch("pointerup", pointerId: 3, in: webView)
-        settler.settle()
+        XCTAssertEqual(
+            settler.settle(), 1,
+            "an unregistered spread would make the empty recorder below prove nothing")
 
         // Ordered after the settle's own evaluation on the same web view.
         evaluate("void 0;", in: webView)
