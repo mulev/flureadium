@@ -174,6 +174,7 @@ ios/Sources/flureadium/
 ├── ImageReaderView.swift      # CBZ / DIVINA reader view
 ├── AudioReaderView.swift      # Audio-only reader host (no navigator)
 ├── EpubUserScripts.swift      # WKUserScripts injected into the EPUB WebView
+├── SpreadPointerSettler.swift # Pointer ids each EPUB spread still holds, cancelled after a navigation
 ├── EpubNavigatorConfiguration.swift # EPUB navigator configuration builder
 ├── SpineItemPositionMemory.swift # Scroll-mode position remembered per spine item
 ├── EpubPageBridge.swift       # The window.epubPage JavaScript API

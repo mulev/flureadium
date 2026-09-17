@@ -1,3 +1,24 @@
+## 0.19.3
+
+### Bug Fixes
+
+- **A tap on the page keeps working after using page-navigation controls on iOS.** Readium's EPUB navigator disables interaction on the spreads' shared pagination view for the length of a page transition. If a touch is in flight at that moment — which is what a host's own next-page button produces, because a button drawn over the platform view sends its touch into the web view as well — UIKit has already ended the touch but WebKit has not yet turned it into a page `pointerup`, and disabling interaction tears that down: the page receives neither `pointerup` nor `pointercancel` for the id. Readium's `ActivatePointerObserver` reads an unterminated press as a pointer that is still down and holds the id forever, so every later tap fails against it, including the navigator's own `didTapAt`. One occurrence left the reader with no working tap until the view was re-created — and since the chrome a host toggles on tap usually carries the only close control, that meant force-quitting the app. Reproduced on iOS 17.5 on both iPhone and iPad, where the window between the finger lifting and the interaction-disable measured 7–17 ms and every press stranded; on 18.3 the same window measured 28–114 ms and none did, so the difference is timing rather than immunity.
+
+  The plugin now settles the page's pointers after each navigation completes: every spread's document dispatches a synthetic `pointercancel` for the ids it still holds, which travels through Readium's own pointer bridge and returns its observers to idle. No Readium source is modified — the fix uses the `setupUserScripts` delegate hook, the toolkit's own `pointercancel` listener, and its own cancel transition. A fixed-layout spread keeps its resource in an iframe, and the settle is driven per web view rather than per frame, so the parent document hands the call down to each child.
+
+  Four gaps are worth knowing. A tap during the page-turn animation is still lost, roughly a 450 ms window, because the settle lands once the navigation has finished. A press that begins after the navigation resolves but before the settle runs is cancelled along with the strand and loses its tap: nothing in the page can tell a stranded id from a live one, since they differ only in what WebKit will do next — that costs one tap, which the next tap fixes. A spread reloading for a rotation or a preference change gets no settle at all, because nothing on the host side sees it. And a cross-origin iframe inside a resource does take the settle, but the parent document cannot call into the child, so the child's ids stay live.
+
+### Documentation
+
+- `docs/platform-specific/ios.md` gains *Pointer Settling After Navigation*: the mechanism, why the settle runs after the navigation rather than before, and the three gaps it leaves open.
+- `docs/troubleshooting.md` gains an entry for the symptom a host app sees, with the cause and what to upgrade to.
+
+### Testing
+
+- `SpreadPointerSettlerTests` drives real `WKWebView`s running the real injected script against a stub of Readium's bridge, and asserts the payload that bridge would accept: the cancel phase and pointer id, no interactive element, `defaultPrevented` false, negative coordinates. It also covers every registered spread rather than only the current one, a pointer stranded inside a subframe, a pointer the page terminated itself, and the registry releasing a discarded spread.
+
+---
+
 ## 0.19.2
 
 ### New Features
