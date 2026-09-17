@@ -489,8 +489,8 @@ coordinates. Each of those clears one filter Readium applies before an observer
 sees the event, so changing the dispatch shape is what breaks this rather than
 changing the timing.
 
-A fixed-layout spread keeps its resource in an `<iframe>`, and
-`evaluateJavaScript` only runs in the main frame, so the settle function walks
+A fixed-layout spread keeps its resource in an `<iframe>`, and the settle is
+driven per web view rather than per frame, so the settle function walks
 `window.frames` and hands the call down to each child document. Every frame keeps
 its own set of live pointers, which is why the script is injected with
 `forMainFrameOnly: false`.
@@ -500,7 +500,7 @@ settling first only puts `evaluateJavaScript` round-trips ahead of the
 transition, which widens the timing margin and hides the bug instead of fixing
 it.
 
-Three gaps are known and left open, each cheaper to live with than to close:
+Four gaps are known and left open, each cheaper to live with than to close:
 
 - A tap during the page-turn animation is still lost, roughly a 450 ms window,
   because the settle lands once the navigation has finished.
@@ -511,12 +511,15 @@ Three gaps are known and left open, each cheaper to live with than to close:
   `go` strands a pointer younger than a held finger. The window is widest for
   the settle that follows `locationDidChange`, which Readium reports by polling.
   The cost is one dropped tap that the next tap fixes.
-- A spread reloading for a rotation or a preference change has no host-side
-  trigger. A cross-origin iframe inside a resource is unreachable from the
-  parent document, and reaching it from native would take the `WKFrameInfo` its
-  ready post already carries together with
-  `evaluateJavaScript(_:in:contentWorld:)`, which needs iOS 14 while the plugin
-  declares 13.4. Both remain exposed.
+- A spread reloading for a rotation or a preference change gets no settle at
+  all: nothing on the host side sees that reload.
+- A cross-origin iframe inside a resource takes the settle and drops it, because
+  the parent document cannot call into the child. Two routes would close it,
+  neither taken: a `message` listener in the child settled by `postMessage` from
+  the parent would accept a settle from any origin, and evaluating natively in
+  the `WKFrameInfo` the ready post already carries needs
+  `evaluateJavaScript(_:in:contentWorld:)` behind an iOS 14 gate — for a case no
+  EPUB in hand produces.
 
 ### Edge Tap and Swipe Navigation
 

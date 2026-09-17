@@ -105,12 +105,15 @@ enum EpubUserScripts {
                 live = {};
             }
             // A fixed-layout spread holds the resource in an iframe, and the
-            // registry keys on the web view rather than on frames, so the
-            // parent hands the call down. Same origin under Readium's server. A
-            // cross-origin child throws here and keeps its own live ids:
-            // reaching it from native would take the `WKFrameInfo` its ready
-            // post already carries plus `evaluateJavaScript(_:in:contentWorld:)`,
-            // which needs iOS 14 while this package declares 13.4.
+            // settle is driven per web view rather than per frame, so the parent
+            // hands the call down. Same origin under Readium's server. A
+            // cross-origin child throws here and keeps its own live ids. Two
+            // routes would close that and neither is taken: a `message`
+            // listener in the child, settled by `postMessage` from this loop,
+            // would accept a settle from any origin; and evaluating natively in
+            // the `WKFrameInfo` the ready post already carries needs
+            // `evaluateJavaScript(_:in:contentWorld:)` behind an iOS 14 gate,
+            // for a case no EPUB in hand produces.
             for (var i = 0; i < window.frames.length; i++) {
                 try { window.frames[i].\(settleFunctionName)?.(); } catch (e) {}
             }

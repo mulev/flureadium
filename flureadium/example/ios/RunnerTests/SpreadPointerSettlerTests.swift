@@ -135,9 +135,9 @@ final class SpreadPointerSettlerTests: XCTestCase {
         )
     }
 
-    /// A fixed-layout spread holds its resource in an iframe, and native can
-    /// only evaluate in the main frame, so the parent document has to hand the
-    /// settle call down. Without that walk the whole fixed-layout path keeps
+    /// A fixed-layout spread holds its resource in an iframe, and the settle is
+    /// driven per web view rather than per frame, so the parent document has to
+    /// hand the call down. Without that walk the whole fixed-layout path keeps
     /// stranding while the settler reports success.
     func testSettleReachesAPointerInsideASubframe() {
         let settler = SpreadPointerSettler()
