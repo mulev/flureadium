@@ -457,8 +457,8 @@ is enough. The defect is in the toolkit, not in the host app, and a button place
 over the platform view is what puts a touch in flight.
 
 **Solution:**
-Upgrade to the first release whose `CHANGELOG.md` entry says the plugin cancels
-the pointer ids each spread still holds once a navigation completes. See
+Upgrade to flureadium 0.19.3 or later, which cancels the pointer ids each spread
+still holds once a navigation completes. See
 [Pointer Settling After Navigation](platform-specific/ios.md#pointer-settling-after-navigation).
 
 On an older release there is no host-side workaround worth the trouble: moving
