@@ -67,7 +67,12 @@ open class AudiobookNavigator(
      * resolved them.
      *
      * Volatile because it is written on the main dispatcher inside [initNavigator]
-     * and read from the IO coroutine PublicationChannel launches per method call.
+     * and read from two places: the IO coroutine PublicationChannel launches per
+     * method call, and [trackDuration], reached from
+     * TimebasedNavigator.onCurrentLocatorChanges on the main dispatcher. The
+     * second reader never sees the empty initial value: [initNavigator] assigns
+     * this list before it builds the navigator, and only the built navigator's
+     * currentLocator flow can deliver a locator change.
      */
     @Volatile
     var resolvedTrackDurations: List<Double?> = emptyList()

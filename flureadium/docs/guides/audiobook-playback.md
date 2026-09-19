@@ -323,7 +323,9 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
         setState(() {
           _state = state.state;
           _position = state.currentOffset ?? Duration.zero;
-          _duration = state.currentDuration ?? Duration.zero;
+          // `currentDuration` is absent while the platform does not know the
+          // length. Keep the last value instead of resetting the scrubber.
+          if (state.currentDuration != null) _duration = state.currentDuration!;
         });
       },
     );
