@@ -407,8 +407,10 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
   }
 
   Widget _buildProgressBar() {
+    // `_duration` can outlive its track: it holds the last known length while
+    // the next track's is still unknown, so the ratio has to be clamped.
     final progress = _duration.inMilliseconds > 0
-        ? _position.inMilliseconds / _duration.inMilliseconds
+        ? (_position.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
         : 0.0;
 
     return Column(
