@@ -39,16 +39,6 @@ void _navigationTests(String assetLabel, String asset, String reopenButton) {
 
       final cover = find.byKey(const Key('reader-loading-cover'));
 
-      // ensureAppShowing returns on the open-generation bump, which lands in
-      // the same setState that clears _readerStatus — so this wait is a guard,
-      // not a delay: were a 'ready' still latched, the sampling loop below
-      // would return on it and never watch the load it exists to watch.
-      await expectEventually(
-        tester,
-        () => readerStatus(tester) != 'ready',
-        reason: 'the open never reset the reader status',
-      );
-
       // Sampled on every pump: covered exactly while the reader is loading.
       // 'error' and 'closed' are terminal, so the cover is gone there too.
       await expectEventually(
@@ -65,6 +55,14 @@ void _navigationTests(String assetLabel, String asset, String reopenButton) {
         reason: 'reader never reported ready',
         timeout: const Duration(seconds: 30),
       );
+
+      // The sampling above can only see what a frame renders, and an open that
+      // starts and finishes between two pumps renders nothing but `ready`. The
+      // history is cleared in the same setState that bumps the open
+      // generation, so everything in it belongs to this open.
+      final history = readerStatusHistory(tester);
+      expect(history, contains('loading'), reason: 'the open never loaded');
+      expect(history.last, 'ready');
     });
 
     testWidgets('navigate left and right', (tester) async {

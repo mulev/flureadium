@@ -124,6 +124,11 @@ class _ReaderPageState extends State<ReaderPage> {
   // reported readiness. For an audio-only publication this is the only
   // readiness signal there is: the host has no navigator to report a page.
   String _readerStatus = '';
+  // Every status this publication has reported, in order. `_readerStatus` is
+  // a current value, and a test sampling it per frame cannot see a load that
+  // starts and finishes between two pumps — the open then looks as if it were
+  // never anything but `ready`. The sequence is the fact that survives.
+  final List<String> _readerStatuses = [];
   // Bumped by 'Remount Reader' to change the reader widget's key. The plugin
   // rebuilds the native view by itself when it receives a different
   // Publication instance, but not when the instance is unchanged, which is
@@ -173,7 +178,10 @@ class _ReaderPageState extends State<ReaderPage> {
     _statusSub = _flureadium.onReaderStatusChanged.listen((s) {
       debugPrint('ReaderStatus: $s');
       if (!mounted) return;
-      setState(() => _readerStatus = s.name);
+      setState(() {
+        _readerStatus = s.name;
+        _readerStatuses.add(s.name);
+      });
     });
     _locatorSub = _flureadium.onTextLocatorChanged.listen(
       (l) => setState(() {
@@ -439,6 +447,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _controlsVisible = true;
     _openGeneration++;
     _readerStatus = '';
+    _readerStatuses.clear();
     _locator = null;
     _locatorEvents = 0;
     _tapEvents = 0;
@@ -829,6 +838,10 @@ class _ReaderPageState extends State<ReaderPage> {
                           '${_publication?.metadata.identifier ?? ''}',
                     ),
                     _latch('reader-status', 'reader-status: $_readerStatus'),
+                    _latch(
+                      'reader-status-history',
+                      'reader-status-history: ${_readerStatuses.join(">")}',
+                    ),
                     _latch(
                       'cancelled-stream-disconnect-seen',
                       'cancelled-stream-disconnect-seen: '

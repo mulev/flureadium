@@ -100,27 +100,37 @@ abstract class TimebasedNavigator<P : MediaNavigator.Playback>(
     }
 
     override fun onCurrentLocatorChanges(locator: Locator) {
-        val readingOrderLink =
-            publication.readingOrder.find { link ->
-                link.href.toString() == locator.href.toString()
-            }
-
-        if (locator.locations.position == null) {
-            val index =
-                publication.readingOrder.indexOfFirst { link ->
-                    link == readingOrderLink
-                }
-            if (index != -1) {
-                val newLocator = locator.copy(
-                    locations = locator.locations.copy(position = index + 1)
-                )
-                timebaseListener.onTimebasedCurrentLocatorChanges(newLocator, readingOrderLink)
-                return
-            }
+        val index = publication.readingOrder.indexOfFirst { link ->
+            link.href.toString() == locator.href.toString()
+        }
+        val readingOrderLink = publication.readingOrder.getOrNull(index)?.let { link ->
+            trackDuration(index)?.let { link.copy(duration = it) } ?: link
         }
 
-        timebaseListener.onTimebasedCurrentLocatorChanges(locator, readingOrderLink)
+        val newLocator =
+            if (locator.locations.position == null && index != -1) {
+                locator.copy(locations = locator.locations.copy(position = index + 1))
+            } else {
+                locator
+            }
+
+        timebaseListener.onTimebasedCurrentLocatorChanges(newLocator, readingOrderLink)
     }
+
+    /**
+     * Effective duration in seconds of reading-order track [index] — the value this
+     * navigator actually plays with, which is not always the one the manifest declares.
+     * Null when the navigator has no duration of its own; every navigator but the
+     * audiobook one inherits that default.
+     *
+     * The manifest is not the source because it is not what plays: `AudiobookNavigator`
+     * resolves the missing durations up front and hands the *resolved* reading order to
+     * Readium's `createNavigator`, leaving `publication.readingOrder` untouched. Reading
+     * the duration back off the manifest therefore reports null for a streamed book that
+     * declares none, however well the probe did — the frozen `0:00` scrubber this seam
+     * exists to fix.
+     */
+    protected open fun trackDuration(index: Int): Double? = null
 
     /**
      * Start playing
