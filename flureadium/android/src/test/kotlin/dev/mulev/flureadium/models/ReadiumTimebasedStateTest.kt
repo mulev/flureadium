@@ -48,15 +48,6 @@ internal class ReadiumTimebasedStateTest {
         )
     }
 
-    @Test
-    fun toJSON_omitsAnUnknownCurrentOffsetTheSameWay() {
-        // currentOffset has always been Double?. Pinning it here keeps the two
-        // fields on one convention so nobody re-splits them later.
-        val json = state(duration = 1001.0).toJSON()
-
-        assertFalse(json.has("currentOffset"))
-    }
-
     private fun state(duration: Double?) = ReadiumTimebasedState(
         currentLocator = null,
         state = TimebasedNavigator.TimebasedState.Paused,

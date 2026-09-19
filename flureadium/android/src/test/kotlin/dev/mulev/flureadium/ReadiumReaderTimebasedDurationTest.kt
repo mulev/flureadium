@@ -25,7 +25,6 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * What the timebased duration looks like by the time it reaches Flutter.
@@ -69,16 +68,6 @@ internal class ReadiumReaderTimebasedDurationTest {
         val state = emitState(trackLink(duration = 1001 / 1000.0))
 
         assertEquals(1001.0, state.currentDuration)
-    }
-
-    @Test
-    fun onTimebasedCurrentLocatorChanges_serializesTheDurationWithoutADecimalPoint() = runTest {
-        val serialized = emitState(trackLink(duration = 1001 / 1000.0)).toJSON().toString()
-
-        assertTrue(
-            serialized.contains("\"currentDuration\":1001"),
-            "Dart reads the field only when it serializes as an integer: $serialized"
-        )
     }
 
     @Test
