@@ -1,3 +1,30 @@
+## 0.19.4
+
+### Bug Fixes
+
+- **A streamed audiobook shows real progress on its first open on Android.** A book whose manifest declares no per-track durations played correctly but rendered nothing: the scrubber stayed disabled, both time labels read zero, and the mini-player's bar was empty for the whole session. `TimebasedNavigator.onCurrentLocatorChanges` read the current track's length from `publication.readingOrder` and nowhere else, and that manifest is exactly what `AudiobookNavigator` leaves alone — it resolves the missing durations up front and hands the *resolved* reading order to Readium's `createNavigator`. The probe could do its job perfectly and the state stream still reported nothing.
+
+  `TimebasedNavigator` now asks a `protected open fun trackDuration(index: Int): Double?` for the duration the navigator actually plays with. `AudiobookNavigator` answers from the durations it resolved; every other navigator, `TTSNavigator` included, inherits the null default and behaves as before. `SyncAudiobookNavigator` takes the same value for its media-overlay time offset, which had the same defect from the same cause. The manifest stays the fallback, so a book that does declare its durations is unaffected.
+
+  The locator lookup in that method changed shape as part of this. It used to find the reading-order link by href and then find that link's index by object equality; the link handed to the listener is now a `copy()` carrying the effective duration, so it no longer compares equal to the element it came from. The index is resolved once, by href, and used for both the duration and the `locations.position` fill.
+
+### Behaviour Changes
+
+- **Android omits `currentDuration` when it does not know it, instead of reporting `0.0`.** `ReadiumTimebasedState.currentDuration` is now `Double?`, and a null value leaves the key out of the JSON the method channel carries — which is what iOS has always done. A zero is a value, so it overwrote the last known length on every tick; an absent key lets a host keep what it had. Dart's `ReadiumTimebasedState.fromJsonMap` already accepted a missing key, so no host code has to change.
+
+  One consequence is deliberate: across a track change to a track whose duration is unknown, the UI holds the previous track's length until the real one arrives. That is what iOS does today, and with the fix above the window is a single tick at open. A host that would rather show nothing can test `currentDuration` for null itself. What it must not do is treat null as zero — the audiobook guide's sample was doing exactly that and has been corrected.
+
+- Both seconds-to-milliseconds conversions on the Android timebased state round to whole milliseconds. Dart gates on `map['currentDuration'] is int`, and the probe's round trip through `retrieverMs / 1000.0` and back is non-integral for 23,588 of the first two million millisecond values — `1001` returns as `1000.9999999999999`, serializes with a decimal point, fails that test, and is silently nulled.
+
+### Documentation
+
+- The audiobook playback guide says where the reported duration comes from, and its sample keeps the last known length rather than resetting to zero on an absent one. `docs/platform-specific/android.md` records the navigator-resolved read and names the iOS parity; `docs/api-reference/streams-events.md` documents `currentDuration` as absent-when-unknown.
+
+### Testing
+
+- Three Kotlin/Robolectric files cover the chain: what `onCurrentLocatorChanges` hands the listener for each duration source, that a null duration is absent from the serialized state, and that the rounding survives the channel.
+- `navigation … the load cover tracks reader status` no longer races. It waited for the reader status to leave `ready` before watching the load, which an open completing between two pumps never satisfies. The example app now latches the ordered statuses each open reports, and the load is asserted from that sequence rather than caught in flight.
+
 ## 0.19.3
 
 ### Bug Fixes
