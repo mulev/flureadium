@@ -1,2 +1,6 @@
-# stage=finalize conf=1770439631-2222 commit=d12cb39 dirty=yes started=2026-09-16T22:42:12Z finished=2026-09-16T23:10:08Z finished_epoch=1789600209 rows=all
-all	PASS	2026-09-16T23:10:07Z	  ✅ ALL RUN SUITES PASSED
+# stage=phase-exit conf=1770439631-2222 commit=761a9b2 dirty=yes started=2026-09-19T09:16:45Z finished=2026-09-19T09:33:09Z finished_epoch=1789810392 rows=static,static-plugin,static-plugin-canary,static-lints,suites
+static	PASS	2026-09-19T09:17:15Z	No issues found! (ran in 3.6s)
+static-plugin	PASS	2026-09-19T09:18:25Z	No issues found!
+static-plugin-canary	PASS	2026-09-19T09:19:36Z	flureadium_lints is wired up in all 3 packages
+static-lints	PASS	2026-09-19T09:19:40Z	No issues found!
+suites	PASS	2026-09-19T09:33:08Z	  ✅ ALL RUN SUITES PASSED

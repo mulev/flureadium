@@ -45,12 +45,10 @@ class SyncAudiobookNavigator(
     private var lastMediaOverlayItem: FlutterMediaOverlayItem? = null
 
     override fun onCurrentLocatorChanges(locator: Locator) {
-        val readingOrderLink =
-            publication.readingOrder.find { link ->
-                link.href.toString() == locator.href.toString()
-            }
-
-        val duration = readingOrderLink?.duration
+        val index = publication.readingOrder.indexOfFirst { link ->
+            link.href.toString() == locator.href.toString()
+        }
+        val duration = trackDuration(index) ?: publication.readingOrder.getOrNull(index)?.duration
         val timeOffset = locator.getTimeOffset() ?: (duration?.let { duration ->
             locator.locations.progression?.let { prog -> duration * prog }
         })

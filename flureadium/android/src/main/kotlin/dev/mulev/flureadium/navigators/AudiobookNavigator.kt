@@ -73,6 +73,8 @@ open class AudiobookNavigator(
     var resolvedTrackDurations: List<Double?> = emptyList()
         protected set
 
+    override fun trackDuration(index: Int): Double? = resolvedTrackDurations.getOrNull(index)
+
     override suspend fun initNavigator() {
         // Create AudioNavigatorFactory
         val navigatorFactory = ExoPlayerNavigatorFactory(
