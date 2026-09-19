@@ -30,9 +30,11 @@ data class ReadiumTimebasedState(
     val currentBuffer: Long?,
 
     /**
-     *  Current duration in milliseconds
+     *  Current duration in milliseconds, or `null` when the platform does not
+     *  know it. Absent from the JSON rather than reported as zero — matching
+     *  ReadiumTimeBasedState.swift, which writes the key only `if let`.
      */
-    val currentDuration: Double,
+    val currentDuration: Double?,
 
     /**
      *  TTS error type when state is Failure (null otherwise)
