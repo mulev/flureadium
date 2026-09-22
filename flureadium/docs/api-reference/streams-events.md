@@ -142,6 +142,12 @@ class ReadiumTimebasedState {
 }
 ```
 
+#### currentDuration
+
+**Type:** `Duration?`
+
+Absent when the platform does not know the track length — it is never reported as zero. A streamed audiobook whose manifest declares no duration arrives as `null` until the native side has probed the track, so treat `null` as "not known yet" and keep the last value you were given rather than resetting a scrubber to `0:00`. Both platforms behave this way; iOS has always omitted the field, and Android no longer substitutes a zero for it.
+
 #### ttsErrorType
 
 **Type:** `TtsErrorType?`

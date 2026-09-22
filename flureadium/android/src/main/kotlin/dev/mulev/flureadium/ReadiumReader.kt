@@ -68,6 +68,7 @@ import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.PublicationOpener.OpenError
 import org.readium.r2.streamer.parser.DefaultPublicationParser
 import java.lang.ref.WeakReference
+import kotlin.math.roundToLong
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -157,7 +158,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
             }
 
             ReadiumTimebasedState(
-                locator, state, offset, buffer, duration ?: 0.0,
+                locator, state, offset, buffer, duration,
                 ttsErrorType = ttsErrorType
             )
         }.throttleLatest(100.milliseconds).distinctUntilChanged()
@@ -792,8 +793,13 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
 
         Log.d(TAG, ":onTimebasedCurrentLocatorChanges $locator, timeOffset=$timeOffset")
 
-        currentTimebasedOffset.value = timeOffset?.let { it * 1000 }
-        currentTimebasedDuration.value = duration?.let { it * 1000 }
+        // Round to whole milliseconds: Dart gates on `map['currentDuration'] is int`
+        // (state_model.dart), and org.json emits a Double as an integer literal only
+        // when it has no fractional part. The probe reports `retrieverMs / 1000.0`,
+        // so this `* 1000` does not land exactly (1001 ms -> 1000.9999999999999) and
+        // an unrounded value would be silently nulled on the Dart side.
+        currentTimebasedOffset.value = timeOffset?.let { (it * 1000).roundToLong().toDouble() }
+        currentTimebasedDuration.value = duration?.let { (it * 1000).roundToLong().toDouble() }
         currentTimebasedLocator.value = locator
     }
 

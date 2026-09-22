@@ -72,6 +72,13 @@ returns one duration per reading-order position, in seconds, with `null` where
 the value is still unknown. If your app owns the manifest file, write those
 numbers into it and the second open has nothing left to fetch.
 
+What playback reports back is the same resolved value, not the manifest's. A
+book whose manifest states no lengths shows a real remaining time from its
+first open, so the scrubber counts down right away instead of resting at 0:00
+until the durations have been written back and the book opened again. That does
+not change the advice above: a manifest that already declares its durations
+still opens fastest, because it saves the requests.
+
 ```dart
 await flureadium.audioEnable();
 
@@ -316,7 +323,9 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
         setState(() {
           _state = state.state;
           _position = state.currentOffset ?? Duration.zero;
-          _duration = state.currentDuration ?? Duration.zero;
+          // `currentDuration` is absent while the platform does not know the
+          // length. Keep the last value instead of resetting the scrubber.
+          if (state.currentDuration != null) _duration = state.currentDuration!;
         });
       },
     );
@@ -398,8 +407,10 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
   }
 
   Widget _buildProgressBar() {
+    // `_duration` can outlive its track: it holds the last known length while
+    // the next track's is still unknown, so the ratio has to be clamped.
     final progress = _duration.inMilliseconds > 0
-        ? _position.inMilliseconds / _duration.inMilliseconds
+        ? (_position.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
         : 0.0;
 
     return Column(

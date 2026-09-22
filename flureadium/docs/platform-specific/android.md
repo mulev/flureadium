@@ -556,8 +556,25 @@ the karaoke path resolves and reports through the same code. The `/main` method
 open. A host that owns the manifest file can write those durations into it,
 after which the next open declares them and probes nothing.
 
+The duration the timebased state carries comes from that same resolved list.
+`TimebasedNavigator.onCurrentLocatorChanges` asks `trackDuration(index)` and
+copies the answer onto the reading-order link it hands the listener;
+`AudiobookNavigator` answers from `resolvedTrackDurations`, and every other
+navigator inherits the `null` default. It used to read the duration straight
+off `publication.readingOrder`, which reports `null` for a streamed book no
+matter how well the probe did: `initNavigator` passes a resolved copy of the
+reading order to `createNavigator` and leaves the publication's own untouched,
+so the probed values were never in the list being read. `SyncAudiobookNavigator`
+asks the same seam before falling back to the manifest, so its media-overlay
+time offset no longer collapses to `0.0` on a book that declares no lengths.
+iOS never had this gap, because `AudioNavigator.resourceDuration` prefers the
+player's own length over the manifest — see "Resolved Track Durations Answer
+Empty" in [ios.md](ios.md).
+
 **Files:**
 - `AudiobookNavigator.kt` — `initNavigator()` builds the navigator inside `mainScope.async { }`
+- `TimebasedNavigator.kt` — `trackDuration(index)`, the seam the reported duration comes from, and `onCurrentLocatorChanges` which applies it
+- `SyncAudiobookNavigator.kt` — `onCurrentLocatorChanges()` takes the resolved duration before the manifest's for its time offset
 - `ReadiumReader.kt` — `audiobookTrackDurations()` reads the resolved list from the open audio navigator
 - `PublicationChannel.kt` — the `/main` `audiobookTrackDurations` route
 
