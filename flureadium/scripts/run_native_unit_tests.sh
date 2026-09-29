@@ -342,6 +342,21 @@ log ""
 
 OVERALL_EXIT=0
 
+# ── Wall-clock guard ──────────────────────────────────────────────────────────
+# Runs before the platform legs and regardless of --skip-android/--skip-ios: it
+# reads source, needs no toolchain, and fails in milliseconds instead of after a
+# simulator build. Captured rather than piped into `log` because this script
+# sets no `pipefail`, so an `if ... | tee` would read tee's status and pass.
+log "${CYAN}── Wall-clock guard ─────────────────────────────────────────────────${NC}"
+guard_output=$("$SCRIPT_DIR/check_test_timeouts.sh" 2>&1)
+guard_status=$?
+log "$guard_output"
+if [ "$guard_status" -ne 0 ]; then
+  log "  ${RED}Hardcoded wait literals found — see above${NC}"
+  OVERALL_EXIT=1
+fi
+log ""
+
 # ── Android ───────────────────────────────────────────────────────────────────
 log "${CYAN}── Android (Kotlin/Robolectric) ─────────────────────────────────────${NC}"
 if [ "$SKIP_ANDROID" = false ]; then
