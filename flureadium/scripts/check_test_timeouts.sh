@@ -52,26 +52,41 @@ fail() {
 }
 
 # tree | file glob | offending pattern
+#
+# The patterns are line-oriented, because `grep` is. A label whose argument sits
+# on the next line would otherwise be invisible, so each native pattern also
+# accepts a dangling label — `timeout:` or `.await(` with nothing after it.
+# Zero hits today; the day a formatter wraps one of these calls it stays zero
+# by catching it rather than by luck.
 NATIVE_TREES=(
-  "flureadium/example/ios/RunnerTests|*.swift|timeout:[[:space:]]*[0-9]"
-  "flureadium/example/macos/RunnerTests|*.swift|timeout:[[:space:]]*[0-9]"
-  "flureadium/android/src/test|*.kt|\\.await\\([[:space:]]*[0-9]"
+  "flureadium/example/ios/RunnerTests|*.swift|timeout:[[:space:]]*([0-9]|$)"
+  "flureadium/example/macos/RunnerTests|*.swift|timeout:[[:space:]]*([0-9]|$)"
+  "flureadium/android/src/test|*.kt|\\.await\\([[:space:]]*([0-9]|$)"
 )
 
+# `Future<void>.delayed(...)` is the same call with the type argument written
+# out, and `dart format` leaves both spellings alone, so the pattern has to
+# admit one.
 DART_TREES=(
-  "flureadium/test|*.dart|Future\\.delayed\\("
-  "flureadium_platform_interface/test|*.dart|Future\\.delayed\\("
-  "flureadium/example/test|*.dart|Future\\.delayed\\("
+  "flureadium/test|*.dart|Future(<[^>]*>)?\\.delayed\\("
+  "flureadium_platform_interface/test|*.dart|Future(<[^>]*>)?\\.delayed\\("
+  "flureadium/example/test|*.dart|Future(<[^>]*>)?\\.delayed\\("
+  "flureadium_lints/test|*.dart|Future(<[^>]*>)?\\.delayed\\("
 )
 
 # Scans the given trees and leaves every offending line in HITS. A global rather
 # than stdout: a missing tree has to exit the script, and an `exit` inside a
 # command substitution only kills the subshell.
+#
+# The allow marker counts on the matched line or on either neighbour. It has to:
+# `dart format` splits a call whose trailing comment pushes it past the column
+# limit and carries the comment down to the closing paren, so a marker written
+# beside the call does not stay beside it.
 HITS=""
 scan_trees() { # <allow-marker> <tree entry>...
   local allow="$1"
   shift
-  local entry dir glob pattern found
+  local entry dir glob pattern hit file num from
   HITS=""
   for entry in "$@"; do
     IFS='|' read -r dir glob pattern <<<"$entry"
@@ -79,10 +94,15 @@ scan_trees() { # <allow-marker> <tree entry>...
       fail "NOT RUN — missing tree: $dir. The guard checked nothing, so this is a failure, not a skip."
       exit 1
     fi
-    found=$(grep -rnE "$pattern" --include="$glob" "$REPO_ROOT/$dir" |
-      grep -v "$allow" |
-      sed "s|^$REPO_ROOT/||")
-    [ -n "$found" ] && HITS+="$found"$'\n'
+    while IFS= read -r hit; do
+      [ -n "$hit" ] || continue
+      file=${hit%%:*}
+      num=${hit#*:}
+      num=${num%%:*}
+      from=$((num > 1 ? num - 1 : 1))
+      sed -n "${from},$((num + 1))p" "$file" | grep -q -- "$allow" && continue
+      HITS+="${hit#"$REPO_ROOT"/}"$'\n'
+    done < <(grep -rnE "$pattern" --include="$glob" "$REPO_ROOT/$dir")
   done
 }
 

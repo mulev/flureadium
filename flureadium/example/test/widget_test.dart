@@ -120,12 +120,16 @@ String _keyedValue(WidgetTester tester, String key) =>
 
 // Opening a publication does real file I/O (_extractAsset), which only
 // completes on the real event loop, so these must run inside tester.runAsync.
-// Pumps a frame plus a real delay each tick until [done] holds or the bound is
-// hit.
+// Pumps a frame plus a real delay each tick until [done] holds or the deadline
+// passes. The bound is a deadline, not a tick count, so a loaded machine costs
+// time instead of a failure — 60 ticks was the same bet the native suites lost
+// on CI four times.
 Future<void> _pumpUntil(WidgetTester tester, bool Function() done) async {
-  for (var i = 0; i < 60; i++) {
+  final deadline = DateTime.now().add(const Duration(seconds: 60));
+  while (DateTime.now().isBefore(deadline)) {
     await tester.pump(const Duration(milliseconds: 50));
     if (done()) return;
+    // real-delay: one poll slice; real file I/O only lands on the real clock.
     await Future<void>.delayed(const Duration(milliseconds: 20));
   }
 }

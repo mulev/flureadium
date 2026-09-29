@@ -203,7 +203,7 @@ void main() {
         );
 
         failing.setCurrentWidgetInterface(failing);
-        await Future<void>.delayed(Duration.zero);
+        await pumpEventQueue();
 
         expect(failing.attempted, isTrue);
       },
