@@ -254,7 +254,7 @@ plugin.handle(call) { response in
     expectation.fulfill()
 }
 
-wait(for: [expectation], timeout: 2.0)
+wait(for: [expectation], timeout: asyncTimeout)
 ```
 
 ### Async tests
@@ -282,6 +282,35 @@ That is a bet on main-queue latency, and it has lost: on 2026-08-03 the 200 ms b
 within the 1 s cap and the test failed. It had run in about 0.21 s on the four runs before. Use
 `try? await Task.sleep(nanoseconds:)` on a `@MainActor` test instead — it suspends the actor, so the
 run loop keeps turning, and nothing depends on a queued block being reached in time.
+
+#### Positive waits use the target's ceiling, never a literal
+
+A positive wait's timeout is a hang guard, not a sleep. `wait(for:timeout:)` returns the moment the
+expectation is fulfilled, so a wait that takes 2 s still costs 2 s under a 60 s ceiling: a high
+ceiling cannot slow a green run, and it cannot hide a defect either — a broken path never fulfils
+and still fails, only later. A per-call literal is the opposite: a bet that this machine services
+that callback inside that many seconds.
+
+- Use `asyncTimeout`, declared at file scope in `example/ios/RunnerTests/RunnerTests.swift`. The
+  macOS target declares its own copy in `example/macos/RunnerTests/RunnerTests.swift` — a separate
+  Xcode target cannot see the iOS one.
+- A numeric literal is for an **inverted expectation** only, where the timeout *is* the assertion
+  window rather than a deadline. That line must carry `// inverted: <why>`.
+  `FlutterAudioNavigatorTests.testRemovedObserverDoesNotRouteAfterDispose` is the worked example.
+- Do not bound an asynchronous teardown with a fixed iteration count either. Poll against a deadline
+  derived from `asyncTimeout`, as `SpreadPointerSettlerTests.testReleasedSpreadIsDropped` does.
+- Kotlin counterpart: real-clock latch awaits use their file's ceiling
+  (`latchTimeoutSeconds` in `TrackDurationProbeTest.kt`). Robolectric's `idleFor(...)` and kotlinx's
+  `advanceUntilIdle()` advance a virtual clock and need none.
+
+`flureadium/scripts/check_test_timeouts.sh` enforces both rules and runs inside
+`run_native_unit_tests.sh`, which the `phase-exit | suites` validator row reaches. **A red run means
+a native test wait hardcoded a number of seconds**: swap it for the target's ceiling, or mark it
+inverted.
+
+The same failure class took CI down again after the 2026-08-03 incident above — on 2026-09-17,
+2026-09-19, 2026-09-22 and twice on 2026-09-29, the last blocking PR #75. The rule was documented
+from August and unenforced until the guard landed.
 
 ### Negative assertions need a positive control
 
