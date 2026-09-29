@@ -12,7 +12,7 @@
 
 ### Testing
 
-- A Kotlin unit test covers the Flutter → pdfium mapping: both axes, the null axis the resolver is meant to default, both fit constants against `PdfiumPreferences`'s own `require`, and the saved-state round trip that keeps `pageLayout` alive for iOS.
+- A Kotlin unit test covers the Flutter → pdfium mapping: both axes, the null axis the resolver is meant to default, both fit constants against `PdfiumPreferences`'s own `require`, and the two fields that reach nothing on Android. A second pins the store the pause/resume rebuild reads, which is the half of the defect a live `submitPreferences` does not cover.
 
 ## 0.19.4
 

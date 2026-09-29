@@ -150,10 +150,16 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
             val paginated = flutterPreferences.scrollMode == FlutterPdfScrollMode.HORIZONTAL
             configurator.pageSnap(paginated)
             configurator.pageFling(paginated)
-            // isScrollMode stays false on purpose: this flag gates all drag and
-            // fling on the document, so the real mode would freeze a scrolling PDF.
+            // `enableSwipe` gates all drag and fling on the document, not just page
+            // turns, so it must stay on wherever dragging is how the reader moves.
+            // In scroll mode that is the only way to move, and the edge-tap overlay
+            // has stood down as well — honouring a host's `enableSwipeNavigation:
+            // false` there would leave the page undraggable and unflingable, zoom
+            // and nothing else. The opt-out means "no swipe page turns", which only
+            // has meaning while the document paginates.
             configurator.enableSwipe(
-                EdgeTapInterceptView.effectiveSwipeEnabled(navigationConfig, isScrollMode = false)
+                !paginated ||
+                    EdgeTapInterceptView.effectiveSwipeEnabled(navigationConfig, isScrollMode = false)
             )
         }
     }

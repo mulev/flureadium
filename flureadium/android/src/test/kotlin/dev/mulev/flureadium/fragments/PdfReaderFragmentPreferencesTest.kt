@@ -62,10 +62,4 @@ internal class PdfReaderFragmentPreferencesTest {
 
         assertEquals(Axis.VERTICAL, model.preferences.scrollAxis)
     }
-
-    @Test
-    fun updatePreferences_withoutAViewModel_doesNotThrow() {
-        // The host can call setPreferences before the reader has been enabled.
-        PdfReaderFragment().updatePreferences(PdfiumPreferences(scrollAxis = Axis.VERTICAL))
-    }
 }

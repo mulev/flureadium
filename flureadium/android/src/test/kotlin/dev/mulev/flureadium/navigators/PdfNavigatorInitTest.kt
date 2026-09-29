@@ -150,6 +150,9 @@ internal class PdfNavigatorInitTest {
         return configurator
     }
 
+    private val paginated = FlutterPdfPreferences(scrollMode = FlutterPdfScrollMode.HORIZONTAL)
+    private val scrolling = FlutterPdfPreferences(scrollMode = FlutterPdfScrollMode.VERTICAL)
+
     /**
      * The listener re-reads the stored config every time the pdfium adapter builds
      * a PDFView, so a config that arrives after initNavigator() still applies.
@@ -157,7 +160,8 @@ internal class PdfNavigatorInitTest {
     @Test
     fun pdfViewConfigurator_disablesSwipe_whenFlagFalse() = runTest {
         val configurator = configureNewPdfView(
-            FlutterNavigationConfig(enableSwipeNavigation = false)
+            FlutterNavigationConfig(enableSwipeNavigation = false),
+            preferences = paginated,
         )
 
         verify(configurator).enableSwipe(false)
@@ -166,7 +170,8 @@ internal class PdfNavigatorInitTest {
     @Test
     fun pdfViewConfigurator_keepsSwipe_whenFlagTrue() = runTest {
         val configurator = configureNewPdfView(
-            FlutterNavigationConfig(enableSwipeNavigation = true)
+            FlutterNavigationConfig(enableSwipeNavigation = true),
+            preferences = paginated,
         )
 
         verify(configurator).enableSwipe(true)
@@ -174,7 +179,33 @@ internal class PdfNavigatorInitTest {
 
     @Test
     fun pdfViewConfigurator_keepsSwipe_whenNoConfigArrived() = runTest {
-        val configurator = configureNewPdfView()
+        val configurator = configureNewPdfView(preferences = paginated)
+
+        verify(configurator).enableSwipe(true)
+    }
+
+    /**
+     * `enableSwipe` gates every drag and fling on the document, so the host's
+     * opt-out is honoured only where swiping means a page turn. In scroll mode
+     * dragging is the only way to move, and the edge-tap overlay has stood down
+     * too, so obeying the flag there would leave the page unmovable.
+     */
+    @Test
+    fun pdfViewConfigurator_keepsSwipe_inScrollMode_despiteTheFlag() = runTest {
+        val configurator = configureNewPdfView(
+            FlutterNavigationConfig(enableSwipeNavigation = false),
+            preferences = scrolling,
+        )
+
+        verify(configurator).enableSwipe(true)
+    }
+
+    @Test
+    fun pdfViewConfigurator_keepsSwipe_whenNoScrollModeGiven_despiteTheFlag() = runTest {
+        // An absent scrollMode resolves to vertical, so it is scroll mode too.
+        val configurator = configureNewPdfView(
+            FlutterNavigationConfig(enableSwipeNavigation = false)
+        )
 
         verify(configurator).enableSwipe(true)
     }
@@ -186,9 +217,7 @@ internal class PdfNavigatorInitTest {
      */
     @Test
     fun pdfViewConfigurator_snapsPages_inHorizontalMode() = runTest {
-        val configurator = configureNewPdfView(
-            preferences = FlutterPdfPreferences(scrollMode = FlutterPdfScrollMode.HORIZONTAL)
-        )
+        val configurator = configureNewPdfView(preferences = paginated)
 
         verify(configurator).pageSnap(true)
         verify(configurator).pageFling(true)
@@ -196,9 +225,7 @@ internal class PdfNavigatorInitTest {
 
     @Test
     fun pdfViewConfigurator_doesNotSnapPages_inVerticalMode() = runTest {
-        val configurator = configureNewPdfView(
-            preferences = FlutterPdfPreferences(scrollMode = FlutterPdfScrollMode.VERTICAL)
-        )
+        val configurator = configureNewPdfView(preferences = scrolling)
 
         verify(configurator).pageSnap(false)
         verify(configurator).pageFling(false)
@@ -213,5 +240,6 @@ internal class PdfNavigatorInitTest {
         val configurator = configureNewPdfView()
 
         verify(configurator).pageSnap(false)
+        verify(configurator).pageFling(false)
     }
 }
