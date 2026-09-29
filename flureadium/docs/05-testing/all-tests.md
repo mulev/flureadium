@@ -2,12 +2,13 @@
 
 `scripts/run_all_tests.sh` runs every Flureadium test suite in one pass and prints a single consolidated summary. It ties the four test toolchains together so you don't invoke them one at a time:
 
-1. **Unit / widget tests** — the Dart suites: `flutter test` in the plugin (`flureadium/`), the platform interface (`flureadium_platform_interface/`), and the example app (`example/`), plus `dart test` in the analyzer-plugin package (`flureadium_lints/`). Headless and fastest, so they run first.
-2. **Helper scripts** — delegates to `run_helper_script_tests.sh`: the jest suite for the TypeScript injected into the EPUB webview (`assets/_helper_scripts/src/`), then a check that the committed bundle in `assets/helpers/` still matches that source. Runs on Node, not the Flutter toolchain, and takes a few seconds.
-3. **Native unit tests** — delegates to [`run_native_unit_tests.sh`](native-unit-tests.md): Android Kotlin/Robolectric on the JVM and iOS Swift/XCTest on a simulator.
-4. **Integration tests** — delegates to [`run_integration_tests.sh`](integration-tests.md): the example app's full flows on Android, iOS, and Web.
+1. **Wall-clock guard** — `scripts/check_test_timeouts.sh`: a static grep that fails the run when a test waits by sleeping. It reads source, needs no toolchain, and answers in milliseconds, so it runs first and no suite-skip flag drops it.
+2. **Unit / widget tests** — the Dart suites: `flutter test` in the plugin (`flureadium/`), the platform interface (`flureadium_platform_interface/`), and the example app (`example/`), plus `dart test` in the analyzer-plugin package (`flureadium_lints/`). Headless and fastest, so they run first.
+3. **Helper scripts** — delegates to `run_helper_script_tests.sh`: the jest suite for the TypeScript injected into the EPUB webview (`assets/_helper_scripts/src/`), then a check that the committed bundle in `assets/helpers/` still matches that source. Runs on Node, not the Flutter toolchain, and takes a few seconds.
+4. **Native unit tests** — delegates to [`run_native_unit_tests.sh`](native-unit-tests.md): Android Kotlin/Robolectric on the JVM and iOS Swift/XCTest on a simulator.
+5. **Integration tests** — delegates to [`run_integration_tests.sh`](integration-tests.md): the example app's full flows on Android, iOS, and Web.
 
-Suites run fastest-first (unit → helpers → native → integration). By default every suite runs even if an earlier one fails, so one command shows the whole picture; the exit code is non-zero if any suite that ran failed.
+Suites run fastest-first (guard → unit → helpers → native → integration). By default every suite runs even if an earlier one fails, so one command shows the whole picture; the exit code is non-zero if any suite that ran failed.
 
 The unit step is five separate rows in the summary — one per Dart package, plus the helper scripts — so a failure points at the exact package rather than a single lumped "unit" result.
 
@@ -136,6 +137,7 @@ Each run writes to `test_logs/all_tests/run_<timestamp>/` (gitignored):
 | File | Contents |
 |---|---|
 | `summary.log` | The consolidated pass/fail table printed to the terminal |
+| `guard_test_timeouts.log` | Output from the wall-clock guard |
 | `unit_plugin.log` | `flutter test` output for the plugin package |
 | `unit_platform_interface.log` | `flutter test` output for the platform interface package |
 | `unit_example.log` | `flutter test` output for the example app |
@@ -149,6 +151,16 @@ The delegated runners also write their own detailed logs under `test_logs/` — 
 ## When to use it
 
 Reach for `run_all_tests.sh` when you want the whole picture in one command — before a commit, or to confirm a change in one package didn't break another. For focused iteration on a single platform or a single XCTest class, call the delegated runner directly ([native-unit-tests.md](native-unit-tests.md), [integration-tests.md](integration-tests.md), [ios-unit-tests.md](ios-unit-tests.md)); when a suite fails, the summary names the log to open.
+
+## Waits must not bet on the clock
+
+A Dart test waits in one of two ways. Stream delivery happens in microtasks, so `await pumpEventQueue()` returns exactly when the events have landed. A production `Timer` is advanced with `fakeAsync` from `package:fake_async`: `async.elapse(const Duration(milliseconds: 500))` moves a virtual clock and costs no real time.
+
+`Future.delayed` in a test is neither. It is a bet that the host does the work inside the nap, and `flureadium/scripts/check_test_timeouts.sh` rejects it — the check runs as the `Guard — test clock bets` row of `run_all_tests.sh`, so it fires inside `phase-exit`. A case that genuinely exercises elapsed time marks the line `// real-delay: <why>`.
+
+A negative assertion reached by waiting needs a positive control, the same rule the native suites follow ([ios-unit-tests.md](ios-unit-tests.md#negative-assertions-need-a-positive-control)): drive the pipeline to a state where output *is* expected and assert that it arrives, or "nothing happened" also passes when the feature stopped working. `orientation_handler_mixin_test.dart`, `'does nothing when orientation unchanged'`, is the worked example.
+
+Waiting on a single expected event with a `Completer` and a named `.timeout(...)` ceiling is fine — that is an event wait, not a sleep. `event_streams_test.dart`, `'emits locator events'`, is the shape.
 
 ## Assertions must be able to fail
 
