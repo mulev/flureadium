@@ -62,7 +62,7 @@ final class FlureadiumPluginChapterNavTests: XCTestCase {
       resultCalled.fulfill()
     }
 
-    wait(for: [navCalled, resultCalled], timeout: 2.0)
+    wait(for: [navCalled, resultCalled], timeout: asyncTimeout)
     XCTAssertEqual(nav.calls, ["skipForward"])
     XCTAssertFalse(nav.calls.contains("seekForward"),
                    "next must navigate by track, not 30s seek")
@@ -76,7 +76,7 @@ final class FlureadiumPluginChapterNavTests: XCTestCase {
       resultCalled.fulfill()
     }
 
-    wait(for: [navCalled, resultCalled], timeout: 2.0)
+    wait(for: [navCalled, resultCalled], timeout: asyncTimeout)
     XCTAssertEqual(nav.calls, ["skipBackward"])
     XCTAssertFalse(nav.calls.contains("seekBackward"),
                    "previous must navigate by track, not 30s seek")
@@ -90,7 +90,7 @@ final class FlureadiumPluginChapterNavTests: XCTestCase {
       resultCalled.fulfill()
     }
 
-    wait(for: [navCalled, resultCalled], timeout: 2.0)
+    wait(for: [navCalled, resultCalled], timeout: asyncTimeout)
     XCTAssertEqual(nav.calls, ["seekRelative(-30.0)"])
     XCTAssertFalse(nav.calls.contains("skipBackward"),
                    "audioSeekBy must remain a relative seek, not a track skip")

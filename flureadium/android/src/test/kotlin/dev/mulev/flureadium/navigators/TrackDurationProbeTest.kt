@@ -42,6 +42,17 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
+ * Ceiling for this file's real-clock latch awaits.
+ *
+ * These latches hand off between real threads, so there is no virtual clock to
+ * advance — unlike Robolectric's `idleFor(...)` and kotlinx's
+ * `advanceUntilIdle()`, which assume nothing about the host. `await` returns as
+ * soon as the latch trips, so this bounds a hang; it does not lengthen a green
+ * run. The 5 s literals it replaces were a bet on CI's scheduling latency.
+ */
+private const val latchTimeoutSeconds = 60L
+
+/**
  * Behaviour of [resolveTrackDurations] and the [ResourceMediaDataSource] bridge it
  * probes through. No test here builds a navigator, and none touches a network: the
  * resource is a hand-written fake and the retriever is Robolectric's shadow.
@@ -166,7 +177,7 @@ internal class TrackDurationProbeTest {
                 val live = inFlight.incrementAndGet()
                 peak.updateAndGet { maxOf(it, live) }
                 threeInFlight.countDown()
-                release.await(5, TimeUnit.SECONDS)
+                release.await(latchTimeoutSeconds, TimeUnit.SECONDS)
                 inFlight.decrementAndGet()
                 FakeResource()
             }
@@ -174,7 +185,7 @@ internal class TrackDurationProbeTest {
 
         val resolution = async { resolveTrackDurations(publication, links, concurrency = 3) }
 
-        assertTrue(threeInFlight.await(5, TimeUnit.SECONDS), "three probes never overlapped")
+        assertTrue(threeInFlight.await(latchTimeoutSeconds, TimeUnit.SECONDS), "three probes never overlapped")
         assertEquals(3, peak.get(), "a fourth probe got past the semaphore")
         release.countDown()
 
@@ -194,7 +205,7 @@ internal class TrackDurationProbeTest {
             `when`(publication.get(link)).thenAnswer {
                 probes.incrementAndGet()
                 firstProbeStarted.countDown()
-                release.await(5, TimeUnit.SECONDS)
+                release.await(latchTimeoutSeconds, TimeUnit.SECONDS)
                 FakeResource()
             }
         }
@@ -204,7 +215,7 @@ internal class TrackDurationProbeTest {
         val resolution = async { resolveTrackDurations(publication, links, concurrency = 1) }
 
         assertTrue(
-            firstProbeStarted.await(5, TimeUnit.SECONDS),
+            firstProbeStarted.await(latchTimeoutSeconds, TimeUnit.SECONDS),
             "no probe ever started, so cancelling below would prove nothing",
         )
         resolution.cancel()

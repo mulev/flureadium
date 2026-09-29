@@ -61,7 +61,7 @@ final class ImageCacheURLProtocolTests: XCTestCase {
         }
         task.resume()
 
-        waitForExpectations(timeout: 5)
+        waitForExpectations(timeout: asyncTimeout)
     }
 
     // MARK: - clearCache
@@ -115,7 +115,7 @@ final class ImageCacheURLProtocolTests: XCTestCase {
         }
         task.resume()
 
-        waitForExpectations(timeout: 5)
+        waitForExpectations(timeout: asyncTimeout)
         XCTAssertTrue(ImageCacheURLProtocol.hasCachedResponse(for: url))
     }
 
@@ -211,7 +211,7 @@ final class ImageCacheURLProtocolTests: XCTestCase {
         }
         task.resume()
 
-        waitForExpectations(timeout: 5)
+        waitForExpectations(timeout: asyncTimeout)
     }
 }
 

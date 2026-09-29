@@ -168,8 +168,9 @@ final class SpreadPointerSettlerTests: XCTestCase {
         }
 
         var settled = settler.settle()
-        for _ in 0..<20 where settled != 0 {
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        let deadline = Date(timeIntervalSinceNow: asyncTimeout)
+        while settled != 0, Date() < deadline {
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
             settled = settler.settle()
         }
         XCTAssertEqual(
@@ -203,7 +204,7 @@ final class SpreadPointerSettlerTests: XCTestCase {
         let loaded = LoadRecorder(expectation: expectation(description: "spread loaded"))
         webView.navigationDelegate = loaded
         webView.loadHTMLString("<html><body>\(body)</body></html>", baseURL: nil)
-        wait(for: [loaded.expectation], timeout: 10)
+        wait(for: [loaded.expectation], timeout: asyncTimeout)
         return webView
     }
 
@@ -226,7 +227,7 @@ final class SpreadPointerSettlerTests: XCTestCase {
     private func evaluate(_ javaScript: String, in webView: WKWebView) {
         let evaluated = expectation(description: "evaluated")
         webView.evaluateJavaScript(javaScript) { _, _ in evaluated.fulfill() }
-        wait(for: [evaluated], timeout: 10)
+        wait(for: [evaluated], timeout: asyncTimeout)
     }
 }
 
@@ -242,7 +243,7 @@ private final class PointerEventRecorder: NSObject, WKScriptMessageHandler {
 
     @discardableResult
     func awaitPayload(_ test: XCTestCase) -> [String: Any]? {
-        test.wait(for: [received], timeout: 10)
+        test.wait(for: [received], timeout: asyncTimeout)
         return payloads.first
     }
 

@@ -77,7 +77,7 @@ final class CarPlayContentBridgeTests: XCTestCase {
     let exp = expectation(description: "rootTabs")
     var tabs: [CarTab] = []
     bridge.rootTabs { tabs = $0; exp.fulfill() }
-    wait(for: [exp], timeout: 2)
+    wait(for: [exp], timeout: asyncTimeout)
     XCTAssertEqual(tabs.map { $0.id }, ["continue", "library"])
   }
 
@@ -88,7 +88,7 @@ final class CarPlayContentBridgeTests: XCTestCase {
     let exp = expectation(description: "children")
     var nodes: [CarBrowseNode] = []
     bridge.children(of: "genre:sci-fi") { nodes = $0; exp.fulfill() }
-    wait(for: [exp], timeout: 2)
+    wait(for: [exp], timeout: asyncTimeout)
     XCTAssertEqual(nodes.map { $0.id }, ["book:dune"])
     let args = messenger.calls.first?.arguments as? [String: Any]
     XCTAssertEqual(args?["nodeId"] as? String, "genre:sci-fi")
@@ -101,7 +101,7 @@ final class CarPlayContentBridgeTests: XCTestCase {
     let exp = expectation(description: "children")
     var nodes: [CarBrowseNode] = []
     bridge.children(of: "x") { nodes = $0; exp.fulfill() }
-    wait(for: [exp], timeout: 2)
+    wait(for: [exp], timeout: asyncTimeout)
     XCTAssertEqual(nodes.map { $0.id }, ["book:ok"])
   }
 
@@ -112,7 +112,7 @@ final class CarPlayContentBridgeTests: XCTestCase {
     let exp = expectation(description: "search")
     var nodes: [CarBrowseNode] = []
     bridge.search("weir") { nodes = $0; exp.fulfill() }
-    wait(for: [exp], timeout: 2)
+    wait(for: [exp], timeout: asyncTimeout)
     XCTAssertEqual(nodes.map { $0.id }, ["book:weir"])
     let args = messenger.calls.first?.arguments as? [String: Any]
     XCTAssertEqual(args?["query"] as? String, "weir")
@@ -130,7 +130,7 @@ final class CarPlayContentBridgeTests: XCTestCase {
     let exp = expectation(description: "strings")
     var strings: CarContentStrings?
     bridge.strings { strings = $0; exp.fulfill() }
-    wait(for: [exp], timeout: 2)
+    wait(for: [exp], timeout: asyncTimeout)
     XCTAssertEqual(strings?.emptyRootTitle, "Nothing to play yet")
   }
 
@@ -142,7 +142,7 @@ final class CarPlayContentBridgeTests: XCTestCase {
     ])
     XCTAssertNotNil(strings)
     bridge.strings { strings = $0; exp.fulfill() }
-    wait(for: [exp], timeout: 2)
+    wait(for: [exp], timeout: asyncTimeout)
     XCTAssertNil(strings)
   }
 
@@ -164,7 +164,7 @@ final class CarPlayContentBridgeTests: XCTestCase {
     let exp = expectation(description: "recovers")
     var tabs: [CarTab] = []
     bridge.rootTabs { tabs = $0; exp.fulfill() }
-    wait(for: [exp], timeout: 4)
+    wait(for: [exp], timeout: asyncTimeout)
     XCTAssertEqual(tabs.map { $0.id }, ["continue"])
     XCTAssertEqual(attempts, 3)
   }
@@ -174,11 +174,11 @@ final class CarPlayContentBridgeTests: XCTestCase {
     let exp = expectation(description: "gives up")
     var count = -1
     bridge.rootTabs { count = $0.count; exp.fulfill() }
-    // 20 retries * 0.15s ≈ 3s of work. The ceiling is generous on purpose:
-    // this case asserts that the bridge gives up with an empty result, not how
-    // fast it does so, and an 8s ceiling failed it at 10.6s on a machine also
-    // running an emulator, a simulator and the integration suites.
-    wait(for: [exp], timeout: 30)
+    // 20 retries * 0.15s ≈ 3s of work. The shared ceiling is generous on
+    // purpose: this case asserts that the bridge gives up with an empty result,
+    // not how fast it does so, and an 8s ceiling failed it at 10.6s on a machine
+    // also running an emulator, a simulator and the integration suites.
+    wait(for: [exp], timeout: asyncTimeout)
     XCTAssertEqual(count, 0)
   }
 }
