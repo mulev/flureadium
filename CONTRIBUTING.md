@@ -58,6 +58,21 @@ flureadium/
 2. Run `npm run build` to compile TypeScript
 3. Test in the example app with `flutter run -d chrome`
 
+### Releasing a new version
+
+The plugin's version is written in four files and they must move together. Only
+the first is what pub.dev resolves; the other three are metadata that shows up in
+CocoaPods output and Gradle artifacts, and each had drifted to a placeholder
+before anyone noticed.
+
+1. `flureadium/pubspec.yaml` — `version:`, plus a `flureadium/CHANGELOG.md` entry
+2. `flureadium/ios/flureadium.podspec` — `s.version`
+3. `flureadium/macos/flureadium.podspec` — `s.version`
+4. `flureadium/android/build.gradle` — `version`
+
+`flureadium_platform_interface` and `flureadium_lints` version independently;
+bump them only when their own contents change.
+
 ## Pull Request Process
 
 1. Create a feature branch from `main`
