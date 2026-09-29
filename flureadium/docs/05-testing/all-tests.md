@@ -162,6 +162,8 @@ A case that genuinely exercises elapsed time keeps its delay and carries `// rea
 
 A negative assertion reached by waiting needs a positive control, the same rule the native suites follow ([ios-unit-tests.md](ios-unit-tests.md#negative-assertions-need-a-positive-control)): drive the pipeline to a state where output *is* expected and assert that it arrives, or "nothing happened" also passes when the feature stopped working. `orientation_handler_mixin_test.dart`, `'does nothing when orientation unchanged'`, is the worked example.
 
+The guard does not scan `flureadium/example/integration_test/`, which drives a real app on a real device, where waiting is the job. The rule there is the ceiling: every wait goes through `expectEventually`, whose default is generous on purpose, and a caller that passes a shorter one is asserting that the thing is quick, not merely that it happens. A 15 s default lost to a parallel run on 2026-09-29 and is now 60 s.
+
 Waiting on a single expected event with a `Completer` and a named `.timeout(...)` ceiling is fine — that is an event wait, not a sleep. `event_streams_test.dart`, `'emits locator events'`, is the shape.
 
 ## Assertions must be able to fail
