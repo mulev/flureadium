@@ -92,16 +92,17 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
         Log.d(TAG, "::updatePreferences")
         pdfVm?.preferences = prefs
 
+        // Before the submit, not after: applySettings rebuilds the PDFView inside
+        // the navigator fragment, never this overlay, and submitPreferences can
+        // throw from a detached fragment. Behind it, that throw would leave the
+        // strips armed over a document now in scroll mode, swallowing the touches.
+        edgeTapInterceptView?.setScrollMode(prefs.scrollAxis != Axis.HORIZONTAL)
+
         // The view model's factory is typed to exactly these parameters, so the
         // erased cast is safe — `navigator` is only PdfNavigatorFragment<*, *> here.
         @Suppress("UNCHECKED_CAST")
         (pdfNavigator as? PdfNavigatorFragment<PdfiumSettings, PdfiumPreferences>)
             ?.submitPreferences(prefs)
-
-        // Not optional: applySettings rebuilds the PDFView inside the navigator
-        // fragment, never this overlay. Without this the strips stay armed after a
-        // switch into scroll mode and swallow the scroll touches.
-        edgeTapInterceptView?.setScrollMode(prefs.scrollAxis != Axis.HORIZONTAL)
     }
 
     /**

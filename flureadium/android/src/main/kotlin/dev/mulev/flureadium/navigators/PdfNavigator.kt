@@ -227,14 +227,22 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
      *
      * Readium 3.1.2 applies these live: submitPreferences → applySettings →
      * reset(), which rebuilds the PDFView and re-runs [pdfViewConfigurator].
+     *
+     * Both local records are written before the call into Readium, not after.
+     * `submitPreferences` resolves the Readium fragment's `viewModels()`
+     * delegate and throws from a detached fragment; with the state write behind
+     * it, that swallowed exception would leave `flutterPreferences` new and
+     * `state[pdfPreferencesKey]` old, so a save/restore would silently revert
+     * the reader's choice.
      */
     fun updatePreferences(preferences: FlutterPdfPreferences) {
         Log.d(TAG, "::updatePreferences")
 
+        flutterPreferences = preferences
+        state[pdfPreferencesKey] = preferences
+
         try {
-            flutterPreferences = preferences
             pdfNavigator?.updatePreferences(preferences.toPdfiumPreferences())
-            state[pdfPreferencesKey] = preferences
         } catch (ex: Exception) {
             Log.e(TAG, "Error applying PdfPreferences: $ex")
         }

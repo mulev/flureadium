@@ -2,6 +2,7 @@ package dev.mulev.flureadium.navigators
 
 import com.github.barteksc.pdfviewer.PDFView
 import dev.mulev.flureadium.FlutterNavigationConfig
+import dev.mulev.flureadium.FlutterPdfFit
 import dev.mulev.flureadium.FlutterPdfPreferences
 import dev.mulev.flureadium.FlutterPdfScrollMode
 import dev.mulev.flureadium.fragments.PdfReaderFragment
@@ -9,6 +10,7 @@ import dev.mulev.flureadium.models.PdfReaderViewModel
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,6 +24,8 @@ import org.mockito.Mockito.mockConstruction
 import org.mockito.Mockito.verify
 import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
 import org.readium.r2.navigator.pdf.PdfNavigatorFactory
+import org.readium.r2.navigator.preferences.Axis
+import org.readium.r2.navigator.preferences.Fit
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Publication
 import org.robolectric.RobolectricTestRunner
@@ -89,6 +93,36 @@ internal class PdfNavigatorInitTest {
         val vm = fragment.vm as PdfReaderViewModel
         assertNotNull(vm.navigatorFactory, "navigatorFactory must be set")
         assertNotNull(vm.engineProvider, "VM engineProvider must be set from outer PdfNavigator scope")
+    }
+
+    /**
+     * The creation half of the dropped-preferences defect. `attachNavigator`
+     * hands `model.preferences` to `createFragmentFactory`, so a navigator built
+     * from a view model still holding the default renders pdfium's defaults
+     * whatever the host asked for. That hand-off needs a hosted fragment to
+     * exercise; what is checkable here is the field it reads.
+     */
+    @Test
+    fun initNavigator_seedsTheViewModelFromTheHostsPreferences() = runTest {
+        val navigator = createNavigator(
+            FlutterPdfPreferences(
+                fit = FlutterPdfFit.CONTAIN,
+                scrollMode = FlutterPdfScrollMode.HORIZONTAL,
+            )
+        )
+
+        mockConstruction(PdfiumEngineProvider::class.java).use {
+            mockConstruction(PdfNavigatorFactory::class.java).use {
+                navigator.initNavigator()
+            }
+        }
+
+        val fragment = navigator.getField("pdfNavigator") as? PdfReaderFragment
+        assertNotNull(fragment, "pdfNavigator fragment should be initialized")
+
+        val vm = fragment.vm as PdfReaderViewModel
+        assertEquals(Axis.HORIZONTAL, vm.preferences.scrollAxis)
+        assertEquals(Fit.CONTAIN, vm.preferences.fit)
     }
 
     /**
