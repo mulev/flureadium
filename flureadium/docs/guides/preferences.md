@@ -539,10 +539,17 @@ PDFPreferences(
 
 ### Scroll Modes
 
-- `PDFScrollMode.horizontal` - Swipe left/right between pages
+Both platforms. A change applies to the open document; the book does not have to be reopened.
+
+- `PDFScrollMode.horizontal` - Swipe left/right between pages, one page per swipe
 - `PDFScrollMode.vertical` - Scroll up/down continuously
 
 ### Page Layouts
+
+**iOS only.** Readium's pdfium adapter exposes no spread preference, so Android
+accepts `pageLayout` and `offsetFirstPage`, keeps them in saved state, and renders
+single pages regardless. Hide the control on Android rather than offering one that
+cannot take effect.
 
 - `PDFPageLayout.single` - One page at a time
 - `PDFPageLayout.double` - Two pages side-by-side (book spreads)

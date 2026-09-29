@@ -1,6 +1,6 @@
 name: flureadium_lints
 description: Analyzer plugin with the Flureadium lint rules that flag test assertions which cannot fail.
-version: 0.0.1
+version: 1.0.0
 publish_to: none
 
 environment:

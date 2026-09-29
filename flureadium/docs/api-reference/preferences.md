@@ -495,7 +495,9 @@ final documentPrefs = PDFPreferences(
   pageLayout: PDFPageLayout.single,
 );
 
-// Book spread mode (two pages side-by-side)
+// Book spread mode (two pages side-by-side) — iOS only.
+// Android ignores pageLayout and offsetFirstPage: the pdfium adapter has no
+// spread preference, so this renders as single pages there.
 final spreadPrefs = PDFPreferences(
   fit: PDFFit.contain,
   scrollMode: PDFScrollMode.horizontal,
