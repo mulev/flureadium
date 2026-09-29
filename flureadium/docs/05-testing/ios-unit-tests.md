@@ -295,7 +295,9 @@ that callback inside that many seconds.
   macOS target declares its own copy in `example/macos/RunnerTests/RunnerTests.swift` — a separate
   Xcode target cannot see the iOS one.
 - A numeric literal is for an **inverted expectation** only, where the timeout *is* the assertion
-  window rather than a deadline. That line must carry `// inverted: <why>`.
+  window rather than a deadline. That line must carry `// inverted: <why>` — the guard accepts the
+  marker on the call's own line or on either neighbour, so a formatter that splits the call cannot
+  turn a documented exception back into a failure.
   `FlutterAudioNavigatorTests.testRemovedObserverDoesNotRouteAfterDispose` is the worked example.
 - Do not bound an asynchronous teardown with a fixed iteration count either. Poll against a deadline
   derived from `asyncTimeout`, as `SpreadPointerSettlerTests.testReleasedSpreadIsDropped` does.
