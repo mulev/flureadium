@@ -8,10 +8,14 @@ import org.readium.r2.navigator.pdf.PdfNavigatorFactory
 import org.readium.r2.shared.ExperimentalReadiumApi
 
 open class PdfReaderViewModel : ReaderViewModel() {
-    var fit: org.readium.r2.navigator.preferences.Fit? = null
-    var scroll: Boolean? = null
-    var spread: org.readium.r2.navigator.preferences.Spread? = null
-    var offsetFirstPage: Boolean? = null
+    /**
+     * Preferences the next navigator is built with.
+     *
+     * The fragment drops its navigator in onPause and builds a new one in
+     * onResume, so this has to hold what the host last asked for, not just what
+     * the reader opened with.
+     */
+    var preferences: PdfiumPreferences = PdfiumPreferences()
 
     @OptIn(ExperimentalReadiumApi::class)
     var navigatorFactory: PdfNavigatorFactory<PdfiumSettings, PdfiumPreferences, PdfiumPreferencesEditor>? = null

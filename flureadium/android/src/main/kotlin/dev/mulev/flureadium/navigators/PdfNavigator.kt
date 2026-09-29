@@ -9,6 +9,7 @@ import com.github.barteksc.pdfviewer.PDFView
 import dev.mulev.flureadium.EdgeTapInterceptView
 import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.FlutterPdfPreferences
+import dev.mulev.flureadium.FlutterPdfScrollMode
 import dev.mulev.flureadium.ReadiumReaderWidget.Companion.NAVIGATOR_FRAGMENT_TAG
 import dev.mulev.flureadium.fragments.PdfReaderFragment
 import dev.mulev.flureadium.models.PdfReaderViewModel
@@ -39,7 +40,7 @@ private const val pdfPreferencesKey = "pdfPreferences"
 @ExperimentalCoroutinesApi
 @OptIn(ExperimentalReadiumApi::class)
 class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
-    private val flutterPreferences: FlutterPdfPreferences
+    private var flutterPreferences: FlutterPdfPreferences
 
     constructor(
         publication: Publication,
@@ -142,6 +143,15 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
      */
     private val pdfViewConfigurator = object : PdfiumEngineProvider.Listener {
         override fun onConfigurePdfView(configurator: PDFView.Configurator) {
+            // "Page Flip" means one page per swipe. PdfiumDocumentFragment.reset()
+            // sets swipeHorizontal but no snapping, so without these two a
+            // horizontal document scrolls sideways continuously. An absent
+            // scrollMode resolves to vertical, which is not paginated.
+            val paginated = flutterPreferences.scrollMode == FlutterPdfScrollMode.HORIZONTAL
+            configurator.pageSnap(paginated)
+            configurator.pageFling(paginated)
+            // isScrollMode stays false on purpose: this flag gates all drag and
+            // fling on the document, so the real mode would freeze a scrolling PDF.
             configurator.enableSwipe(
                 EdgeTapInterceptView.effectiveSwipeEnabled(navigationConfig, isScrollMode = false)
             )
@@ -170,10 +180,7 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
                     pdfEngineProvider = this@PdfNavigator.engineProvider!!
                 )
                 locator = this@PdfNavigator.initialLocator
-                fit = this@PdfNavigator.flutterPreferences.toReadiumFit()
-                scroll = this@PdfNavigator.flutterPreferences.toReadiumScroll()
-                spread = this@PdfNavigator.flutterPreferences.toReadiumSpread()
-                offsetFirstPage = this@PdfNavigator.flutterPreferences.toReadiumOffsetFirstPage()
+                preferences = this@PdfNavigator.flutterPreferences.toPdfiumPreferences()
                 this.engineProvider = this@PdfNavigator.engineProvider
             }
             listener = this@PdfNavigator
@@ -216,20 +223,17 @@ class PdfNavigator : BaseNavigator, PdfReaderFragment.Listener {
     }
 
     /**
-     * Update PDF navigator preferences.
-     * Note: PDF preferences are applied at navigator creation time.
-     * Dynamic updates may require recreating the navigator.
+     * Apply new PDF preferences to the running navigator.
+     *
+     * Readium 3.1.2 applies these live: submitPreferences → applySettings →
+     * reset(), which rebuilds the PDFView and re-runs [pdfViewConfigurator].
      */
     fun updatePreferences(preferences: FlutterPdfPreferences) {
         Log.d(TAG, "::updatePreferences")
 
         try {
-            pdfNavigator?.updatePreferences(
-                fit = preferences.toReadiumFit(),
-                scroll = preferences.toReadiumScroll(),
-                spread = preferences.toReadiumSpread(),
-                offsetFirstPage = preferences.toReadiumOffsetFirstPage()
-            )
+            flutterPreferences = preferences
+            pdfNavigator?.updatePreferences(preferences.toPdfiumPreferences())
             state[pdfPreferencesKey] = preferences
         } catch (ex: Exception) {
             Log.e(TAG, "Error applying PdfPreferences: $ex")

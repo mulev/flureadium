@@ -19,7 +19,10 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
+import org.readium.adapter.pdfium.navigator.PdfiumPreferences
+import org.readium.adapter.pdfium.navigator.PdfiumSettings
 import org.readium.r2.navigator.pdf.PdfNavigatorFragment
+import org.readium.r2.navigator.preferences.Axis
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.AbsoluteUrl
@@ -80,18 +83,25 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
     }
 
     /**
-     * Update the reader preferences.
+     * Apply new preferences to the running navigator.
+     *
+     * Stored on the view model as well as submitted — see
+     * [PdfReaderViewModel.preferences] for why the store is not optional.
      */
-    fun updatePreferences(
-        fit: org.readium.r2.navigator.preferences.Fit?,
-        scroll: Boolean?,
-        spread: org.readium.r2.navigator.preferences.Spread?,
-        offsetFirstPage: Boolean?
-    ) {
+    fun updatePreferences(prefs: PdfiumPreferences) {
         Log.d(TAG, "::updatePreferences")
-        // PDF preferences are set at navigator creation time
-        // Readium's PdfNavigatorFragment doesn't support dynamic preference updates
-        // like EpubNavigatorFragment does with submitPreferences()
+        pdfVm?.preferences = prefs
+
+        // The view model's factory is typed to exactly these parameters, so the
+        // erased cast is safe — `navigator` is only PdfNavigatorFragment<*, *> here.
+        @Suppress("UNCHECKED_CAST")
+        (pdfNavigator as? PdfNavigatorFragment<PdfiumSettings, PdfiumPreferences>)
+            ?.submitPreferences(prefs)
+
+        // Not optional: applySettings rebuilds the PDFView inside the navigator
+        // fragment, never this overlay. Without this the strips stay armed after a
+        // switch into scroll mode and swallow the scroll touches.
+        edgeTapInterceptView?.setScrollMode(prefs.scrollAxis != Axis.HORIZONTAL)
     }
 
     /**
@@ -265,6 +275,7 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
 
         val fragmentFactory = navigatorFactory.createFragmentFactory(
             initialLocator = model.locator,
+            initialPreferences = model.preferences,
             listener = this,
         )
 
@@ -305,14 +316,11 @@ class PdfReaderFragment : VisualReaderFragment(), PdfNavigatorFragment.Listener,
                 onSwipeLeft = { goRight(animated = true) },
                 onSwipeRight = { goLeft(animated = true) },
             )
-            // false, and it is not an assumption about PDFs: `PDFScrollMode.vertical`
-            // never reaches this navigator on Android. attachNavigator omits
-            // initialPreferences, and PdfiumPreferences has no scroll component at
-            // all (fit, pageSpacing, readingProgression, scrollAxis), so the pdfium
-            // view paginates whatever the host asked for. Gating the overlay on
-            // pdfVm.scroll would disable edge taps for a document that still pages.
-            // Android's missing PDF scroll mode is flureadium-7shk.
-            configureOverlay(overlay, storedNavigationConfig, isScrollMode = false)
+            configureOverlay(
+                overlay,
+                storedNavigationConfig,
+                isScrollMode = model.preferences.scrollAxis != Axis.HORIZONTAL,
+            )
             rootView.addView(overlay)
             edgeTapInterceptView = overlay
         }

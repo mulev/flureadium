@@ -7,7 +7,6 @@ import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 import org.json.JSONObject
 import org.readium.r2.navigator.preferences.Fit
-import org.readium.r2.navigator.preferences.Spread
 
 /**
  * Unit tests for FlutterPdfPreferences and related enums.
@@ -113,24 +112,6 @@ internal class FlutterPdfPreferencesTest {
     fun toReadiumFit_mapsCorrectly() {
         assertEquals(Fit.WIDTH, FlutterPdfFit.WIDTH.toReadiumFit())
         assertEquals(Fit.CONTAIN, FlutterPdfFit.CONTAIN.toReadiumFit())
-    }
-
-    @Test
-    fun toReadiumScroll_mapsCorrectly() {
-        val verticalPrefs = FlutterPdfPreferences(scrollMode = FlutterPdfScrollMode.VERTICAL)
-        val horizontalPrefs = FlutterPdfPreferences(scrollMode = FlutterPdfScrollMode.HORIZONTAL)
-        val nullPrefs = FlutterPdfPreferences(scrollMode = null)
-
-        assertTrue(verticalPrefs.toReadiumScroll())
-        assertFalse(horizontalPrefs.toReadiumScroll())
-        assertFalse(nullPrefs.toReadiumScroll())
-    }
-
-    @Test
-    fun toReadiumSpread_mapsCorrectly() {
-        assertEquals(Spread.NEVER, FlutterPdfPageLayout.SINGLE.toReadiumSpread())
-        assertEquals(Spread.ALWAYS, FlutterPdfPageLayout.DOUBLE.toReadiumSpread())
-        assertEquals(Spread.AUTO, FlutterPdfPageLayout.AUTOMATIC.toReadiumSpread())
     }
 
     @Test

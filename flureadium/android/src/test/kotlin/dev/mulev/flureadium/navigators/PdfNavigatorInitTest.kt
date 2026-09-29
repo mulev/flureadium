@@ -3,6 +3,7 @@ package dev.mulev.flureadium.navigators
 import com.github.barteksc.pdfviewer.PDFView
 import dev.mulev.flureadium.FlutterNavigationConfig
 import dev.mulev.flureadium.FlutterPdfPreferences
+import dev.mulev.flureadium.FlutterPdfScrollMode
 import dev.mulev.flureadium.fragments.PdfReaderFragment
 import dev.mulev.flureadium.models.PdfReaderViewModel
 import kotlin.test.AfterTest
@@ -50,12 +51,14 @@ internal class PdfNavigatorInitTest {
         Dispatchers.resetMain()
     }
 
-    private fun createNavigator(): PdfNavigator {
+    private fun createNavigator(
+        preferences: FlutterPdfPreferences = FlutterPdfPreferences(),
+    ): PdfNavigator {
         return PdfNavigator(
             mock(Publication::class.java),
             null,
             mock(PdfNavigator.VisualListener::class.java),
-            FlutterPdfPreferences()
+            preferences
         )
     }
 
@@ -95,8 +98,9 @@ internal class PdfNavigatorInitTest {
      */
     private suspend fun configureNewPdfView(
         config: FlutterNavigationConfig? = null,
+        preferences: FlutterPdfPreferences = FlutterPdfPreferences(),
     ): PDFView.Configurator {
-        val navigator = createNavigator()
+        val navigator = createNavigator(preferences)
         val captured = mutableListOf<PdfiumEngineProvider.Listener>()
         mockConstruction(PdfiumEngineProvider::class.java) { _, context ->
             captured += context.arguments().filterIsInstance<PdfiumEngineProvider.Listener>()
@@ -139,5 +143,41 @@ internal class PdfNavigatorInitTest {
         val configurator = configureNewPdfView()
 
         verify(configurator).enableSwipe(true)
+    }
+
+    /**
+     * "Page Flip" has to snap one page per swipe. The pdfium adapter sets
+     * swipeHorizontal but no snapping, so without these the document scrolls
+     * sideways continuously and the mode is indistinguishable from scroll.
+     */
+    @Test
+    fun pdfViewConfigurator_snapsPages_inHorizontalMode() = runTest {
+        val configurator = configureNewPdfView(
+            preferences = FlutterPdfPreferences(scrollMode = FlutterPdfScrollMode.HORIZONTAL)
+        )
+
+        verify(configurator).pageSnap(true)
+        verify(configurator).pageFling(true)
+    }
+
+    @Test
+    fun pdfViewConfigurator_doesNotSnapPages_inVerticalMode() = runTest {
+        val configurator = configureNewPdfView(
+            preferences = FlutterPdfPreferences(scrollMode = FlutterPdfScrollMode.VERTICAL)
+        )
+
+        verify(configurator).pageSnap(false)
+        verify(configurator).pageFling(false)
+    }
+
+    /**
+     * An absent scrollMode is vertical — PdfiumSettingsResolver resolves a null
+     * axis that way, so snapping it would contradict what pdfium renders.
+     */
+    @Test
+    fun pdfViewConfigurator_doesNotSnapPages_whenNoScrollModeGiven() = runTest {
+        val configurator = configureNewPdfView()
+
+        verify(configurator).pageSnap(false)
     }
 }
