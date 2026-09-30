@@ -139,4 +139,48 @@ final class FlureadiumPluginErrorChannelTests: XCTestCase {
     XCTAssertEqual(map["code"] as? String, "TimebasedError")
     XCTAssertEqual(map["data"] as? String, "AVPlayerItemFailedToPlayToEndTime")
   }
+
+  // Test (regression, flureadium-64fs): no reader view registers an
+  // EventChannel of its own. `PdfReaderView` did — `pdf-reader-status`,
+  // `pdf-text-locator` and `pdf-error` — and nothing on the Dart side
+  // subscribes to those names (`method_channel_flureadium.dart:20,36`), so an
+  // iOS PDF reported no status, pushed no text locator and swallowed every
+  // resource-load error, for as long as nothing exercised it.
+  //
+  // The invariant is structural, so the assertion is too: a view builds its
+  // channels inside `init` from a live registrar and a publication, neither of
+  // which a unit test can produce, so the source is the only place to ask
+  // whether a view registers one at all. One case covers all four views, which
+  // is the point — the defect was one view drifting from the other three.
+  func testNoReaderViewRegistersItsOwnEventChannel() throws {
+    let sources = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()  // RunnerTests
+      .deletingLastPathComponent()  // ios
+      .deletingLastPathComponent()  // example
+      .deletingLastPathComponent()  // flureadium (package root)
+      .appendingPathComponent("ios/flureadium/Sources/flureadium")
+
+    let views = try FileManager.default
+      .contentsOfDirectory(atPath: sources.path)
+      .filter { $0.hasSuffix("ReaderView.swift") }
+      .sorted()
+    XCTAssertEqual(
+      views,
+      ["AudioReaderView.swift", "ImageReaderView.swift", "PdfReaderView.swift", "ReadiumReaderView.swift"],
+      "reader views moved or were added at \(sources.path) — extend this guard, do not drop it"
+    )
+
+    for view in views {
+      let source = try String(contentsOf: sources.appendingPathComponent(view), encoding: .utf8)
+      // Matching the `withName:` label rather than `EventStreamHandler` itself:
+      // `ReaderStatusEventStream` and `TextLocatorEventStream` subclass it and
+      // build the channel through the same initializer, so naming the base
+      // class would let a view reintroduce the defect through a subclass and
+      // still pass. No reader view uses that label for anything else.
+      XCTAssertFalse(
+        source.contains("withName:"),
+        "\(view) registers an EventChannel of its own. reader-status, text-locator and error belong to FlureadiumPlugin — send through FlureadiumPlugin.shared, or Dart never hears it"
+      )
+    }
+  }
 }

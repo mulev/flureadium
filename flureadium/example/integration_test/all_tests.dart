@@ -24,6 +24,7 @@ import 'epub_test.dart' as epub;
 import 'epub_navigation_test.dart' as epub_navigation;
 import 'epub_tts_test.dart' as epub_tts;
 import 'error_handling_test.dart' as error_handling;
+import 'pdf_test.dart' as pdf;
 import 'webpub_test.dart' as webpub;
 import 'car_transport_test.dart' as car_transport;
 import 'text_locator_test.dart' as text_locator;
@@ -35,6 +36,7 @@ void main() {
 
   launch.main();
   cbz.main();
+  pdf.main();
   divina.main();
   audiobook_host.main();
   audiobook.main();

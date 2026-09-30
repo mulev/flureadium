@@ -23,9 +23,9 @@ let pdfReaderViewType = "dev.mulev.flureadium/PdfReaderWidget"
 class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, VisualNavigatorDelegate {
 
   private let channel: ReadiumReaderChannel
-  private var errorStreamHandler: EventStreamHandler?
-  private var readerStatusStreamHandler: EventStreamHandler?
-  private var textLocatorStreamHandler: EventStreamHandler?
+  // reader-status, text-locator and error are owned by FlureadiumPlugin: this
+  // view is shorter-lived than the Dart subscription to them, and a channel
+  // registered here under a `pdf-` name has no subscriber at all.
   private let _view: UIView
   private let pdfViewController: PDFNavigatorViewController
   private var hasSentReady = false
@@ -65,11 +65,7 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
 
     channel = ReadiumReaderChannel(
       name: "\(readiumReaderViewType):\(viewId)", binaryMessenger: registrar.messenger())
-    textLocatorStreamHandler = EventStreamHandler(withName: "pdf-text-locator", messenger: registrar.messenger())
-    readerStatusStreamHandler = EventStreamHandler(withName: "pdf-reader-status", messenger: registrar.messenger())
-    errorStreamHandler = EventStreamHandler(withName: "pdf-error", messenger: registrar.messenger())
-
-    readerStatusStreamHandler?.sendEvent(PdfReaderStatusLoading)
+    FlureadiumPlugin.shared?.sendReaderStatus(PdfReaderStatusLoading)
 
     print(TAG, "Publication: (identifier=\(String(describing: publication.metadata.identifier)),title=\(String(describing: publication.metadata.title)))")
 
@@ -120,16 +116,16 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
   func navigator(_ navigator: Navigator, didFailToLoadResourceAt href: ReadiumShared.RelativeURL, withError error: ReadiumShared.ReadError) {
     print(TAG, "didFailToLoadResourceAt: \(href). err: \(error)")
 
-    self.readerStatusStreamHandler?.sendEvent(PdfReaderStatusError)
-
-    let flureadiumError = FlureadiumError(message: error.localizedDescription, code: "DidFailToLoadResource", data: href.string)
-    self.errorStreamHandler?.sendEvent(flureadiumError)
+    FlureadiumPlugin.shared?.sendReaderStatus(PdfReaderStatusError)
+    // Route through the plugin, which owns the single "error" channel.
+    FlureadiumPlugin.shared?.sendError(
+      message: error.localizedDescription, code: "DidFailToLoadResource", data: href.string)
   }
 
   func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
     print(TAG, "onPageChanged: \(locator)")
     if (!hasSentReady) {
-      self.readerStatusStreamHandler?.sendEvent(PdfReaderStatusReady)
+      FlureadiumPlugin.shared?.sendReaderStatus(PdfReaderStatusReady)
       hasSentReady = true
     }
     if gestureSuppression.disableDoubleTapTextSelection {
@@ -186,11 +182,7 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
     Task.detached(priority: .high) {
       await MainActor.run() {
         self.channel.onPageChanged(locator: locator)
-        guard let textLocatorStreamHandler = self.textLocatorStreamHandler else {
-          print(TAG, "emitOnPageChanged: textLocatorStreamHandler is nil!")
-          return
-        }
-        textLocatorStreamHandler.sendEvent(locator.jsonString)
+        FlureadiumPlugin.shared?.sendTextLocator(locator.jsonString)
       }
     }
   }
@@ -285,13 +277,7 @@ class PdfReaderView: NSObject, FlutterPlatformView, PDFNavigatorDelegate, Visual
       tapObserverToken = nil
       pdfViewController.view.removeFromSuperview()
       pdfViewController.delegate = nil
-      self.readerStatusStreamHandler?.sendEvent(PdfReaderStatusClosed)
-      textLocatorStreamHandler?.dispose()
-      textLocatorStreamHandler = nil
-      readerStatusStreamHandler?.dispose()
-      readerStatusStreamHandler = nil
-      errorStreamHandler?.dispose()
-      errorStreamHandler = nil
+      FlureadiumPlugin.shared?.sendReaderStatus(PdfReaderStatusClosed)
       channel.setMethodCallHandler(nil)
       if currentPdfReaderView === self { currentPdfReaderView = nil }
       result(nil)

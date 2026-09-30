@@ -465,6 +465,32 @@ On an older release there is no host-side workaround worth the trouble: moving
 the navigation controls off the reader surface avoids the trigger, but the same
 strand is reachable from the VoiceOver three-finger swipe.
 
+### iOS: A Tap on a PDF Page Does Nothing
+
+**Symptoms:**
+- A tap in the middle of a PDF page never reaches `ReadiumReaderWidget.onTap`, so
+  the reader chrome never toggles
+- The same build toggles the chrome correctly in an EPUB
+- Edge taps still turn the page, and swipes still work, so the reader is clearly
+  receiving touches
+- Every iOS version; from the first tap of the session, not after some trigger
+
+**Cause:**
+`EdgeTapInterceptView`, the overlay the plugin puts over every visual reader, owned
+a single-touch `UITapGestureRecognizer` that claimed recognition for every tap and
+then acted only on edge taps. Readium's PDF tap recognizer requires the failure of
+any single-touch tap recognizer competing for the same touch, and the overlay's
+always succeeded, so Readium's never fired and never published the pointer event
+`onTap` is built on. EPUB is unaffected because its taps come from the WebView's
+JavaScript bridge, and CBZ because its input adapter recognizes nothing.
+
+**Solution:**
+Upgrade to flureadium 0.19.6 or later, where the overlay detects edge taps from its
+own responder callbacks and owns no tap recognizer. See
+[Content Taps](platform-specific/ios.md#content-taps). There is no host-side
+workaround on an earlier release: the recognizer is created in the overlay's `init`
+and is not exposed to the host.
+
 ### iOS: Localhost Connection Failed
 
 **Error:**

@@ -191,7 +191,7 @@ ios/Sources/flureadium/
 ├── EpubLocatorReporter.swift    # Publishes fragment-resolved locators to the Flutter reader channel
 ├── EpubReaderCommand.swift      # Decodes a reader method-channel call into a typed command
 ├── PdfGestureSuppression.swift  # Removes the built-in PDF gestures the host disabled
-├── EdgeTapInterceptView.swift   # Edge tap and swipe overlay
+├── EdgeTapInterceptView.swift   # Edge tap and swipe overlay — owns no tap recognizer
 ├── ReaderEdgeNavigationState.swift # Host edge tap/swipe config, shared by all three visual readers
 ├── ReaderTapObserver.swift      # Registers Readium's tap observer on a navigator
 ├── PageThumbnailExtractor.swift # Downscaled JPEG thumbnails for image resources
@@ -430,6 +430,17 @@ token the view keeps. All three visual views register in `init` and unregister i
 their `dispose` handler. Coordinates come from `PointerEvent.location`, already in
 points relative to the navigator view, and cross the channel as `{"x": …, "y": …}`
 — the same unit Flutter calls logical pixels.
+
+**The edge tap overlay owns no tap recognizer, deliberately.** `EdgeTapInterceptView`
+detects its edge taps from `touchesBegan`/`touchesEnded`, not from a
+`UITapGestureRecognizer`. Readium's PDF tap recognizer declares a failure requirement
+against any single-touch `UITapGestureRecognizer` competing for the same touch
+(`PDFTapGestureController`'s `shouldRequireFailureOf`), so one attached anywhere in
+the overlay's hierarchy silently disables PDF content taps for the whole session —
+the recognizer never fails, so Readium's never fires. The responder path has no such
+hazard: UIKit delivers those callbacks only for touches `hitTest` already claimed,
+which is exactly when the overlay has a page turn to run. The swipe recognizers stay
+recognizers; a `UISwipeGestureRecognizer` does not match Readium's predicate.
 
 **EPUB filters link taps for you.** Inside the WebView, Readium drops a pointer
 event that landed on an interactive element before any observer runs

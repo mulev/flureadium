@@ -6,7 +6,7 @@ PODS:
   - DifferenceKit/Core (1.3.0)
   - DifferenceKit/UIKitExtension (1.3.0):
     - DifferenceKit/Core
-  - flureadium (0.19.5):
+  - flureadium (0.19.6):
     - Flutter
     - PromiseKit (~> 8.1)
     - ReadiumAdapterGCDWebServer (~> 3.5.0)
@@ -117,7 +117,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   CryptoSwift: e64e11850ede528a02a0f3e768cec8e9d92ecb90
   DifferenceKit: ab185c4d7f9cef8af3fcf593e5b387fb81e999ca
-  flureadium: 1e3d1889a43231d0cde5cf0b9ae3f0d99a355c37
+  flureadium: 69831fce7bc4bb7209ab035caf8f26ef7d78b86f
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
   Minizip: 188cb3e39a1195c283ae03bf673d182596fefd0b

@@ -325,7 +325,7 @@ class ReadiumError implements Error {
 
 ### Platform Notes
 
-On iOS the `error` EventChannel is owned by `FlureadiumPlugin`, registered once in `register(with:)` and kept for the lifetime of the plugin. Reader views no longer register their own `error` handler; both `ReadiumReaderView` and `ImageReaderView` route resource-load failures through the plugin's `sendError(message:code:data:)`. Because the channel has a single owner, the Dart subscription survives reader-view open/close cycles, and paths that have no reader view (such as the audiobook player) can send on the same channel. The PDF reader uses a separate `pdf-error` channel and is unaffected.
+On iOS the `error` EventChannel is owned by `FlureadiumPlugin`, registered once in `register(with:)` and kept for the lifetime of the plugin. Reader views do not register their own `error` handler; `ReadiumReaderView`, `ImageReaderView` and `PdfReaderView` all route resource-load failures through the plugin's `sendError(message:code:data:)`. Because the channel has a single owner, the Dart subscription survives reader-view open/close cycles, and paths that have no reader view (such as the audiobook player) can send on the same channel.
 
 iOS emits two error codes: `TimebasedError` for a streamed audio load failure, and `ReaderFailure` if `audioEnable` throws. The second is also answered on the method call itself as a `FlutterError`, so the Dart future completes rather than waiting on a call whose Task went away. There is no queueing on iOS — the plugin owns the channel from `register(with:)`, so a subscriber can always be attached before a reader exists.
 

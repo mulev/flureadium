@@ -247,6 +247,11 @@ class _ReaderPageState extends State<ReaderPage> {
     () => _openPublicationAsset('assets/pubs/sample_comic.cbz'),
   );
 
+  Future<void> _openPdf() => _runOpen(
+    'openPdf',
+    () => _openPublicationAsset('assets/pubs/sample_pages.pdf'),
+  );
+
   Future<void> _openDivina() => _runOpen(
     'openDivina',
     () => _openPublicationAsset('assets/pubs/sample_visual.divina'),
@@ -899,6 +904,10 @@ class _ReaderPageState extends State<ReaderPage> {
                         TextButton(
                           onPressed: _openCbz,
                           child: const Text('Open CBZ'),
+                        ),
+                        TextButton(
+                          onPressed: _openPdf,
+                          child: const Text('Open PDF'),
                         ),
                         TextButton(
                           onPressed: _openDivina,

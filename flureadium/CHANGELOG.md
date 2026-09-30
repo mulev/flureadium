@@ -1,3 +1,50 @@
+## 0.19.6
+
+### Bug Fixes
+
+- **A tap on a PDF page reports through `onTap` on iOS.** A tap in the middle of a
+  PDF page did nothing at all: the chrome never toggled, and no event reached Dart.
+  Edge taps and swipes worked, and EPUB was fine, which made it look like a PDF
+  problem rather than a gesture one. `EdgeTapInterceptView` — the overlay all three
+  visual readers put over the navigator — attached a single-touch
+  `UITapGestureRecognizer` in `init`, unconditionally, and its handler checked the
+  edge zone only after the recognizer had already claimed the touch. Readium's PDF
+  tap recognizer sits on the `PDFView` inside that overlay and declares, through its
+  delegate, a failure requirement against any single-touch tap recognizer competing
+  for the same touch. The overlay's always succeeded, so Readium's never fired, and
+  the observer that publishes a PDF tap was starved for the whole session.
+
+  The overlay no longer owns a tap recognizer. It detects the edge tap from its own
+  `touchesBegan`/`touchesEnded` callbacks, which UIKit delivers only for touches
+  `hitTest` already claimed — and `hitTest` claims exactly when edge tap navigation
+  is on and the touch is in an edge zone, so the callback fires precisely when there
+  is a page turn to run. A touch that drifts more than 10 pt is a swipe and is left
+  alone; the swipe recognizers are unchanged, and, not being tap recognizers, they
+  were never part of Readium's failure requirement. EPUB and CBZ taps were never
+  affected — EPUB's arrive from the WebView's JavaScript bridge, CBZ's from an input
+  adapter that recognizes nothing — and their edge taps and swipes behave as before.
+
+- **iOS PDF reader events reach their Dart subscribers.** Status, locator and error
+  events from a PDF reader went nowhere: `PdfReaderView` registered its own private
+  `pdf-reader-status`, `pdf-text-locator` and `pdf-error` channels, and Dart
+  subscribes to none of them. It now routes all three through
+  `FlureadiumPlugin.shared.sendReaderStatus`, `sendTextLocator` and `sendError`, the
+  same path `ImageReaderView` already used. Shipped in `7ca8113` during this
+  release's first phase.
+
+### Testing
+
+- `EdgeTapInterceptViewTests` asserts the condition Readium actually checks: no
+  gesture recognizer attached to the overlay is a `UITapGestureRecognizer` with
+  `numberOfTouchesRequired == 1`. Re-adding one for any reason breaks the suite
+  rather than silently disabling PDF taps again. The edge-zone predicate and the
+  tap-slop check are covered directly as pure functions, both boundaries included.
+- The example app opens a generated multi-page PDF fixture, and an integration
+  suite drives it — open, ready, locator, page turn — so the PDF reader has the
+  same coverage the EPUB and audiobook readers already had.
+- The `user | tap` validator row the testing docs describe is still absent; it is
+  reported for the repo owner to add, not added here.
+
 ## 0.19.5
 
 ### Bug Fixes

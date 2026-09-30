@@ -1,5 +1,5 @@
 group 'dev.mulev.lyt.flureadium'
-version '0.19.5'
+version '0.19.6'
 
 buildscript {
   ext.kotlin_version = '2.2.20'
