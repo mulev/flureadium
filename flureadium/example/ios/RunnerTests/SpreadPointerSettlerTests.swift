@@ -184,6 +184,15 @@ final class SpreadPointerSettlerTests: XCTestCase {
 
     // MARK: - Harness
 
+    /// Ceiling for a spread's first paint, separate from `asyncTimeout` because
+    /// it covers something no other wait in this target does: the first
+    /// `WKWebView` in the process launches WebKit's Networking and WebContent
+    /// processes before any load can finish. Across three CI runs, whichever
+    /// case ran first in this suite paid it — 13.8 s on one runner, past 60 s
+    /// on another — while every later case in the same process finished inside
+    /// 15 s. Nothing here is slow; a cold WebKit is.
+    private let spreadLoadTimeout: TimeInterval = 240
+
     /// Builds a spread web view carrying the real settle script and the stub
     /// bridge, loads a document, and returns once the settle script has
     /// announced the web view — the same document-start post the plugin needs.
@@ -208,7 +217,7 @@ final class SpreadPointerSettlerTests: XCTestCase {
         let loaded = LoadRecorder(expectation: expectation(description: "spread loaded"))
         webView.navigationDelegate = loaded
         webView.loadHTMLString("<html><body>\(body)</body></html>", baseURL: nil)
-        wait(for: [loaded.expectation], timeout: asyncTimeout)
+        wait(for: [loaded.expectation], timeout: spreadLoadTimeout)
         return webView
     }
 
