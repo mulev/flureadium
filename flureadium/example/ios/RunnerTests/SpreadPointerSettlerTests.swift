@@ -167,15 +167,20 @@ final class SpreadPointerSettlerTests: XCTestCase {
             webView.stopLoading()
         }
 
-        // Polls `trackedSpreadCount`, never `settle()`. Every `settle()` call
+        // Polls `trackedSpreadCount`, never `settle()`: every `settle()` call
         // evaluates JavaScript on each live spread, and WebKit retains a web
-        // view until that call answers — so a loop that polls `settle()` keeps
-        // the spread alive by asking whether it is gone. On CI, where those
-        // evaluations queue, the case burned its whole ceiling doing that on
-        // 2026-09-30.
+        // view until that call answers, so a loop polling `settle()` keeps the
+        // spread alive by asking whether it is gone. That cost this case its
+        // whole ceiling on CI on 2026-09-30.
+        //
+        // Each iteration drains its own pool. The run loop turning is what lets
+        // WebKit finish the teardown, and anything autoreleased in this method's
+        // frame would otherwise outlive every iteration of the wait.
         let deadline = Date(timeIntervalSinceNow: asyncTimeout)
         while settler.trackedSpreadCount != 0, Date() < deadline {
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+            autoreleasepool {
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+            }
         }
         XCTAssertEqual(
             settler.trackedSpreadCount, 0,

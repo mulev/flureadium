@@ -37,11 +37,16 @@ final class SpreadPointerSettler: NSObject, WKScriptMessageHandler {
 
   /// How many spreads the registry still holds.
   ///
-  /// Reading this dispatches nothing. `settle()` cannot answer the same
-  /// question: it evaluates JavaScript on every live spread, and WebKit retains
-  /// a web view for the duration of that call, so polling `settle()` to watch a
-  /// spread go away keeps resurrecting the thing it is waiting for.
-  var trackedSpreadCount: Int { spreads.allObjects.count }
+  /// Reading this dispatches nothing, and leaves nothing alive. `settle()`
+  /// cannot answer the same question: it evaluates JavaScript on every live
+  /// spread, and WebKit retains a web view for the duration of that call.
+  ///
+  /// The pool matters as much as the absent dispatch. `allObjects` hands back
+  /// an autoreleased array that strongly references its contents, so a caller
+  /// polling this in a loop would pile those arrays into whatever pool encloses
+  /// it, and a spread one poll saw alive could not die until that pool drained.
+  /// Draining here keeps the reading free of the effect it measures.
+  var trackedSpreadCount: Int { autoreleasepool { spreads.allObjects.count } }
 
   func userContentController(
     _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
