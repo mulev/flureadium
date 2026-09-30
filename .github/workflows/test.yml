@@ -246,6 +246,9 @@ jobs:
             xcrun simctl boot "$UDID" || true
             xcrun simctl bootstatus "$UDID"
           fi
+          # Handed to the diagnostics step below, which cannot re-derive it:
+          # by the time it runs, xcodebuild has shut the simulator down.
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
           cd ios
           # -resultBundlePath puts the bundle at a fixed location instead of
           # inside DerivedData, so the upload step below can find it.
@@ -256,6 +259,36 @@ jobs:
             -destination "id=$UDID" \
             -resultBundlePath "$GITHUB_WORKSPACE/RunnerTests.xcresult" \
             -only-testing:RunnerTests
+
+      # Why this exists: SpreadPointerSettlerTests is the only case in the
+      # target that holds two WKWebViews at once, and on this runner the second
+      # one intermittently never finishes loading — 240s of nothing, while the
+      # first works. The result bundle records the expired wait and nothing
+      # about WebKit, so the mechanism is unproven. A WebContent process that
+      # fails to spawn, or is jetsammed, says so in the simulator's own log.
+      - name: Collect simulator diagnostics
+        if: failure()
+        continue-on-error: true
+        run: |
+          OUT="$GITHUB_WORKSPACE/sim-diagnostics"
+          mkdir -p "$OUT"
+          cp -R "$HOME/Library/Logs/CoreSimulator/$SIM_UDID" "$OUT/coresimulator" 2>/dev/null || true
+          cp -R "$HOME/Library/Logs/DiagnosticReports" "$OUT/host-crashes" 2>/dev/null || true
+          cp -R "$HOME/Library/Developer/CoreSimulator/Devices/$SIM_UDID/data/Library/Logs/DiagnosticReports" \
+            "$OUT/sim-crashes" 2>/dev/null || true
+          # WebKit's own process-launch and termination records. The simulator
+          # is usually shut down by now, so this is best-effort.
+          xcrun simctl spawn "$SIM_UDID" log collect --last 40m --output "$OUT/sim.logarchive" 2>/dev/null || true
+          du -sh "$OUT"/* 2>/dev/null || true
+
+      - name: Upload simulator diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-native-sim-diagnostics
+          path: ${{ github.workspace }}/sim-diagnostics
+          retention-days: 14
+          if-no-files-found: warn
 
       # xcodebuild's console output carries a test's name and duration and
       # nothing else. A case that crashes prints a 0.000s failure with no
