@@ -95,9 +95,8 @@ taps at the reader's centre on `sample_pages.pdf` reported nothing through
 chrome down and the reader reporting `ready` and a delivered locator first.
 `pdf_test.dart` therefore carries no tap case.
 
-What is left is handed over as the `user | tap` row in `validators.conf`: every
-iOS case, plus fixed layout and PDF on both platforms. `./validate list user`
-prints it, and the checklist itself lives in the phase 5 plan slice.
+What is left is checked by hand: every iOS case, plus fixed layout and PDF on
+both platforms.
 
 A useful side effect of the measurement: `onTap`'s `Offset` is in **logical
 pixels, origin at the top-left of the platform view**. A tap at raw
