@@ -374,7 +374,11 @@ await flureadium.audioSeekBy(Duration(seconds: 30));
 > - **Android:** Native navigator via Pdfium adapter
 > - **iOS:** Native navigator via PDFKit
 > - **Flutter widget layer:** `setPDFPreferences()` method available
-> - **Status:** Manual testing in progress
+>
+> **Not every field reaches both platforms.** Readium's pdfium adapter exposes no
+> spread preference, so `pageLayout` and `offsetFirstPage` are iOS-only — Android
+> accepts them, stores them, and ignores them. `fit` and `scrollMode` work on both,
+> and a change to either takes effect without reopening the book.
 
 Controls PDF reader behavior.
 
@@ -396,6 +400,7 @@ PDFPreferences({
 #### fit
 
 **Type:** `PDFFit?`
+**Platforms:** Android, iOS
 
 How the PDF page fits within the viewport.
 
@@ -407,8 +412,10 @@ fit: PDFFit.contain  // Fit entire page in viewport
 #### scrollMode
 
 **Type:** `PDFScrollMode?`
+**Platforms:** Android, iOS
 
-Scroll direction for PDF navigation.
+Scroll direction for PDF navigation. On Android, `horizontal` snaps one page per
+swipe; `vertical` scrolls the document continuously.
 
 ```dart
 scrollMode: PDFScrollMode.horizontal  // Swipe left/right between pages
@@ -418,6 +425,7 @@ scrollMode: PDFScrollMode.vertical    // Scroll up/down through pages
 #### pageLayout
 
 **Type:** `PDFPageLayout?`
+**Platforms:** iOS only — ignored on Android (no pdfium spread support)
 
 Page layout mode for PDF display.
 
@@ -430,6 +438,7 @@ pageLayout: PDFPageLayout.automatic  // Automatically choose based on viewport
 #### offsetFirstPage
 
 **Type:** `bool?`
+**Platforms:** iOS only — ignored on Android (no pdfium spread support)
 
 Whether to offset the first page in double-page spreads (useful for cover pages).
 
@@ -486,7 +495,9 @@ final documentPrefs = PDFPreferences(
   pageLayout: PDFPageLayout.single,
 );
 
-// Book spread mode (two pages side-by-side)
+// Book spread mode (two pages side-by-side) — iOS only.
+// Android ignores pageLayout and offsetFirstPage: the pdfium adapter has no
+// spread preference, so this renders as single pages there.
 final spreadPrefs = PDFPreferences(
   fit: PDFFit.contain,
   scrollMode: PDFScrollMode.horizontal,

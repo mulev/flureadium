@@ -2,12 +2,15 @@ package dev.mulev.flureadium.navigators
 
 import com.github.barteksc.pdfviewer.PDFView
 import dev.mulev.flureadium.FlutterNavigationConfig
+import dev.mulev.flureadium.FlutterPdfFit
 import dev.mulev.flureadium.FlutterPdfPreferences
+import dev.mulev.flureadium.FlutterPdfScrollMode
 import dev.mulev.flureadium.fragments.PdfReaderFragment
 import dev.mulev.flureadium.models.PdfReaderViewModel
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -21,6 +24,8 @@ import org.mockito.Mockito.mockConstruction
 import org.mockito.Mockito.verify
 import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
 import org.readium.r2.navigator.pdf.PdfNavigatorFactory
+import org.readium.r2.navigator.preferences.Axis
+import org.readium.r2.navigator.preferences.Fit
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Publication
 import org.robolectric.RobolectricTestRunner
@@ -50,12 +55,14 @@ internal class PdfNavigatorInitTest {
         Dispatchers.resetMain()
     }
 
-    private fun createNavigator(): PdfNavigator {
+    private fun createNavigator(
+        preferences: FlutterPdfPreferences = FlutterPdfPreferences(),
+    ): PdfNavigator {
         return PdfNavigator(
             mock(Publication::class.java),
             null,
             mock(PdfNavigator.VisualListener::class.java),
-            FlutterPdfPreferences()
+            preferences
         )
     }
 
@@ -89,14 +96,45 @@ internal class PdfNavigatorInitTest {
     }
 
     /**
+     * The creation half of the dropped-preferences defect. `attachNavigator`
+     * hands `model.preferences` to `createFragmentFactory`, so a navigator built
+     * from a view model still holding the default renders pdfium's defaults
+     * whatever the host asked for. That hand-off needs a hosted fragment to
+     * exercise; what is checkable here is the field it reads.
+     */
+    @Test
+    fun initNavigator_seedsTheViewModelFromTheHostsPreferences() = runTest {
+        val navigator = createNavigator(
+            FlutterPdfPreferences(
+                fit = FlutterPdfFit.CONTAIN,
+                scrollMode = FlutterPdfScrollMode.HORIZONTAL,
+            )
+        )
+
+        mockConstruction(PdfiumEngineProvider::class.java).use {
+            mockConstruction(PdfNavigatorFactory::class.java).use {
+                navigator.initNavigator()
+            }
+        }
+
+        val fragment = navigator.getField("pdfNavigator") as? PdfReaderFragment
+        assertNotNull(fragment, "pdfNavigator fragment should be initialized")
+
+        val vm = fragment.vm as PdfReaderViewModel
+        assertEquals(Axis.HORIZONTAL, vm.preferences.scrollAxis)
+        assertEquals(Fit.CONTAIN, vm.preferences.fit)
+    }
+
+    /**
      * Builds a navigator, delivers [config] if given — after initNavigator(),
      * the way Flutter does — then runs the listener the pdfium provider was
      * constructed with against a fresh Configurator and returns it.
      */
     private suspend fun configureNewPdfView(
         config: FlutterNavigationConfig? = null,
+        preferences: FlutterPdfPreferences = FlutterPdfPreferences(),
     ): PDFView.Configurator {
-        val navigator = createNavigator()
+        val navigator = createNavigator(preferences)
         val captured = mutableListOf<PdfiumEngineProvider.Listener>()
         mockConstruction(PdfiumEngineProvider::class.java) { _, context ->
             captured += context.arguments().filterIsInstance<PdfiumEngineProvider.Listener>()
@@ -112,6 +150,9 @@ internal class PdfNavigatorInitTest {
         return configurator
     }
 
+    private val paginated = FlutterPdfPreferences(scrollMode = FlutterPdfScrollMode.HORIZONTAL)
+    private val scrolling = FlutterPdfPreferences(scrollMode = FlutterPdfScrollMode.VERTICAL)
+
     /**
      * The listener re-reads the stored config every time the pdfium adapter builds
      * a PDFView, so a config that arrives after initNavigator() still applies.
@@ -119,7 +160,8 @@ internal class PdfNavigatorInitTest {
     @Test
     fun pdfViewConfigurator_disablesSwipe_whenFlagFalse() = runTest {
         val configurator = configureNewPdfView(
-            FlutterNavigationConfig(enableSwipeNavigation = false)
+            FlutterNavigationConfig(enableSwipeNavigation = false),
+            preferences = paginated,
         )
 
         verify(configurator).enableSwipe(false)
@@ -128,7 +170,8 @@ internal class PdfNavigatorInitTest {
     @Test
     fun pdfViewConfigurator_keepsSwipe_whenFlagTrue() = runTest {
         val configurator = configureNewPdfView(
-            FlutterNavigationConfig(enableSwipeNavigation = true)
+            FlutterNavigationConfig(enableSwipeNavigation = true),
+            preferences = paginated,
         )
 
         verify(configurator).enableSwipe(true)
@@ -136,8 +179,67 @@ internal class PdfNavigatorInitTest {
 
     @Test
     fun pdfViewConfigurator_keepsSwipe_whenNoConfigArrived() = runTest {
-        val configurator = configureNewPdfView()
+        val configurator = configureNewPdfView(preferences = paginated)
 
         verify(configurator).enableSwipe(true)
+    }
+
+    /**
+     * `enableSwipe` gates every drag and fling on the document, so the host's
+     * opt-out is honoured only where swiping means a page turn. In scroll mode
+     * dragging is the only way to move, and the edge-tap overlay has stood down
+     * too, so obeying the flag there would leave the page unmovable.
+     */
+    @Test
+    fun pdfViewConfigurator_keepsSwipe_inScrollMode_despiteTheFlag() = runTest {
+        val configurator = configureNewPdfView(
+            FlutterNavigationConfig(enableSwipeNavigation = false),
+            preferences = scrolling,
+        )
+
+        verify(configurator).enableSwipe(true)
+    }
+
+    @Test
+    fun pdfViewConfigurator_keepsSwipe_whenNoScrollModeGiven_despiteTheFlag() = runTest {
+        // An absent scrollMode resolves to vertical, so it is scroll mode too.
+        val configurator = configureNewPdfView(
+            FlutterNavigationConfig(enableSwipeNavigation = false)
+        )
+
+        verify(configurator).enableSwipe(true)
+    }
+
+    /**
+     * "Page Flip" has to snap one page per swipe. The pdfium adapter sets
+     * swipeHorizontal but no snapping, so without these the document scrolls
+     * sideways continuously and the mode is indistinguishable from scroll.
+     */
+    @Test
+    fun pdfViewConfigurator_snapsPages_inHorizontalMode() = runTest {
+        val configurator = configureNewPdfView(preferences = paginated)
+
+        verify(configurator).pageSnap(true)
+        verify(configurator).pageFling(true)
+    }
+
+    @Test
+    fun pdfViewConfigurator_doesNotSnapPages_inVerticalMode() = runTest {
+        val configurator = configureNewPdfView(preferences = scrolling)
+
+        verify(configurator).pageSnap(false)
+        verify(configurator).pageFling(false)
+    }
+
+    /**
+     * An absent scrollMode is vertical — PdfiumSettingsResolver resolves a null
+     * axis that way, so snapping it would contradict what pdfium renders.
+     */
+    @Test
+    fun pdfViewConfigurator_doesNotSnapPages_whenNoScrollModeGiven() = runTest {
+        val configurator = configureNewPdfView()
+
+        verify(configurator).pageSnap(false)
+        verify(configurator).pageFling(false)
     }
 }

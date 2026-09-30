@@ -1,3 +1,19 @@
+## 0.19.5
+
+### Bug Fixes
+
+- **PDF preferences take effect on Android.** Every Android PDF rendered pdfium's resolver defaults — continuous vertical scroll, fit-to-width, 16 dp page gaps — whatever the host asked for. The preferences never reached Readium at all: `createFragmentFactory` was called without `initialPreferences`, so the navigator was built from `createEmptyPreferences()`, and `PdfReaderFragment.updatePreferences` had an empty body, so a later change was accepted over the method channel and dropped. The four preference fields the view model carried were written once and read by nothing.
+
+  `FlutterPdfPreferences` now maps to `PdfiumPreferences` directly. They are passed at navigator creation and submitted to the running navigator through `PdfNavigatorFragment.submitPreferences`, which is Readium 3.1.2's own live path — `applySettings` → `reset()`, the same API iOS has always used. A comment in the plugin claimed that path did not exist for PDF; it has existed since the navigator gained `Configurable`.
+
+  `PDFScrollMode.horizontal` also snaps one page per swipe now. The pdfium adapter sets `swipeHorizontal` but no snapping, so a horizontal document used to scroll sideways continuously; `pageSnap` and `pageFling` are set through the `onConfigurePdfView` hook, which Readium re-runs on every preference change. In vertical mode the edge-tap overlay stands down instead of claiming both edge strips over a document the user is trying to scroll.
+
+  `pageLayout` and `offsetFirstPage` stay iOS-only: `PdfiumPreferences` has no spread component, so Android accepts them, keeps them in saved state, and ignores them. That is now written down rather than implied.
+
+### Testing
+
+- A Kotlin unit test covers the Flutter → pdfium mapping: both axes, the null axis the resolver is meant to default, both fit constants against `PdfiumPreferences`'s own `require`, and the two fields that reach nothing on Android. A second pins the store the pause/resume rebuild reads, which is the half of the defect a live `submitPreferences` does not cover.
+
 ## 0.19.4
 
 ### Bug Fixes

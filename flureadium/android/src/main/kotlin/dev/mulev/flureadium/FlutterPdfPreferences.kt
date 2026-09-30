@@ -2,9 +2,10 @@ package dev.mulev.flureadium
 
 import kotlinx.serialization.Serializable
 import org.json.JSONObject
+import org.readium.adapter.pdfium.navigator.PdfiumPreferences
+import org.readium.r2.navigator.preferences.Axis
 import org.readium.r2.navigator.preferences.Configurable
 import org.readium.r2.navigator.preferences.Fit
-import org.readium.r2.navigator.preferences.Spread
 
 /**
  * PDF preferences for Flutter Readium.
@@ -28,19 +29,24 @@ data class FlutterPdfPreferences(
         )
 
     /**
-     * Converts to Readium-compatible preference values.
+     * Converts to the preference object Readium's pdfium navigator accepts.
      *
-     * Note: PDF preferences in Readium use individual properties rather than
-     * a dedicated PdfPreferences class. These values are used when creating
-     * the PDF navigator.
+     * `PdfiumPreferences` in Readium 3.1.2 carries only `fit`, `pageSpacing`,
+     * `readingProgression` and `scrollAxis` — [pageLayout] and [offsetFirstPage]
+     * have no pdfium counterpart and are dropped here on purpose.
+     *
+     * Nulls are passed through rather than defaulted: `PdfiumSettingsResolver`
+     * turns a null axis into `Axis.VERTICAL` and a null fit into the right value
+     * for the resolved axis, and it is the one place that decision belongs.
      */
-    fun toReadiumFit(): Fit? = fit?.toReadiumFit()
-
-    fun toReadiumScroll(): Boolean = scrollMode == FlutterPdfScrollMode.VERTICAL
-
-    fun toReadiumSpread(): Spread? = pageLayout?.toReadiumSpread()
-
-    fun toReadiumOffsetFirstPage(): Boolean? = offsetFirstPage
+    fun toPdfiumPreferences(): PdfiumPreferences = PdfiumPreferences(
+        fit = fit?.toReadiumFit(),
+        scrollAxis = when (scrollMode) {
+            FlutterPdfScrollMode.VERTICAL -> Axis.VERTICAL
+            FlutterPdfScrollMode.HORIZONTAL -> Axis.HORIZONTAL
+            null -> null
+        },
+    )
 
     companion object {
         /**
@@ -161,12 +167,6 @@ enum class FlutterPdfPageLayout {
     SINGLE,
     DOUBLE,
     AUTOMATIC;
-
-    fun toReadiumSpread(): Spread = when (this) {
-        SINGLE -> Spread.NEVER
-        DOUBLE -> Spread.ALWAYS
-        AUTOMATIC -> Spread.AUTO
-    }
 
     fun toFlutterString(): String = when (this) {
         SINGLE -> "single"

@@ -603,7 +603,6 @@ PDF support is implemented using Readium's Pdfium adapter, which provides native
 The `PdfNavigator` class wraps Readium's PDF navigator and provides:
 - Page-by-page navigation with edge tap detection
 - Horizontal and vertical scroll modes
-- Single page and double-page spread layouts
 - Zoom and pan gestures
 
 **Configuration:**
@@ -614,13 +613,31 @@ PDF preferences can be set via `setPDFPreferences()`:
 await flureadium.setPDFPreferences(PDFPreferences(
   fit: PDFFit.width,
   scrollMode: PDFScrollMode.horizontal,
-  pageLayout: PDFPageLayout.single,
 ));
 ```
+
+`FlutterPdfPreferences.toPdfiumPreferences()` maps the payload to the adapter's
+`PdfiumPreferences`. They are passed to `createFragmentFactory` when the navigator
+is built, and submitted to a running navigator through
+`PdfNavigatorFragment.submitPreferences` — Readium's own live path, which reaches
+`PdfiumDocumentFragment.applySettings` and rebuilds the `PDFView`. A preference
+change therefore takes effect without reopening the book.
+
+`PDFScrollMode.horizontal` also snaps one page per swipe: the pdfium adapter sets
+`swipeHorizontal` but no snapping, so `PdfNavigator` adds `pageSnap` and
+`pageFling` through the `onConfigurePdfView` hook. In vertical mode the edge-tap
+overlay stands down so it cannot swallow the scroll gesture.
+
+**`pageLayout` and `offsetFirstPage` are ignored on Android.** `PdfiumPreferences`
+in Readium 3.1.2 carries only `fit`, `pageSpacing`, `readingProgression` and
+`scrollAxis` — there is no spread component, so a double-page layout cannot be
+requested at all. Both fields are accepted, round-tripped through saved state, and
+honored on iOS only.
 
 **Files:**
 - `PdfNavigator.kt` - Main PDF navigation controller
 - `PdfReaderFragment.kt` - Android Fragment hosting the PDF view
+- `PdfReaderViewModel.kt` - Preferences and factory the fragment rebuilds from
 - `FlutterPdfPreferences.kt` - Maps Flutter preferences to Readium
 
 ### Page Thumbnails

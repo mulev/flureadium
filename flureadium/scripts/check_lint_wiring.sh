@@ -66,14 +66,30 @@ for entry in "${PACKAGES[@]}"; do
 	# `analyzer: exclude`, so a path-based probe would pass while the row it
 	# guards — plain `dart analyze --fatal-infos` — walked an excluded tree and
 	# checked nothing. Run what the gate runs.
-	output=$(cd "$REPO_ROOT/$package_dir" && dart analyze 2>&1)
-
+	#
+	# Two attempts, because "reported nothing" has two causes and only one of
+	# them is a defect. Measured: run standalone this script passes all three
+	# packages, but run as the validator's static-plugin-canary row — seconds
+	# after the static-plugin row's own analyze pass — the first package it
+	# reaches reports neither diagnostic while core analysis says "No issues
+	# found!". The plugin is not up yet; the later packages, 25s and 50s in,
+	# are fine. A package that is genuinely unwired reports nothing on both
+	# attempts, so the control still fails closed.
 	missing=()
-	for code in vacuous_not_null_assertion vacuous_type_assertion; do
-		case "$output" in
-		*"$code"*) ;;
-		*) missing+=("$code") ;;
-		esac
+	for attempt in 1 2; do
+		[ "$attempt" -eq 2 ] && sleep 10
+
+		output=$(cd "$REPO_ROOT/$package_dir" && dart analyze 2>&1)
+
+		missing=()
+		for code in vacuous_not_null_assertion vacuous_type_assertion; do
+			case "$output" in
+			*"$code"*) ;;
+			*) missing+=("$code") ;;
+			esac
+		done
+
+		[ ${#missing[@]} -eq 0 ] && break
 	done
 
 	rm -f "$probe_path"

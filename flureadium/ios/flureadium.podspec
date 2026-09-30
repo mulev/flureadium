@@ -4,10 +4,11 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'flureadium'
-  s.version          = '0.0.1'
+  s.version          = '0.19.5'
   s.summary          = 'Flutter plugin wrapper for Readium toolkits.'
   s.description      = <<-DESC
-A new Flutter plugin project.
+Reads EPUB ebooks, PDFs, audiobooks and comics through the Readium toolkits,
+with text-to-speech, highlights and reading preferences.
                        DESC
   s.homepage         = 'http://github.com/mulev/flureadium'
   s.license          = { :file => '../LICENSE' }
