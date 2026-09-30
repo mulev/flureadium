@@ -35,6 +35,14 @@ final class SpreadPointerSettler: NSObject, WKScriptMessageHandler {
     return live.count
   }
 
+  /// How many spreads the registry still holds.
+  ///
+  /// Reading this dispatches nothing. `settle()` cannot answer the same
+  /// question: it evaluates JavaScript on every live spread, and WebKit retains
+  /// a web view for the duration of that call, so polling `settle()` to watch a
+  /// spread go away keeps resurrecting the thing it is waiting for.
+  var trackedSpreadCount: Int { spreads.allObjects.count }
+
   func userContentController(
     _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
   ) {

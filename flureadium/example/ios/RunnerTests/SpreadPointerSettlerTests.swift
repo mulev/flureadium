@@ -167,14 +167,18 @@ final class SpreadPointerSettlerTests: XCTestCase {
             webView.stopLoading()
         }
 
-        var settled = settler.settle()
+        // Polls `trackedSpreadCount`, never `settle()`. Every `settle()` call
+        // evaluates JavaScript on each live spread, and WebKit retains a web
+        // view until that call answers — so a loop that polls `settle()` keeps
+        // the spread alive by asking whether it is gone. On CI, where those
+        // evaluations queue, the case burned its whole ceiling doing that on
+        // 2026-09-30.
         let deadline = Date(timeIntervalSinceNow: asyncTimeout)
-        while settled != 0, Date() < deadline {
+        while settler.trackedSpreadCount != 0, Date() < deadline {
             RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
-            settled = settler.settle()
         }
         XCTAssertEqual(
-            settled, 0,
+            settler.trackedSpreadCount, 0,
             "PaginationView discards spreads as the reader moves; the registry must not retain them")
     }
 
