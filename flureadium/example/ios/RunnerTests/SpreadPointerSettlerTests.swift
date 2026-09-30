@@ -117,22 +117,35 @@ final class SpreadPointerSettlerTests: XCTestCase {
         )
     }
 
+    /// Two registered spreads, no WebKit. `PaginationView` keeps several spread
+    /// views alive and the stranded pointer is not always in the current one, so
+    /// what this has to pin is that `settle()` reaches every entry in the
+    /// registry rather than the first.
+    ///
+    /// It used to pin that by loading two real spreads and collecting both
+    /// pointer ids. That coupled the claim to WebKit starting a second content
+    /// process, which a GitHub runner intermittently never does — the second
+    /// load sat unfinished for the full 240 s ceiling on run 36668314406 while
+    /// the first worked. The dispatch reaching a real document is proven by
+    /// `testSettleCancelsTheLivePointerThroughTheBridge` and
+    /// `testSettleReachesAPointerInsideASubframe`; only the duplicate needed a
+    /// second web view.
     func testSettleReachesEveryRegisteredSpread() {
         let settler = SpreadPointerSettler()
-        let bridge = PointerEventRecorder(expected: 2)
-        let first = loadSpread(settler: settler, bridge: bridge)
-        let second = loadSpread(settler: settler, bridge: bridge)
+        let first = RecordingSpread()
+        let second = RecordingSpread()
+        settler.register(spread: first)
+        settler.register(spread: second)
 
-        press(pointerId: 11, in: first)
-        press(pointerId: 22, in: second)
-        settler.settle()
+        XCTAssertEqual(settler.settle(), 2)
 
-        bridge.awaitPayload(self)
+        let expected = "window.\(EpubUserScripts.settleFunctionName)?.()"
         XCTAssertEqual(
-            Set(bridge.payloads.compactMap { $0["pointerId"] as? Int }),
-            [11, 22],
-            "the strand can sit in a spread that is not the current one"
-        )
+            first.evaluated, [expected],
+            "the strand can sit in a spread that is not the current one")
+        XCTAssertEqual(
+            second.evaluated, [expected],
+            "a settle that stops at the first spread strands every other one")
     }
 
     /// A fixed-layout spread holds its resource in an iframe, and the settle is
@@ -246,6 +259,26 @@ final class SpreadPointerSettlerTests: XCTestCase {
         let evaluated = expectation(description: "evaluated")
         webView.evaluateJavaScript(javaScript) { _, _ in evaluated.fulfill() }
         wait(for: [evaluated], timeout: asyncTimeout)
+    }
+}
+
+/// Records what `settle()` dispatches, without involving WebKit.
+///
+/// Overriding without calling `super` is the point: no content process is
+/// started, nothing loads, and the case asserts on what the settler did rather
+/// than on what a document did in response.
+///
+/// The completion handler is spelled `@MainActor @Sendable` because that is how
+/// the SDK imports it. A plainer closure type makes the override mismatch the
+/// declaration it overrides, which Swift 6 rejects outright.
+private final class RecordingSpread: WKWebView {
+    private(set) var evaluated: [String] = []
+
+    override func evaluateJavaScript(
+        _ javaScript: String,
+        completionHandler: (@MainActor @Sendable (Any?, (any Error)?) -> Void)? = nil
+    ) {
+        evaluated.append(javaScript)
     }
 }
 

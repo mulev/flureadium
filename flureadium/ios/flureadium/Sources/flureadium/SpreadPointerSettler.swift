@@ -48,12 +48,22 @@ final class SpreadPointerSettler: NSObject, WKScriptMessageHandler {
   /// Draining here keeps the reading free of the effect it measures.
   var trackedSpreadCount: Int { autoreleasepool { spreads.allObjects.count } }
 
+  /// Adds one spread to the registry.
+  ///
+  /// Separate from the message handler because `WKScriptMessage` has no public
+  /// initialiser: without this, the only way to put a spread in the registry is
+  /// to load a document in a real web view, which is a WebKit dependency the
+  /// fan-out behaviour does not otherwise have.
+  func register(spread: WKWebView) {
+    // Every frame of every spread posts, so the same web view arrives more than
+    // once; the hash table keys on identity and keeps one entry.
+    spreads.add(spread)
+  }
+
   func userContentController(
     _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
   ) {
-    // Every frame of every spread posts, so the same web view arrives more than
-    // once; the hash table keys on identity and keeps one entry.
     guard let webView = message.webView else { return }
-    spreads.add(webView)
+    register(spread: webView)
   }
 }
