@@ -86,7 +86,7 @@ HITS=""
 scan_trees() { # <allow-marker> <tree entry>...
   local allow="$1"
   shift
-  local entry dir glob pattern hit file num from
+  local entry dir glob pattern hit file num from window
   HITS=""
   for entry in "$@"; do
     IFS='|' read -r dir glob pattern <<<"$entry"
@@ -100,7 +100,26 @@ scan_trees() { # <allow-marker> <tree entry>...
       num=${hit#*:}
       num=${num%%:*}
       from=$((num > 1 ? num - 1 : 1))
-      sed -n "${from},$((num + 1))p" "$file" | grep -q -- "$allow" && continue
+      # The marker may sit anywhere in the matched statement, or on the line
+      # above it. `dart format` splits a call whose trailing comment runs long
+      # and moves the comment to the closing paren, which can be two or more
+      # lines below the call — so the window runs forward to the statement's
+      # `;` rather than a fixed number of lines.
+      #
+      # The line above counts only when it is not itself an offending call, or
+      # an unmarked sleep written directly above a marked one would inherit the
+      # marker. Forward lines need no such filter: the scan stops at the `;`
+      # that ends this statement, so it cannot reach the next one.
+      #
+      # Collected first, then matched with a here-string rather than a pipe:
+      # under `pipefail`, `grep -q` exits on its first hit and the upstream
+      # reader dies with SIGPIPE, which would report the whole pipeline as
+      # failed exactly when the marker WAS found.
+      window=$(
+        sed -n "${from}p" "$file" | grep -vE -- "$pattern"
+        awk -v start="$num" 'NR >= start { print; if (/;/) exit }' "$file"
+      )
+      grep -q -- "$allow" <<<"$window" && continue
       HITS+="${hit#"$REPO_ROOT"/}"$'\n'
     done < <(grep -rnE "$pattern" --include="$glob" "$REPO_ROOT/$dir")
   done
