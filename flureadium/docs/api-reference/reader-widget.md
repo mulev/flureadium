@@ -276,8 +276,6 @@ Two things about this recipe are load-bearing.
 
 **Subscribing from `onReady` is early enough.** On Android and iOS the reader reports `loading` while the platform view is still being created, before Flutter can reply to Dart, so the first status is sent before any host can be listening. Both platforms hold the latest status and hand it to the first subscriber, so `ready` reaches a host that subscribes from `onReady` even when it was sent before the subscription existed. Web keeps no such buffer, since its status stream is a plain broadcast stream, but web fires `onReady` from the first frame while the JavaScript reader is still loading. The subscription is in place well before `ready` either way.
 
-**One exception: PDF on iOS.** `PdfReaderView` publishes its statuses to its own `pdf-reader-status` channel (the `readerStatusStreamHandler` it creates in `PdfReaderView.init`), and nothing on the Dart side subscribes to it — `onReaderStatusChanged` listens on `dev.mulev.flureadium/reader-status` only. An iOS PDF therefore reports no status at all, so a cover gated on `ready` never comes down. Drop it on the first locator there, or on a timeout.
-
 Whether the cover blocks input is your call. Wrap it in `IgnorePointer` to let touches through to the reader underneath, or leave it out to swallow them until the reader is up.
 
 One note for your own widget tests: an indeterminate `CircularProgressIndicator` schedules frames for as long as it is mounted, so `pumpAndSettle` never returns while the cover is up. Pump in bounded steps until the condition you care about holds — the reader reporting `ready`, a finder matching — instead.

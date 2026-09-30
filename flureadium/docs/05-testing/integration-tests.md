@@ -15,6 +15,7 @@ Integration tests run the example app on a real device or simulator and assert w
 | `audiobook_host_test.dart` | Android, iOS | An audio-only publication mounts and reports `ready` from a host with no navigator. Split from `audiobook_test.dart` because it needs no player, so it runs where audio does not work |
 | `audiobook_test.dart` | Android, iOS (`native`) | Audiobook opens, play changes button label, seek doesn't crash, pause/resume button labels cycle correctly, playing the last track to its end surfaces `TimebasedState.ended` |
 | `cbz_test.dart` | Android, iOS | CBZ auto-opens, navigation works, `goToLocator` reaches an image page, `extractPageThumbnail` returns JPEG bytes/null as appropriate |
+| `pdf_test.dart` | Android, iOS | A PDF opens and the reader reports `ready`, a locator names the PDF resource, `goRight` moves the reported page to a later one, and the page stays put when nothing asks it to move. The page number comes from the locator pulled off the reader: the locator pushed on the stream reports `progression` 0.0 on every page of a PDF, so it cannot witness a page turn |
 | `divina_test.dart` | Android, iOS | DIVINA auto-opens, `ReadiumReaderWidget` present, left/right navigation works |
 | `webpub_test.dart` | Android, iOS (`network`) | A remote WebPub manifest opens: the open-generation counter moves past its pre-tap value, `open-error` is empty, and the publication on screen is the manifest's own — `urn:isbn:9780000000001`, checked by identifier because the manifest and the bundled EPUB fixture are both titled "Moby-Dick". See [An assertion that cannot fail proves nothing](#an-assertion-that-cannot-fail-proves-nothing) |
 | `error_handling_test.dart` | Android, iOS | A corrupted file and a missing file both raise `ReadiumException`, and (Android only) a failed native enable reports `error` instead of killing the app — see [Forcing a reader failure](#forcing-a-reader-failure) |
@@ -83,6 +84,16 @@ overlay. It is then dropped above that, inside the fixed-layout script path.
 Five taps three seconds apart on `fixed_layout.epub` reported nothing, while
 `adb shell input tap` at the same point reported immediately — the fixture and
 the chain are both fine.
+
+**Android PDF is not driven by a synthesized touch either, and the dead end sits
+elsewhere again.** The pointer reaches Flutter — the reader widget's `Listener`
+logs `onPointerDown` and `onPointerUp` at the tapped offset on every attempt —
+and at the far end AndroidPdfViewer's `onSingleTapConfirmed` reports a tap
+unconditionally (`PdfNavigator.kt:134-138`), so neither end is dropping it. Six
+taps at the reader's centre on `sample_pages.pdf` reported nothing through
+`onTap`: one with a 60 s wait, then five three seconds apart, each with the
+chrome down and the reader reporting `ready` and a delivered locator first.
+`pdf_test.dart` therefore carries no tap case.
 
 What is left is handed over as the `user | tap` row in `validators.conf`: every
 iOS case, plus fixed layout and PDF on both platforms. `./validate list user`
