@@ -172,8 +172,13 @@ final class FlureadiumPluginErrorChannelTests: XCTestCase {
 
     for view in views {
       let source = try String(contentsOf: sources.appendingPathComponent(view), encoding: .utf8)
+      // Matching the `withName:` label rather than `EventStreamHandler` itself:
+      // `ReaderStatusEventStream` and `TextLocatorEventStream` subclass it and
+      // build the channel through the same initializer, so naming the base
+      // class would let a view reintroduce the defect through a subclass and
+      // still pass. No reader view uses that label for anything else.
       XCTAssertFalse(
-        source.contains("EventStreamHandler(withName:"),
+        source.contains("withName:"),
         "\(view) registers an EventChannel of its own. reader-status, text-locator and error belong to FlureadiumPlugin — send through FlureadiumPlugin.shared, or Dart never hears it"
       )
     }

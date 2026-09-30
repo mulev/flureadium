@@ -24,8 +24,13 @@
 //  The swipe recognizers stay. A UISwipeGestureRecognizer does not match
 //  Readium's cast, so it can never form that failure requirement. They also
 //  carry cancelsTouchesInView = false, so a recognized swipe still delivers
-//  touchesEnded here rather than touchesCancelled — the movement-slop check is
-//  the only thing keeping an edge swipe from also reporting as an edge tap.
+//  touchesEnded here rather than touchesCancelled.
+//
+//  A recognizer used to answer three questions; the responder path has to ask
+//  all three itself, and qualifiesAsEdgeTap is where they live: the touch
+//  stayed within slop (not a swipe), it was brief (not a long press, which
+//  UITapGestureRecognizer failed on outright), and no second finger was down
+//  (numberOfTouchesRequired = 1).
 //
 
 import Foundation
@@ -53,6 +58,28 @@ let edgeTapSlopPoints: CGFloat = 10.0
 /// enough to be a tap.
 func isTapWithinSlop(start: CGPoint, end: CGPoint, slop: CGFloat) -> Bool {
     abs(end.x - start.x) <= slop && abs(end.y - start.y) <= slop
+}
+
+/// How long a touch may last and still count as a tap.
+///
+/// `UITapGestureRecognizer` enforced its own limit; without one, a press held
+/// in the edge strip and released turns the page.
+let edgeTapMaxDurationSeconds: TimeInterval = 0.7
+
+/// Whether a finished touch was a tap this overlay should act on.
+///
+/// `touchCount` is the whole event's touch count, not the callback's set: each
+/// callback receives only what `hitTest` handed this view, and
+/// `isMultipleTouchEnabled` is false, so that set is always a single touch. A
+/// finger resting on content hit-tests elsewhere and shows up nowhere but
+/// `UIEvent.allTouches`. The removed recognizer sat above the navigator and saw
+/// both, which is how it rejected a parked thumb.
+func qualifiesAsEdgeTap(
+    touchCount: Int, elapsed: TimeInterval, start: CGPoint, end: CGPoint
+) -> Bool {
+    touchCount == 1
+        && elapsed <= edgeTapMaxDurationSeconds
+        && isTapWithinSlop(start: start, end: end, slop: edgeTapSlopPoints)
 }
 
 /// View that intercepts edge taps for page navigation when Readium's
@@ -123,19 +150,19 @@ class EdgeTapInterceptView: UIView {
     /// edge zone — so a tracked touch always has a page turn waiting for it.
     private var trackedTouch: UITouch?
     private var trackedStart: CGPoint = .zero
+    private var trackedStartTime: TimeInterval = 0
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
 
-        // A second finger means this is not a single tap. Drop the candidate
-        // rather than guessing which touch the user meant.
-        guard trackedTouch == nil, touches.count == 1, let touch = touches.first else {
+        guard trackedTouch == nil, let touch = touches.first else {
             trackedTouch = nil
             return
         }
 
         trackedTouch = touch
         trackedStart = touch.location(in: self)
+        trackedStartTime = touch.timestamp
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -155,9 +182,14 @@ class EdgeTapInterceptView: UIView {
         guard let tracked = trackedTouch, touches.contains(tracked) else { return }
         trackedTouch = nil
 
+        // `allTouches` is the only view of a finger resting on content, which
+        // hit-tests to the navigator and never reaches this callback's set.
         guard
-            isTapWithinSlop(
-                start: trackedStart, end: tracked.location(in: self), slop: edgeTapSlopPoints)
+            qualifiesAsEdgeTap(
+                touchCount: event?.allTouches?.count ?? 0,
+                elapsed: tracked.timestamp - trackedStartTime,
+                start: trackedStart,
+                end: tracked.location(in: self))
         else { return }
 
         // The side comes from the start point: `hitTest` claimed this touch on

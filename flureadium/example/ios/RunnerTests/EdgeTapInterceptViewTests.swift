@@ -297,6 +297,73 @@ final class EdgeTapInterceptViewTests: XCTestCase {
             isTapWithinSlop(start: CGPoint(x: 20, y: 300), end: CGPoint(x: 24, y: 400), slop: 10))
     }
 
+    // MARK: - Edge tap qualification
+
+    // `isTapWithinSlop` is only half the question. A gesture recognizer used to
+    // answer the other half for free: `numberOfTouchesRequired = 1` rejected a
+    // second finger, and a tap recognizer fails outright if the touch is held.
+    // The responder path has to ask both itself, so the whole decision lives in
+    // one pure function these cases drive directly.
+
+    func testStillBriefSingleTouchQualifies() {
+        XCTAssertTrue(
+            qualifiesAsEdgeTap(
+                touchCount: 1, elapsed: 0.08,
+                start: CGPoint(x: 20, y: 300), end: CGPoint(x: 23, y: 302)))
+    }
+
+    func testSecondFingerDisqualifies() {
+        // A thumb parked in the edge strip while the other hand taps or pinches
+        // content: `touches` in each callback carries only what hitTest handed
+        // this view, and isMultipleTouchEnabled is false, so the per-callback
+        // set is always one touch. The event's own count is the only place the
+        // concurrent finger appears.
+        XCTAssertFalse(
+            qualifiesAsEdgeTap(
+                touchCount: 2, elapsed: 0.08,
+                start: CGPoint(x: 20, y: 300), end: CGPoint(x: 23, y: 302)),
+            "a parked thumb turns the page on lift; the removed recognizer rejected this")
+    }
+
+    func testHeldTouchDisqualifies() {
+        // Held still, so the slop check passes it. UITapGestureRecognizer would
+        // have failed on duration alone, which is what kept a long press in the
+        // edge strip from turning the page.
+        XCTAssertFalse(
+            qualifiesAsEdgeTap(
+                touchCount: 1, elapsed: 2.0,
+                start: CGPoint(x: 20, y: 300), end: CGPoint(x: 20, y: 300)),
+            "a long press is not a tap, however still it is")
+    }
+
+    func testMovementPastSlopStillDisqualifies() {
+        XCTAssertFalse(
+            qualifiesAsEdgeTap(
+                touchCount: 1, elapsed: 0.08,
+                start: CGPoint(x: 20, y: 300), end: CGPoint(x: 120, y: 305)))
+    }
+
+    func testDurationBoundaryIsInclusive() {
+        // Pinned so the bound cannot drift unnoticed: exactly at the limit is a
+        // tap, one step past it is not.
+        let still = CGPoint(x: 20, y: 300)
+        XCTAssertTrue(
+            qualifiesAsEdgeTap(
+                touchCount: 1, elapsed: edgeTapMaxDurationSeconds, start: still, end: still))
+        XCTAssertFalse(
+            qualifiesAsEdgeTap(
+                touchCount: 1, elapsed: edgeTapMaxDurationSeconds + 0.01, start: still,
+                end: still))
+    }
+
+    func testZeroTouchCountDisqualifies() {
+        // `event?.allTouches` is optional; a nil event must not read as a tap.
+        XCTAssertFalse(
+            qualifiesAsEdgeTap(
+                touchCount: 0, elapsed: 0.08,
+                start: CGPoint(x: 20, y: 300), end: CGPoint(x: 20, y: 300)))
+    }
+
     // MARK: - Single pointer edge owner
 
     // `edgeTapPointerPolicy` inherits `ReadiumReaderView`'s main-actor
