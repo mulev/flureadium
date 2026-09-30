@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'flureadium'
-  s.version          = '0.19.5'
+  s.version          = '0.19.6'
   s.summary          = 'Flutter plugin wrapper for Readium toolkits.'
   s.description      = <<-DESC
 Reads EPUB ebooks, PDFs, audiobooks and comics through the Readium toolkits,
