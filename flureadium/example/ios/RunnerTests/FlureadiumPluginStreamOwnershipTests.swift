@@ -159,7 +159,7 @@ final class FlureadiumPluginStreamOwnershipTests: XCTestCase {
     plugin.handle(FlutterMethodCall(methodName: "dispose", arguments: nil)) { _ in
       disposed.fulfill()
     }
-    wait(for: [disposed], timeout: 5)
+    wait(for: [disposed], timeout: asyncTimeout)
 
     XCTAssertTrue(readerStatus.disposed, "only the plugin may end-stream the shared channels")
     XCTAssertTrue(textLocator.disposed)
@@ -177,7 +177,7 @@ final class FlureadiumPluginStreamOwnershipTests: XCTestCase {
     view.onMethodCall(call: FlutterMethodCall(methodName: "dispose", arguments: nil)) { _ in
       answered.fulfill()
     }
-    wait(for: [answered], timeout: 5)
+    wait(for: [answered], timeout: asyncTimeout)
 
     XCTAssertEqual(
       readerStatus.events.last as? String, "closed",

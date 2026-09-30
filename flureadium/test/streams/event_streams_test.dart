@@ -65,7 +65,7 @@ void main() {
         Locator(href: 'chapter3.xhtml', type: 'text/html'),
       );
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await pumpEventQueue();
 
       expect(locators.length, equals(3));
       expect(locators[0].href, equals('chapter1.xhtml'));
@@ -86,7 +86,7 @@ void main() {
         Locator(href: 'test.xhtml', type: 'text/html'),
       );
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await pumpEventQueue();
 
       expect(locators1.length, equals(1));
       expect(locators2.length, equals(1));
@@ -106,7 +106,7 @@ void main() {
       mockPlatform.emitReaderStatus(ReadiumReaderStatus.loading);
       mockPlatform.emitReaderStatus(ReadiumReaderStatus.ready);
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await pumpEventQueue();
 
       expect(statuses, contains(ReadiumReaderStatus.loading));
       expect(statuses, contains(ReadiumReaderStatus.ready));
@@ -128,7 +128,7 @@ void main() {
         ReadiumReaderStatus.reachedEndOfPublication,
       );
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await pumpEventQueue();
 
       expect(statuses.length, equals(5));
 
@@ -151,7 +151,7 @@ void main() {
         ),
       );
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await pumpEventQueue();
 
       expect(states.length, equals(1));
       expect(states[0].state, equals(TimebasedState.playing));
@@ -184,7 +184,7 @@ void main() {
         ),
       );
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await pumpEventQueue();
 
       expect(states.length, equals(3));
       expect(states[0].state, equals(TimebasedState.loading));
@@ -211,7 +211,7 @@ void main() {
         ),
       );
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await pumpEventQueue();
 
       expect(states[0].currentLocator, isNotNull);
       expect(states[0].currentLocator!.href, equals('audio-track.mp3'));
@@ -229,7 +229,7 @@ void main() {
         ReadiumError('Test error message', code: 'ERR_001'),
       );
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await pumpEventQueue();
 
       expect(errors.length, equals(1));
       expect(errors[0].message, equals('Test error message'));
@@ -246,7 +246,7 @@ void main() {
       mockPlatform.emitError(ReadiumError('Error 2'));
       mockPlatform.emitError(ReadiumError('Error 3'));
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await pumpEventQueue();
 
       expect(errors.length, equals(3));
 
@@ -265,7 +265,7 @@ void main() {
         ),
       );
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await pumpEventQueue();
 
       expect(errors[0].data, equals({'context': 'chapter loading'}));
       expect(errors[0].code, equals('DATA_ERR'));
@@ -283,14 +283,14 @@ void main() {
         Locator(href: 'before-cancel.xhtml', type: 'text/html'),
       );
 
-      await Future.delayed(const Duration(milliseconds: 50));
+      await pumpEventQueue();
       await subscription.cancel();
 
       mockPlatform.emitTextLocator(
         Locator(href: 'after-cancel.xhtml', type: 'text/html'),
       );
 
-      await Future.delayed(const Duration(milliseconds: 50));
+      await pumpEventQueue();
 
       expect(locators.length, equals(1));
       expect(locators[0].href, equals('before-cancel.xhtml'));
@@ -304,21 +304,21 @@ void main() {
         Locator(href: 'first.xhtml', type: 'text/html'),
       );
 
-      await Future.delayed(const Duration(milliseconds: 50));
+      await pumpEventQueue();
       subscription.pause();
 
       mockPlatform.emitTextLocator(
         Locator(href: 'paused.xhtml', type: 'text/html'),
       );
 
-      await Future.delayed(const Duration(milliseconds: 50));
+      await pumpEventQueue();
       subscription.resume();
 
       mockPlatform.emitTextLocator(
         Locator(href: 'resumed.xhtml', type: 'text/html'),
       );
 
-      await Future.delayed(const Duration(milliseconds: 50));
+      await pumpEventQueue();
 
       expect(locators.any((l) => l.href == 'first.xhtml'), isTrue);
       expect(locators.any((l) => l.href == 'resumed.xhtml'), isTrue);

@@ -4,18 +4,20 @@
 #
 # Runs every Flureadium test suite in one shot and prints one consolidated
 # summary:
-#   1. Unit / widget tests  — flutter test / dart test in each Dart package
+#   1. Wall-clock guard     — scripts/check_test_timeouts.sh
+#                             (static grep: no test may wait by sleeping)
+#   2. Unit / widget tests  — flutter test / dart test in each Dart package
 #                             (plugin, platform interface, example, lints)
-#   2. Helper scripts       — scripts/run_helper_script_tests.sh
+#   3. Helper scripts       — scripts/run_helper_script_tests.sh
 #                             (jest suite for the injected page scripts, then a
 #                             check that assets/helpers/ matches its TypeScript)
-#   3. Native unit tests    — scripts/run_native_unit_tests.sh
+#   4. Native unit tests    — scripts/run_native_unit_tests.sh
 #                             (Android Kotlin/Robolectric JVM + iOS Swift/XCTest)
-#   4. Integration tests    — scripts/run_integration_tests.sh
+#   5. Integration tests    — scripts/run_integration_tests.sh
 #                             (full example-app flows on Android + iOS + Web)
 #
-# Suites run fastest-first (unit -> helpers -> native -> integration) and, by
-# default, every suite runs even if an earlier one fails; the final table
+# Suites run fastest-first (guard -> unit -> helpers -> native -> integration)
+# and, by default, every suite runs even if an earlier one fails; the final table
 # shows each suite's status, duration, and log file. The exit code is
 # non-zero if any suite that ran failed.
 #
@@ -80,8 +82,10 @@ LOG_BASE="$PLUGIN_DIR/test_logs/all_tests"
 NATIVE_RUNNER="$SCRIPT_DIR/run_native_unit_tests.sh"
 INTEGRATION_RUNNER="$SCRIPT_DIR/run_integration_tests.sh"
 HELPER_RUNNER="$SCRIPT_DIR/run_helper_script_tests.sh"
+TIMEOUT_GUARD="$SCRIPT_DIR/check_test_timeouts.sh"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
+SKIP_GUARD=false
 SKIP_UNIT=false
 SKIP_HELPERS=false
 SKIP_NATIVE=false
@@ -334,8 +338,18 @@ if [ "$SKIP_INTEGRATION" = false ] && [ ! -x "$INTEGRATION_RUNNER" ]; then
   SKIP_INTEGRATION=true
   OVERALL_EXIT=1
 fi
+if [ ! -x "$TIMEOUT_GUARD" ]; then
+  log "${RED}Timeout guard not found or not executable: $TIMEOUT_GUARD${NC}"
+  SKIP_GUARD=true
+  OVERALL_EXIT=1
+fi
 
 # ── Run suites (fastest first) ────────────────────────────────────────────────
+# Static guard: no test may bet on the clock. Cheap, so it runs first and is
+# not behind any suite-skip flag.
+run_or_skip "Guard — test clock bets" "$LOG_DIR/guard_test_timeouts.log" "$SKIP_GUARD" "" \
+  "$TIMEOUT_GUARD"
+
 # Unit / widget tests — one row per Dart package so the summary pinpoints which
 # package broke. All four share the SKIP_UNIT gate.
 run_or_skip "Unit — plugin" "$LOG_DIR/unit_plugin.log" "$SKIP_UNIT" "$NOISE_RE" \

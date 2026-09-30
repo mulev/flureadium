@@ -1,3 +1,4 @@
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart' as mq show Orientation;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flureadium_platform_interface/flureadium_platform_interface.dart';
@@ -74,82 +75,108 @@ void main() {
       expect(mockChannel.goCallLog, isEmpty);
     });
 
-    test('does nothing when orientation unchanged', () async {
+    test('does nothing when orientation unchanged', () {
       final mockChannel = MockReaderChannel();
       final testLocator = Locator(href: 'test.html', type: 'text/html');
 
-      handler.lastOrientation = mq.Orientation.portrait;
+      fakeAsync((async) {
+        handler.lastOrientation = mq.Orientation.portrait;
 
-      handler.handleOrientationChange(
-        currentOrientation: mq.Orientation.portrait,
-        isReady: true,
-        currentLocator: testLocator,
-        channel: mockChannel,
-      );
+        // Suppressed: the same orientation must not schedule a re-navigation.
+        handler.handleOrientationChange(
+          currentOrientation: mq.Orientation.portrait,
+          isReady: true,
+          currentLocator: testLocator,
+          channel: mockChannel,
+        );
 
-      // Wait to ensure no navigation triggered
-      await Future.delayed(const Duration(milliseconds: 600));
+        async.elapse(const Duration(milliseconds: 500));
+        expect(mockChannel.goCallLog, isEmpty);
 
-      expect(mockChannel.goCallLog, isEmpty);
+        // Control: a real orientation change must navigate. Without this, the
+        // assertion above also passes when the handler navigates nothing ever.
+        handler.handleOrientationChange(
+          currentOrientation: mq.Orientation.landscape,
+          isReady: true,
+          currentLocator: testLocator,
+          channel: mockChannel,
+        );
+
+        async.elapse(const Duration(milliseconds: 500));
+        expect(mockChannel.goCallLog, hasLength(1));
+        expect(
+          mockChannel.goCallLog.single['locator'].href,
+          equals('test.html'),
+        );
+      });
     });
 
-    test('navigates when orientation changes', () async {
+    test('navigates when orientation changes', () {
       final mockChannel = MockReaderChannel();
       final testLocator = Locator(href: 'chapter1.html', type: 'text/html');
 
-      handler.lastOrientation = mq.Orientation.portrait;
+      fakeAsync((async) {
+        handler.lastOrientation = mq.Orientation.portrait;
 
-      handler.handleOrientationChange(
-        currentOrientation: mq.Orientation.landscape,
-        isReady: true,
-        currentLocator: testLocator,
-        channel: mockChannel,
-      );
+        handler.handleOrientationChange(
+          currentOrientation: mq.Orientation.landscape,
+          isReady: true,
+          currentLocator: testLocator,
+          channel: mockChannel,
+        );
 
-      // Wait for delayed navigation (500ms delay)
-      await Future.delayed(const Duration(milliseconds: 600));
+        // The mixin schedules its re-navigation 500 ms out.
+        async.elapse(const Duration(milliseconds: 500));
 
-      expect(mockChannel.goCallLog, hasLength(1));
-      expect(mockChannel.goCallLog[0]['locator'].href, equals('chapter1.html'));
-      expect(mockChannel.goCallLog[0]['animated'], isFalse);
-      expect(mockChannel.goCallLog[0]['isAudioBookWithText'], isFalse);
-      expect(handler.lastOrientation, equals(mq.Orientation.landscape));
+        expect(mockChannel.goCallLog, hasLength(1));
+        expect(
+          mockChannel.goCallLog[0]['locator'].href,
+          equals('chapter1.html'),
+        );
+        expect(mockChannel.goCallLog[0]['animated'], isFalse);
+        expect(mockChannel.goCallLog[0]['isAudioBookWithText'], isFalse);
+        expect(handler.lastOrientation, equals(mq.Orientation.landscape));
+      });
     });
 
-    test('does not navigate when locator is null', () async {
+    test('does not navigate when locator is null', () {
       final mockChannel = MockReaderChannel();
 
-      handler.lastOrientation = mq.Orientation.portrait;
+      fakeAsync((async) {
+        handler.lastOrientation = mq.Orientation.portrait;
 
-      handler.handleOrientationChange(
-        currentOrientation: mq.Orientation.landscape,
-        isReady: true,
-        currentLocator: null,
-        channel: mockChannel,
-      );
+        handler.handleOrientationChange(
+          currentOrientation: mq.Orientation.landscape,
+          isReady: true,
+          currentLocator: null,
+          channel: mockChannel,
+        );
 
-      await Future.delayed(const Duration(milliseconds: 600));
+        async.elapse(const Duration(milliseconds: 500));
 
-      expect(mockChannel.goCallLog, isEmpty);
-      expect(handler.lastOrientation, equals(mq.Orientation.landscape));
+        expect(mockChannel.goCallLog, isEmpty);
+        expect(handler.lastOrientation, equals(mq.Orientation.landscape));
+      });
     });
 
-    test('does not navigate when channel is null', () async {
+    test('does not navigate when channel is null', () {
       final testLocator = Locator(href: 'test.html', type: 'text/html');
 
-      handler.lastOrientation = mq.Orientation.portrait;
+      fakeAsync((async) {
+        handler.lastOrientation = mq.Orientation.portrait;
 
-      handler.handleOrientationChange(
-        currentOrientation: mq.Orientation.landscape,
-        isReady: true,
-        currentLocator: testLocator,
-        channel: null,
-      );
+        handler.handleOrientationChange(
+          currentOrientation: mq.Orientation.landscape,
+          isReady: true,
+          currentLocator: testLocator,
+          channel: null,
+        );
 
-      await Future.delayed(const Duration(milliseconds: 600));
+        async.elapse(const Duration(milliseconds: 500));
 
-      // Should update orientation but not crash
-      expect(handler.lastOrientation, equals(mq.Orientation.landscape));
+        // Should update orientation but not crash
+        expect(handler.lastOrientation, equals(mq.Orientation.landscape));
+      });
     });
   });
 }

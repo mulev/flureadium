@@ -34,7 +34,7 @@ final class FlureadiumPluginGoToLocatorTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 2.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   func testGoToLocatorReturnsErrorWhenLocatorJsonInvalid() {
@@ -51,7 +51,7 @@ final class FlureadiumPluginGoToLocatorTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 2.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   func testGoToLocatorReturnsFalseWhenNoNavigatorOrViewRegistered() {
@@ -69,6 +69,6 @@ final class FlureadiumPluginGoToLocatorTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 5.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 }

@@ -18,7 +18,7 @@ final class FlureadiumPluginCarRefreshTests: XCTestCase {
     var resultCalls: [Any?] = []
     plugin.handle(call) { resultCalls.append($0) }
 
-    wait(for: [posted], timeout: 1.0)
+    wait(for: [posted], timeout: asyncTimeout)
     XCTAssertEqual(resultCalls.count, 1, "the channel call completes exactly once")
     XCTAssertNil(resultCalls.first ?? "non-nil", "refreshCarContent completes the call with nil")
   }

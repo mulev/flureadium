@@ -206,7 +206,7 @@ final class FlutterAudioNavigatorTests: XCTestCase {
             userInfo: [AVPlayerItemFailedToPlayToEndTimeErrorKey: underlying]
         )
 
-        wait(for: [routed], timeout: 1.0)
+        wait(for: [routed], timeout: asyncTimeout)
         XCTAssertEqual(mock.errors.count, 1,
             "a failed-to-play-to-end notification must forward an error to the listener")
         XCTAssertEqual((mock.errors.first?.error as NSError?)?.code, 7)
@@ -229,7 +229,7 @@ final class FlutterAudioNavigatorTests: XCTestCase {
             userInfo: [AVPlayerItemFailedToPlayToEndTimeErrorKey: NSError(domain: "avf", code: 1)]
         )
 
-        wait(for: [routed], timeout: 0.5)
+        wait(for: [routed], timeout: 0.5)  // inverted: the timeout is the assertion window, not a deadline
         XCTAssertEqual(mock.errors.count, 0,
             "after dispose(), a posted notification must not reach the listener")
     }

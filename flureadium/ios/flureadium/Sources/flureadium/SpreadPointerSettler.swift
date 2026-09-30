@@ -35,12 +35,35 @@ final class SpreadPointerSettler: NSObject, WKScriptMessageHandler {
     return live.count
   }
 
+  /// How many spreads the registry still holds.
+  ///
+  /// Reading this dispatches nothing, and leaves nothing alive. `settle()`
+  /// cannot answer the same question: it evaluates JavaScript on every live
+  /// spread, and WebKit retains a web view for the duration of that call.
+  ///
+  /// The pool matters as much as the absent dispatch. `allObjects` hands back
+  /// an autoreleased array that strongly references its contents, so a caller
+  /// polling this in a loop would pile those arrays into whatever pool encloses
+  /// it, and a spread one poll saw alive could not die until that pool drained.
+  /// Draining here keeps the reading free of the effect it measures.
+  var trackedSpreadCount: Int { autoreleasepool { spreads.allObjects.count } }
+
+  /// Adds one spread to the registry.
+  ///
+  /// Separate from the message handler because `WKScriptMessage` has no public
+  /// initialiser: without this, the only way to put a spread in the registry is
+  /// to load a document in a real web view, which is a WebKit dependency the
+  /// fan-out behaviour does not otherwise have.
+  func register(spread: WKWebView) {
+    // Every frame of every spread posts, so the same web view arrives more than
+    // once; the hash table keys on identity and keeps one entry.
+    spreads.add(spread)
+  }
+
   func userContentController(
     _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
   ) {
-    // Every frame of every spread posts, so the same web view arrives more than
-    // once; the hash table keys on identity and keeps one entry.
     guard let webView = message.webView else { return }
-    spreads.add(webView)
+    register(spread: webView)
   }
 }

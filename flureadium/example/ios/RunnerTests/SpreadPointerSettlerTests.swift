@@ -117,22 +117,35 @@ final class SpreadPointerSettlerTests: XCTestCase {
         )
     }
 
+    /// Two registered spreads, no WebKit. `PaginationView` keeps several spread
+    /// views alive and the stranded pointer is not always in the current one, so
+    /// what this has to pin is that `settle()` reaches every entry in the
+    /// registry rather than the first.
+    ///
+    /// It used to pin that by loading two real spreads and collecting both
+    /// pointer ids. That coupled the claim to WebKit starting a second content
+    /// process, which a GitHub runner intermittently never does — the second
+    /// load sat unfinished for the full 240 s ceiling on run 36668314406 while
+    /// the first worked. The dispatch reaching a real document is proven by
+    /// `testSettleCancelsTheLivePointerThroughTheBridge` and
+    /// `testSettleReachesAPointerInsideASubframe`; only the duplicate needed a
+    /// second web view.
     func testSettleReachesEveryRegisteredSpread() {
         let settler = SpreadPointerSettler()
-        let bridge = PointerEventRecorder(expected: 2)
-        let first = loadSpread(settler: settler, bridge: bridge)
-        let second = loadSpread(settler: settler, bridge: bridge)
+        let first = RecordingSpread()
+        let second = RecordingSpread()
+        settler.register(spread: first)
+        settler.register(spread: second)
 
-        press(pointerId: 11, in: first)
-        press(pointerId: 22, in: second)
-        settler.settle()
+        XCTAssertEqual(settler.settle(), 2)
 
-        bridge.awaitPayload(self)
+        let expected = "window.\(EpubUserScripts.settleFunctionName)?.()"
         XCTAssertEqual(
-            Set(bridge.payloads.compactMap { $0["pointerId"] as? Int }),
-            [11, 22],
-            "the strand can sit in a spread that is not the current one"
-        )
+            first.evaluated, [expected],
+            "the strand can sit in a spread that is not the current one")
+        XCTAssertEqual(
+            second.evaluated, [expected],
+            "a settle that stops at the first spread strands every other one")
     }
 
     /// A fixed-layout spread holds its resource in an iframe, and the settle is
@@ -167,17 +180,36 @@ final class SpreadPointerSettlerTests: XCTestCase {
             webView.stopLoading()
         }
 
-        var settled = settler.settle()
-        for _ in 0..<20 where settled != 0 {
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-            settled = settler.settle()
+        // Polls `trackedSpreadCount`, never `settle()`: every `settle()` call
+        // evaluates JavaScript on each live spread, and WebKit retains a web
+        // view until that call answers, so a loop polling `settle()` keeps the
+        // spread alive by asking whether it is gone. That cost this case its
+        // whole ceiling on CI on 2026-09-30.
+        //
+        // Each iteration drains its own pool. The run loop turning is what lets
+        // WebKit finish the teardown, and anything autoreleased in this method's
+        // frame would otherwise outlive every iteration of the wait.
+        let deadline = Date(timeIntervalSinceNow: asyncTimeout)
+        while settler.trackedSpreadCount != 0, Date() < deadline {
+            autoreleasepool {
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+            }
         }
         XCTAssertEqual(
-            settled, 0,
+            settler.trackedSpreadCount, 0,
             "PaginationView discards spreads as the reader moves; the registry must not retain them")
     }
 
     // MARK: - Harness
+
+    /// Ceiling for a spread's first paint, separate from `asyncTimeout` because
+    /// it covers something no other wait in this target does: the first
+    /// `WKWebView` in the process launches WebKit's Networking and WebContent
+    /// processes before any load can finish. Across three CI runs, whichever
+    /// case ran first in this suite paid it — 13.8 s on one runner, past 60 s
+    /// on another — while every later case in the same process finished inside
+    /// 15 s. Nothing here is slow; a cold WebKit is.
+    private let spreadLoadTimeout: TimeInterval = 240
 
     /// Builds a spread web view carrying the real settle script and the stub
     /// bridge, loads a document, and returns once the settle script has
@@ -203,7 +235,7 @@ final class SpreadPointerSettlerTests: XCTestCase {
         let loaded = LoadRecorder(expectation: expectation(description: "spread loaded"))
         webView.navigationDelegate = loaded
         webView.loadHTMLString("<html><body>\(body)</body></html>", baseURL: nil)
-        wait(for: [loaded.expectation], timeout: 10)
+        wait(for: [loaded.expectation], timeout: spreadLoadTimeout)
         return webView
     }
 
@@ -226,7 +258,27 @@ final class SpreadPointerSettlerTests: XCTestCase {
     private func evaluate(_ javaScript: String, in webView: WKWebView) {
         let evaluated = expectation(description: "evaluated")
         webView.evaluateJavaScript(javaScript) { _, _ in evaluated.fulfill() }
-        wait(for: [evaluated], timeout: 10)
+        wait(for: [evaluated], timeout: asyncTimeout)
+    }
+}
+
+/// Records what `settle()` dispatches, without involving WebKit.
+///
+/// Overriding without calling `super` is the point: no content process is
+/// started, nothing loads, and the case asserts on what the settler did rather
+/// than on what a document did in response.
+///
+/// The completion handler is spelled `@MainActor @Sendable` because that is how
+/// the SDK imports it. A plainer closure type makes the override mismatch the
+/// declaration it overrides, which Swift 6 rejects outright.
+private final class RecordingSpread: WKWebView {
+    private(set) var evaluated: [String] = []
+
+    override func evaluateJavaScript(
+        _ javaScript: String,
+        completionHandler: (@MainActor @Sendable (Any?, (any Error)?) -> Void)? = nil
+    ) {
+        evaluated.append(javaScript)
     }
 }
 
@@ -242,7 +294,7 @@ private final class PointerEventRecorder: NSObject, WKScriptMessageHandler {
 
     @discardableResult
     func awaitPayload(_ test: XCTestCase) -> [String: Any]? {
-        test.wait(for: [received], timeout: 10)
+        test.wait(for: [received], timeout: asyncTimeout)
         return payloads.first
     }
 

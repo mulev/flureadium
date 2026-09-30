@@ -40,7 +40,7 @@ final class FlureadiumPluginDecorationStyleTests: XCTestCase {
       reply = $0
       answered.fulfill()
     }
-    wait(for: [answered], timeout: 5)
+    wait(for: [answered], timeout: asyncTimeout)
     return reply
   }
 

@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'helpers/extract_asset.dart';
-import 'helpers/pump_until.dart';
+import 'helpers/expect_eventually.dart';
 import 'helpers/tap_latch.dart';
 
 /// Proves a content tap inside an Android edge strip reaches `onTap` when only
@@ -45,20 +45,6 @@ Offset? _lastTap;
 bool _ready = false;
 int _locatorCount = 0;
 Locator? _lastLocator;
-
-/// Pumps until [condition] holds, failing with [reason] on timeout.
-///
-/// [pumpUntil] reports a timeout in its return value, so every wait has to
-/// assert that value or a never-satisfied condition passes silently.
-Future<void> _expectEventually(
-  WidgetTester tester,
-  bool Function() condition, {
-  required String reason,
-  Duration timeout = const Duration(seconds: 20),
-}) async {
-  final satisfied = await pumpUntil(tester, condition, timeout: timeout);
-  expect(satisfied, isTrue, reason: reason);
-}
 
 /// A resource plus how far into it the reader sits — the page, as far as these
 /// cases need to tell one from another.
@@ -133,7 +119,7 @@ void _edgeStripTapTests() {
       final publication = await Flureadium().openPublication(path);
       await tester.pumpWidget(_EdgeStripHarness(publication: publication));
 
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => _ready,
         reason: 'the reader never reported ready',
@@ -142,7 +128,7 @@ void _edgeStripTapTests() {
       // `ready` is the plugin's own status and does not prove the WebView's
       // JavaScript side is listening. A delivered locator does, because that
       // is where locators come from.
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => _locatorCount > 0,
         reason: 'no locator arrived, so the JS layer is not alive',
@@ -153,7 +139,7 @@ void _edgeStripTapTests() {
     Future<void> expectTapAt(WidgetTester tester, Offset position) async {
       final before = tapEvents(tester);
       await tester.tapAt(position);
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => tapEvents(tester) > before,
         reason: 'no tap arrived from native at $position',

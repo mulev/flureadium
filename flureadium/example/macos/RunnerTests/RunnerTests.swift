@@ -9,6 +9,10 @@ import XCTest
 //
 // See https://developer.apple.com/documentation/xctest for more information about using XCTest.
 
+/// The ceiling every positive wait in this target uses — a hang guard, not a
+/// sleep. Full reasoning: `example/ios/RunnerTests/RunnerTests.swift`.
+let asyncTimeout: TimeInterval = 60
+
 class RunnerTests: XCTestCase {
 
   func testGetPlatformVersion() {
@@ -22,7 +26,7 @@ class RunnerTests: XCTestCase {
                      "macOS " + ProcessInfo.processInfo.operatingSystemVersionString)
       resultExpectation.fulfill()
     }
-    waitForExpectations(timeout: 1)
+    waitForExpectations(timeout: asyncTimeout)
   }
 
 }

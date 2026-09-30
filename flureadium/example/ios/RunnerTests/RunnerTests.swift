@@ -3,6 +3,20 @@ import Flutter
 import ReadiumShared
 @testable import flureadium
 
+/// The ceiling every positive wait in this target uses.
+///
+/// This is a hang guard, not a sleep. `wait(for:timeout:)` returns the moment
+/// the expectation is fulfilled, so a wait that takes 2 s still costs 2 s under
+/// a 60 s ceiling: raising the number cannot slow a green run, and it cannot
+/// hide a defect either — a broken path never fulfils and still fails, only
+/// later. The ceiling exists so a genuine deadlock fails with a readable
+/// failing-test list instead of being killed at the 25-minute step timeout
+/// (`.github/workflows/test.yml:240`) with no summary at all.
+///
+/// The per-call budgets this replaced were chosen on a fast local Mac and lost
+/// on contended CI runners on 2026-09-17, 2026-09-19, 2026-09-22 and 2026-09-29.
+let asyncTimeout: TimeInterval = 60
+
 class RunnerTests: XCTestCase {
 
   func testTtsCanSpeakReturnsFalseWhenNoPublicationLoaded() {
@@ -18,7 +32,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   // MARK: - ttsCanSpeak with an unspeakable publication
@@ -36,7 +50,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   // MARK: - Unknown method
@@ -53,7 +67,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   // MARK: - setCustomHeaders
@@ -70,7 +84,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   func testSetCustomHeadersInvalidArgs() {
@@ -84,7 +98,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   // MARK: - TTS methods without navigator
@@ -102,7 +116,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   func testTtsSetVoiceWithoutNavigator() {
@@ -118,7 +132,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   func testTtsSetPreferencesWithoutNavigator() {
@@ -133,7 +147,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   // MARK: - ttsGetSystemVoices
@@ -149,7 +163,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   // MARK: - ttsRequestInstallVoice
@@ -164,7 +178,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 1.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   // MARK: - Audio methods without navigator
@@ -179,7 +193,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 2.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   // MARK: - goToLocator invalid args
@@ -195,7 +209,7 @@ class RunnerTests: XCTestCase {
       expectation.fulfill()
     }
 
-    wait(for: [expectation], timeout: 2.0)
+    wait(for: [expectation], timeout: asyncTimeout)
   }
 
   override func tearDown() {

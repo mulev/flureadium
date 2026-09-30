@@ -38,8 +38,7 @@ void main() {
           Locator(href: 'chapter3.html', type: 'text/html'),
         );
 
-        // Wait for processing
-        await Future.delayed(const Duration(milliseconds: 50));
+        await pumpEventQueue();
 
         expect(locators, hasLength(3));
         expect(locators[0].href, equals('chapter1.html'));
@@ -94,7 +93,7 @@ void main() {
           ReadiumTimebasedState(state: TimebasedState.paused),
         );
 
-        await Future.delayed(const Duration(milliseconds: 50));
+        await pumpEventQueue();
 
         expect(states, hasLength(2));
         expect(states[0].state, equals(TimebasedState.playing));
@@ -128,7 +127,7 @@ void main() {
         WebStreamHandlers.addReaderStatusUpdate(ReadiumReaderStatus.loading);
         WebStreamHandlers.addReaderStatusUpdate(ReadiumReaderStatus.ready);
 
-        await Future.delayed(const Duration(milliseconds: 50));
+        await pumpEventQueue();
 
         expect(statuses, hasLength(2));
         expect(statuses[0], equals(ReadiumReaderStatus.loading));

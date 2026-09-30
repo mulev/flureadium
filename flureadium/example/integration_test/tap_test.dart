@@ -5,8 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'helpers/ensure_app_showing.dart';
+import 'helpers/expect_eventually.dart';
 import 'helpers/locator_latch.dart';
-import 'helpers/pump_until.dart';
 import 'helpers/reader_status.dart';
 import 'helpers/set_chrome.dart';
 import 'helpers/tap_latch.dart';
@@ -50,20 +50,6 @@ void main() {
 const _epub = 'assets/pubs/moby_dick.epub';
 const _tapTargets = 'assets/pubs/tap_targets.epub';
 
-/// Pumps until [condition] holds, failing with [reason] on timeout.
-///
-/// [pumpUntil] reports a timeout in its return value, so every wait has to
-/// assert that value or a never-satisfied condition passes silently.
-Future<void> _expectEventually(
-  WidgetTester tester,
-  bool Function() condition, {
-  required String reason,
-  Duration timeout = const Duration(seconds: 20),
-}) async {
-  final satisfied = await pumpUntil(tester, condition, timeout: timeout);
-  expect(satisfied, isTrue, reason: reason);
-}
-
 void _tapTests() {
   group('tap', () {
     Finder reader() => find.byType(ReadiumReaderWidget);
@@ -82,7 +68,7 @@ void _tapTests() {
         reopenButton: reopenButton,
         openAfterColdBoot: true,
       );
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => readerStatus(tester) == 'ready',
         reason: 'the reader never reported ready for $asset',
@@ -94,7 +80,7 @@ void _tapTests() {
       // where locators come from. (This gate was first added while chasing the
       // fixed-layout failure below; it did not change that outcome, and it is
       // kept because tapping before the JS layer listens is a real race.)
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => locatorEvents(tester) > 0,
         reason: 'no locator arrived for $asset, so its JS layer is not alive',
@@ -118,7 +104,7 @@ void _tapTests() {
     Future<void> expectOneTap(WidgetTester tester) async {
       final before = tapEvents(tester);
       await tapContent(tester);
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => tapEvents(tester) > before,
         reason: 'no tap arrived from native',
@@ -165,7 +151,7 @@ void _tapTests() {
       // it needs the chrome up, while tapping needs it down. Only `tap-events`
       // and `last-tap` sit outside that gate.
       await setChrome(tester, visible: true);
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => locatorHref(tester).isNotEmpty,
         reason: 'no starting locator to navigate from',
@@ -179,7 +165,7 @@ void _tapTests() {
       // page1.xhtml is one anchor filling the viewport, so the centre of the
       // reader is the link. Readium handles it internally and, by contract,
       // does not report the tap.
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => locatorHref(tester).contains('page2'),
         reason: 'the link never navigated away from "$start"',
@@ -198,7 +184,7 @@ void _tapTests() {
         reopenButton: 'Open Tap Targets',
       );
       await setChrome(tester, visible: true);
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => locatorHref(tester).isNotEmpty,
         reason: 'no starting locator to navigate from',
@@ -208,7 +194,7 @@ void _tapTests() {
       // passes just as well when no tap ever reaches native.
       await tapContent(tester);
       await setChrome(tester, visible: true);
-      await _expectEventually(
+      await expectEventually(
         tester,
         () => locatorHref(tester).contains('page2'),
         reason: 'the link never navigated, so this is not the plain page',

@@ -40,7 +40,7 @@ final class FlureadiumPluginAudioEnableTests: XCTestCase {
       answered.fulfill()
     }
 
-    wait(for: [answered], timeout: 2.0)
+    wait(for: [answered], timeout: asyncTimeout)
   }
 
   func testAudioEnableAnswersWhenPublicationIsNeitherAudiobookNorMediaOverlay() {
@@ -56,7 +56,7 @@ final class FlureadiumPluginAudioEnableTests: XCTestCase {
       answered.fulfill()
     }
 
-    wait(for: [answered], timeout: 5.0)
+    wait(for: [answered], timeout: asyncTimeout)
   }
 
   func testAudioEnableAnswersOnlyOnce() {
@@ -66,7 +66,7 @@ final class FlureadiumPluginAudioEnableTests: XCTestCase {
 
     plugin.handle(audioEnableCall()) { _ in answered.fulfill() }
 
-    wait(for: [answered], timeout: 2.0)
+    wait(for: [answered], timeout: asyncTimeout)
   }
 
   private func audioEnableCall() -> FlutterMethodCall {
