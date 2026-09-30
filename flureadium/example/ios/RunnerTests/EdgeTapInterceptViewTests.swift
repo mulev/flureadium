@@ -218,12 +218,83 @@ final class EdgeTapInterceptViewTests: XCTestCase {
         XCTAssertNil(result, "Out-of-bounds touch without intercept should return nil")
     }
 
+    // MARK: - Readium's failure requirement
+
+    func testNoSingleTouchTapRecognizerIsAttached() {
+        // Readium's PDF tap recognizer requires the failure of any single-touch
+        // UITapGestureRecognizer competing for the same touch
+        // (PDFTapGestureController.swift:62-64). One attached here never fails,
+        // so didTap never runs and no PDF tap ever reaches onTap.
+        let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+
+        let competing = (view.gestureRecognizers ?? []).filter { recognizer in
+            (recognizer as? UITapGestureRecognizer)?.numberOfTouchesRequired == 1
+        }
+
+        XCTAssertTrue(
+            competing.isEmpty,
+            "a single-touch UITapGestureRecognizer on this overlay starves Readium's PDF tap path")
+    }
+
     // MARK: - Gesture recognizer count
 
-    func testViewHasThreeGestureRecognizers() {
+    func testViewHasTwoGestureRecognizers() {
         let view = EdgeTapInterceptView(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
-        // 1 tap + 2 swipes = 3
-        XCTAssertEqual(view.gestureRecognizers?.count, 3)
+        // 2 swipes, no tap — see testNoSingleTouchTapRecognizerIsAttached
+        XCTAssertEqual(view.gestureRecognizers?.count, 2)
+    }
+
+    // MARK: - Edge zone predicate
+
+    func testEdgeTapSideLeftZone() {
+        XCTAssertEqual(edgeTapSide(x: 10, width: 320, threshold: 44), .left)
+    }
+
+    func testEdgeTapSideRightZone() {
+        XCTAssertEqual(edgeTapSide(x: 300, width: 320, threshold: 44), .right)
+    }
+
+    func testEdgeTapSideCentreIsNil() {
+        XCTAssertNil(edgeTapSide(x: 160, width: 320, threshold: 44))
+    }
+
+    func testEdgeTapSideBoundariesAreStrict() {
+        // x == threshold and x == width - threshold are middle: hitTest has always
+        // used `<` and `>`, and testHitTestExactlyAt*EdgeBoundaryReturnsSubview
+        // pins that behavior.
+        XCTAssertNil(edgeTapSide(x: 44, width: 320, threshold: 44))
+        XCTAssertNil(edgeTapSide(x: 276, width: 320, threshold: 44))
+        XCTAssertEqual(edgeTapSide(x: 43.9, width: 320, threshold: 44), .left)
+        XCTAssertEqual(edgeTapSide(x: 276.1, width: 320, threshold: 44), .right)
+    }
+
+    func testEdgeTapSideHonoursCustomThreshold() {
+        XCTAssertEqual(edgeTapSide(x: 50, width: 320, threshold: 80), .left)
+        XCTAssertNil(edgeTapSide(x: 50, width: 320, threshold: 30))
+    }
+
+    func testEdgeTapSideNegativeXIsLeft() {
+        // Matches testHitTestOutOfBoundsWithInterceptReturnsSelf — an
+        // out-of-bounds point on the left reads as the left zone. Pinned
+        // behavior, not a target of this phase.
+        XCTAssertEqual(edgeTapSide(x: -10, width: 320, threshold: 44), .left)
+    }
+
+    // MARK: - Tap slop
+
+    func testTouchWithinSlopIsATap() {
+        XCTAssertTrue(
+            isTapWithinSlop(start: CGPoint(x: 20, y: 300), end: CGPoint(x: 24, y: 305), slop: 10))
+    }
+
+    func testTouchPastSlopIsNotATap() {
+        // An edge swipe ends with touchesEnded, not touchesCancelled, because the
+        // swipe recognizers set cancelsTouchesInView = false. Movement is the only
+        // thing separating the two.
+        XCTAssertFalse(
+            isTapWithinSlop(start: CGPoint(x: 20, y: 300), end: CGPoint(x: 120, y: 305), slop: 10))
+        XCTAssertFalse(
+            isTapWithinSlop(start: CGPoint(x: 20, y: 300), end: CGPoint(x: 24, y: 400), slop: 10))
     }
 
     // MARK: - Single pointer edge owner
