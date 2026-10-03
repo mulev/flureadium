@@ -1,12 +1,14 @@
 #!/bin/sh
-# Repo validators — generic runner. Copy this file verbatim to a repo root and
-# write the repo's rules in ./validators.conf next to it. The runner decides
-# nothing; the config decides everything.
+# Repo validators — generic runner. Placed at a repo root by `./install repo
+# <path>` from the skills repo, and never edited per repo; the repo's rules go
+# in ./validators.conf next to it. The runner decides nothing; the config
+# decides everything.
 #
 # Usage:
-#   ./validate list   <stage>
-#   ./validate run    <stage>
-#   ./validate verify <stage>
+#   ./validate list    <stage>
+#   ./validate run     <stage>
+#   ./validate verify  <stage>
+#   ./validate version          prints this runner's version stamp
 #
 # `run` writes ./ledger at the repo root: one block, the most recent run of
 # whatever stage, replacing what was there. `verify` reads that file and takes
@@ -55,9 +57,14 @@
 #      loop, fix the caller or the config
 #
 # Doctrine, config format and per-stack recipes:
-#   /Users/mulev/Documents/projects/skills/_shared/validators.md
+#   _shared/validators.md
 set -u
 
+# The installer's `check` reads this line out of an installed copy to tell a
+# current runner from a stale one. Bump it whenever this file changes in a way
+# an installed copy must pick up. Keep it a plain top-level assignment on its
+# own line: `install` reads it with sed, never by sourcing this script.
+VALIDATE_VERSION=2
 CONF=${VALIDATORS_CONF:-./validators.conf}
 LEDGER=${VALIDATORS_LEDGER:-./ledger}
 ESC=$(printf '\033')
@@ -68,8 +75,14 @@ extra=${3:-}
 
 case $sub in
 list | run | verify) ;;
+version)
+	# Exits here, deliberately: the stage guard below runs after this case, and
+	# `version` takes no stage and needs no validators.conf.
+	echo "$VALIDATE_VERSION"
+	exit 0
+	;;
 *)
-	echo "usage: validate list|run|verify <stage>" >&2
+	echo "usage: validate list|run|verify <stage> | validate version" >&2
 	exit 2
 	;;
 esac
